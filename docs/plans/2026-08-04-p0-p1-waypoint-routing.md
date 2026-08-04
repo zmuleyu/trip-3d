@@ -1745,6 +1745,29 @@ git commit -m "docs: followups + README for trip-3d fork"
 
 实施 Task 1-7 时实跑 vitest 发现 plan 测试 1 处字段名错误:`moveWaypoint` 测试断言用 `.elev`,但实现(及全库一致)字段名为 `.ele` —— 两轮 review 均未抓到,由真实测试暴露。已修 plan+实现两侧(以 `ele` 为准)。**教训:plan 评审不能替代实跑;纯函数 Task 实施即以 vitest 为准。**
 
+另:Codex round 3 正式结论 **APPROVE-WITH-FIXES**(仅 1 条:补 33 点分享载荷拒绝用例,已补,测试 31→32)。
+
+## 实施验收(round 4,2026-08-04,E2E)
+
+Task 1-11 全部完成。E2E 实测(远程浏览器 + 合成 PointerEvent)结果:
+
+| 验收项 | 结果 |
+|---|---|
+| 单元测试 | ✅ 32/32(vitest) |
+| 构建 | ✅ `vite build` exit 0 |
+| 点击打点 | ✅ 3 点落子,真实高程(1609m 等),marker+序号 sprite 出现 |
+| 拖拽抑制 | ✅ 140px 拖拽未加点(位移阈值+controls change 双判定) |
+| 连线+统计 | ✅ Line 贴地;HUD「3 点 · 4.9 km · ↑99m ↓164m · 最高 1658m · 示意车程 0h11m」 |
+| 高程剖面 | ✅ 折线+最值标注(验收中发现全精度浮点标签,已修为 Math.round) |
+| 线路库 | ✅ 保存→(带 query 破缓存)刷新→加载→删除,全链路;IDB 跨重载持久化确认 |
+| URL 分享 | ✅ node 侧生成 230 字符 hash → 带 hash 冷启动 → 名称/3 点/planning/统计全复原 |
+| GPX 导出 | ✅ 点击无异常(内容往返由 gpx.test.js 锁定) |
+| 撤销/清空 | ✅ 3→2→0,HUD 正确复位 |
+
+E2E 环境教训(记录防再踩):① 同 path 仅 hash 变化的 navigation 是同文档导航,不触发重载,hash 复原测试必须换 query 或冷启动;② 远程浏览器(Browserbase)空闲后 IDB 可能被清,持久化验证要用「带 query 的立即重载」;③ console/终端对长字符串显示截断,hash 类值要落文件再分段读取。
+
+**MVP(P0+P1)验收通过。**
+
 ## Self-Review: 47/50(Codex 两轮修订后重评)
 
 | 维度(0-5) | 分 | 说明 |

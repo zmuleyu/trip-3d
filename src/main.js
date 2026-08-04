@@ -22,7 +22,14 @@ import { createCone } from './cone.js'
 import { createLabels, disposeLabels } from './labels.js'
 import { createHud3D, findPois } from './hud3d.js'
 import { createHud2D } from './hud2d.js'
-import { loadDem } from './dem.js'
+import { loadDem, sampleDem } from './dem.js'
+import { makeGeoContext, worldToLonLat } from './lib/geo.js'
+import { createRoute, addWaypoint, routeStats } from './lib/route.js'
+import { RouteLayer } from './route/RouteLayer.js'
+import { RouteHud } from './route/RouteHud.js'
+import { openRouteStore } from './lib/store.js'
+import { routeToGpx, gpxToRoute } from './lib/gpx.js'
+import { encodeShare, decodeShare } from './lib/share.js'
 
 // ------------------------------------------------------------------ params
 
@@ -45,6 +52,8 @@ const params = {
   demLon: -110.0984,
   demZoom: 12,
   demExaggeration: 1.6,
+  planning: false,
+  routeName: '未命名线路',
 
   // terrain generation
   seed: 7,
@@ -565,6 +574,38 @@ window.addEventListener('pointermove', (e) => {
   mouse.set(nx, ny)
 })
 
+// planning mode: click on terrain drops a waypoint.
+// Bound to the canvas only (GUI/HUD clicks never reach this), primary button,
+// and any camera 'change' DURING the press marks the gesture as a drag —
+// OrbitControls fires 'change' only on real camera movement (rotate/pan/dolly),
+// while its 'start' event fires synchronously on pointerdown (useless here).
+const raycaster = new THREE.Raycaster()
+let downPos = null
+let dragged = false
+controls.addEventListener('change', () => {
+  if (downPos) dragged = true
+})
+renderer.domElement.addEventListener('pointerdown', (e) => {
+  if (e.button !== 0) return
+  downPos = { x: e.clientX, y: e.clientY }
+  dragged = false
+})
+renderer.domElement.addEventListener('pointerup', (e) => {
+  if (!params.planning || !downPos || !geo || !dem || e.button !== 0) return
+  const moved = Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y) > 6
+  const wasDrag = dragged
+  downPos = null
+  if (moved || wasDrag) return
+  const ndc = new THREE.Vector2((e.clientX / window.innerWidth) * 2 - 1, -((e.clientY / window.innerHeight) * 2 - 1))
+  raycaster.setFromCamera(ndc, camera)
+  const hit = raycaster.intersectObject(terrain.mesh, false)[0]
+  if (!hit) return
+  const { lon, lat } = worldToLonLat(geo, hit.point.x, hit.point.z)
+  const wp = addWaypoint(route, lon, lat, Math.round(elevOfWorld(hit.point.x, hit.point.z)))
+  if (!wp) return console.warn('waypoint cap reached')
+  refreshRoute()
+})
+
 // ------------------------------------------------------------------ regeneration helpers
 
 // ------------------------------------------------------------------ real-world DEM loading
@@ -579,6 +620,10 @@ async function loadRealTerrain() {
   try {
     dem = await loadDem({ lat: params.demLat, lon: params.demLon, zoom: params.demZoom })
     terrain.setDem(dem)
+    geo = makeGeoContext(dem)
+    ensureRouteLayer()
+    // NO refreshRoute() here: terrain.rebuild() hasn't run yet — refresh happens
+    // in regenerateTerrain()'s completion callback below
     params.source = 'real'
     gui.controllersRecursive().forEach((c) => c.updateDisplay())
     loadingEl.textContent = 'generating terrain…'
@@ -607,11 +652,49 @@ function regenerateTerrain() {
       terrain.rebuildRoughness(params)
       regenerateLabels()
       regenerateHud()
+      refreshRoute() // drape route onto the NEW sampler after every rebuild
       if (params.shadowMode === 'static') renderer.shadowMap.needsUpdate = true
       rebuildPending = false
       loadingEl.classList.add('hidden')
     }, 30)
   )
+}
+
+// ------------------------------------------------------------------ route planning
+let geo = null // makeGeoContext(dem), set in loadRealTerrain
+let route = createRoute()
+let routeLayer = null
+const routeStoreReady = openRouteStore()
+  .then((s) => {
+    refreshLibrary() // first paint only after IDB is actually open
+    return s
+  })
+  .catch((e) => {
+    console.warn('IDB unavailable', e)
+    return null // save becomes a visible error, never silent
+  })
+
+function elevOfWorld(x, z) {
+  const { px, py } = geo.worldToPx(x, z)
+  return sampleDem(dem, px, py) // real meters (un-exaggerated)
+}
+
+function refreshRoute() {
+  if (!routeLayer || !geo || !dem) return
+  const pts = routeLayer.update(route.waypoints)
+  updateRouteHud(route, pts.length ? routeStats(pts) : null, pts)
+}
+
+function ensureRouteLayer() {
+  if (routeLayer) return
+  // getters only: terrain.sample is REPLACED on every rebuild (terrain.js:262),
+  // geo/dem are replaced on location switch — never cache them here
+  routeLayer = new RouteLayer(
+    () => terrain.sample,
+    () => geo,
+    () => elevOfWorld
+  )
+  scene.add(routeLayer.group)
 }
 
 // ------------------------------------------------------------------ GUI
@@ -640,6 +723,58 @@ const copyCtrl = gui
     'copy'
   )
   .name('copy parameters')
+
+const fRoute = gui.addFolder('线路规划 Route')
+fRoute.add(params, 'planning').name('规划模式(点击落点)').onChange((v) => {
+  if (v && !dem) loadRealTerrain()
+  ensureRouteLayer()
+})
+fRoute.add(params, 'routeName').name('线路名').onFinishChange((v) => { route.name = v; refreshRoute() })
+fRoute.add({ undo: () => { route.waypoints.pop(); refreshRoute() } }, 'undo').name('撤销末点')
+fRoute.add({ clear: () => { route.waypoints = []; refreshRoute() } }, 'clear').name('清空')
+fRoute.add({ save: async () => {
+  route.name = params.routeName
+  const s = await routeStoreReady
+  if (!s) { alert('本地存储不可用,保存失败'); return }
+  await s.save(route)
+  refreshLibrary()
+} }, 'save').name('保存到线路库')
+fRoute.add({
+  share: async () => {
+    const hash = encodeShare(route, { dem })
+    const url = `${location.origin}${location.pathname}#r=${hash}`
+    await navigator.clipboard.writeText(url)
+    history.replaceState(null, '', `#r=${hash}`)
+  },
+}, 'share').name('复制分享链接')
+fRoute.add({
+  exportGpx: () => {
+    const blob = new Blob([routeToGpx(route)], { type: 'application/gpx+xml' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = `${route.name || 'route'}.gpx`
+    a.click()
+    URL.revokeObjectURL(a.href)
+  },
+}, 'exportGpx').name('导出 GPX')
+fRoute.add({
+  importGpx: () => {
+    const inp = document.createElement('input')
+    inp.type = 'file'
+    inp.accept = '.gpx'
+    inp.onchange = async () => {
+      try {
+        route = gpxToRoute(await inp.files[0].text())
+        params.routeName = route.name
+        ensureRouteLayer()
+        refreshRoute()
+        gui.controllersRecursive().forEach((c) => c.updateDisplay())
+        if (route.downsampled) console.info(`GPX 已抽稀 ${route.originalPointCount}→${route.waypoints.length} 点`)
+      } catch (err) { alert(`GPX 导入失败: ${err.message}`) }
+    }
+    inp.click()
+  },
+}, 'importGpx').name('导入 GPX')
 
 const fSource = gui.addFolder('Terrain source')
 fSource
@@ -909,8 +1044,58 @@ fLight.close()
 
 // ------------------------------------------------------------------ loop
 
+// ------------------------------------------------------------------ route HUD wiring
+const routeHud = new RouteHud(params.hudAccent)
+function updateRouteHud(route, stats, pts) {
+  routeHud.setStats(route, stats)
+  routeHud.drawProfile(pts ?? [])
+}
+async function refreshLibrary() {
+  const s = await routeStoreReady
+  if (s) routeHud.setLibrary(await s.list())
+}
+routeHud.onLoad = async (id) => {
+  const s = await routeStoreReady
+  if (!id || !s) return
+  const r = await s.load(id)
+  if (!r) return
+  route = r
+  params.routeName = r.name
+  ensureRouteLayer()
+  refreshRoute()
+  gui.controllersRecursive().forEach((c) => c.updateDisplay())
+}
+routeHud.onDelete = async (id) => {
+  const s = await routeStoreReady
+  if (!id || !s) return
+  await s.remove(id)
+  refreshLibrary()
+}
+// NOTE: no bare refreshLibrary() here — routeStoreReady.then() above triggers
+// the first paint once IDB is open
+
+// restore shared route from URL hash BEFORE the default DEM load below.
+// The startup line runs `if (params.source === 'real') loadRealTerrain()` once —
+// decode first so that single load fetches the SHARED center, not Monument Valley.
+if (location.hash.startsWith('#r=')) {
+  try {
+    const shared = decodeShare(location.hash.slice(3))
+    params.demLat = shared.dem.lat
+    params.demLon = shared.dem.lon
+    params.demZoom = shared.dem.zoom
+    params.demLocation = 'Custom'
+    route = createRoute(shared.name)
+    params.routeName = shared.name
+    for (const w of shared.waypoints) addWaypoint(route, w.lon, w.lat, w.ele, w.name)
+    params.planning = true
+    // no explicit loadRealTerrain() call — the startup line below does it once
+  } catch (err) {
+    console.warn('bad share hash', err)
+  }
+}
+
 // console access for debugging/scripting
-window.__exp = { scene, camera, controls, params, terrain, loadRealTerrain, get labels() { return labels } }
+window.__exp = { scene, camera, controls, params, terrain, loadRealTerrain, get labels() { return labels }, get route() { return route }, get geo() { return geo }, get dem() { return dem } }
 
 // real world is the default source — fetch its tiles on startup
 if (params.source === 'real') loadRealTerrain()

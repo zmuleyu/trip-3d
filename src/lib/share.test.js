@@ -45,4 +45,12 @@ describe('share codec', () => {
     expect(() => decodeShare(bad({ v: 1, dem: { lat: 1, lon: 1, zoom: 12 }, waypoints: [[Infinity, 0, 0, 'x']] }))).toThrow(/malformed/)
     expect(() => decodeShare(bad({ v: 1, dem: { lat: 1, lon: 1, zoom: 99 }, waypoints: [] }))).toThrow(/malformed/)
   })
+
+  it('rejects payloads exceeding the waypoint cap (Codex r3: locks H17 fix)', () => {
+    const bad = (obj) => btoa(JSON.stringify(obj)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+    const wps = Array.from({ length: 33 }, (_, i) => [102 + i * 0.001, 31, 3000, `P${i}`])
+    expect(() => decodeShare(bad({ v: 1, dem: { lat: 31, lon: 102, zoom: 12 }, waypoints: wps }))).toThrow(/malformed/)
+    const ok = Array.from({ length: 32 }, (_, i) => [102 + i * 0.001, 31, 3000, `P${i}`])
+    expect(decodeShare(bad({ v: 1, dem: { lat: 31, lon: 102, zoom: 12 }, waypoints: ok })).waypoints).toHaveLength(32)
+  })
 })

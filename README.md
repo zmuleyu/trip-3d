@@ -1,5 +1,16 @@
 # MONOLITH — interactive 3D topographic map
 
+> **trip-3d fork**:在 monolith-terrain(MIT)底座上增加线路规划 —— 3D 地形打点成线、
+> 高程剖面、线路库(IndexedDB)、GPX 导入导出、URL 分享。实施计划与三轮 Codex review 记录见
+> `docs/plans/2026-08-04-p0-p1-waypoint-routing.md`;设计收敛见
+> `../brainstorming/2026-08-04-3d-trip-weather-planner-brainstorm.md`;v1.1+ 见 `docs/followups.md`。
+>
+> ```bash
+> npm install && npm run dev   # 开发
+> npm test                     # 单元测试(vitest,32 个)
+> npm run build                # 构建
+> ```
+
 An interactive, real-time 3D terrain map in the style of a vintage USGS topographic sheet, crossed with a sci-fi FUI overlay. Load **real-world elevation data** for anywhere on Earth, or generate procedural mountain ranges — then explore them with contour lines, hypsometric tinting, survey grids, spot elevations, clickable peak markers, radar scans, and cinematic camera tours.
 
 **Live demo:** https://kaolti.github.io/monolith-terrain/

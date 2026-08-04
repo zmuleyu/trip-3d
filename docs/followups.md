@@ -1,0 +1,12 @@
+# trip-3d followups (v1.1+)
+
+- [ ] 途经点拖拽改线(raycast 命中 marker 后拖动,实时重采样)
+- [ ] 途经点重命名/编辑 UI(现为 P1..Pn 自动命名;GPX/分享可带入名字)
+- [ ] undo/redo 栈(现仅撤销末点)
+- [ ] 多线路同屏对比(不同颜色)
+- [ ] P2 天气:Open-Meteo provider 实现 + 沿线天气卡 + 晴雨色带(见 brainstorming §4)
+- [ ] P3 分享产物:海报卡(Canvas 合成)/ 飞越视频(MediaRecorder,复用 tour 巡航)
+- [ ] P4 路网吸附:openrouteservice / 高德(GCJ-02 边界转换,provider 骨架已就位)
+- [ ] 分享 URL 压缩(lz-string)应对长线路 hash 过长(当前 3 点 hash ≈ 230 字符)
+- [ ] 移动端触控(双指旋转与单指打点手势冲突消解)
+- [ ] 分享链接含 exaggeration/相机视角等视觉参数(现仅 dem 中心+zoom+waypoints)
