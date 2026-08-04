@@ -60,6 +60,9 @@ const params = {
   demExaggeration: 1.6,
   planning: false,
   routeName: '未命名线路',
+  routeSlopeColors: true,
+  routeArrows: true,
+  routeTicks: true,
 
   // terrain generation
   seed: 7,
@@ -687,9 +690,16 @@ function elevOfWorld(x, z) {
 
 function refreshRoute() {
   if (!routeLayer || !geo || !dem) return
-  const pts = routeLayer.update(route.waypoints)
+  const pts = routeLayer.update(route.waypoints, {
+    slopeColors: params.routeSlopeColors,
+    arrows: params.routeArrows,
+    ticks: params.routeTicks,
+  })
+  lastRoutePts = pts
   updateRouteUI(route, pts.length ? routeStats(pts) : null, pts)
 }
+
+let lastRoutePts = []
 
 function ensureRouteLayer() {
   if (routeLayer) return
@@ -766,6 +776,11 @@ fSource
     if (params.source === 'real') regenerateTerrain()
   })
 fSource.add({ load: () => loadRealTerrain() }, 'load').name('load location ⤓')
+
+const fRouteStyle = gui.addFolder('Route style')
+fRouteStyle.add(params, 'routeSlopeColors').name('slope gradient').onChange(refreshRoute)
+fRouteStyle.add(params, 'routeArrows').name('direction arrows').onChange(refreshRoute)
+fRouteStyle.add(params, 'routeTicks').name('distance ticks').onChange(refreshRoute)
 
 const fTerrain = gui.addFolder('Terrain')
 fTerrain.add(params, 'seed', 1, 9999, 1).onFinishChange(regenerateTerrain)
@@ -990,6 +1005,7 @@ fTerrain.close()
 fSurface.close()
 fCamera.close()
 fMap.close()
+fRouteStyle.close()
 fLook.close()
 fHud.close()
 fMotion.close()
@@ -1042,6 +1058,20 @@ async function runWeatherQuery({ dates }) {
 }
 
 const weatherPanel = createWeatherPanel({ onQuery: runWeatherQuery })
+
+// profile ↔ 3D sync: hover shows crosshair on the route line; click flies camera
+profileCard.setCallbacks({
+  onHover: (i) => {
+    if (i == null || !lastRoutePts[i]) { routeLayer?.hideCrosshair(); return }
+    routeLayer?.showCrosshair(lastRoutePts[i])
+  },
+  onSelect: (i) => {
+    const p = lastRoutePts[i]
+    if (!p) return
+    const y = terrain.sample(p.x, p.z)
+    flyTo(new THREE.Vector3(p.x + 6, y + 4.5, p.z + 6), new THREE.Vector3(p.x, y, p.z))
+  },
+})
 
 async function refreshLibrary() {
   const s = await routeStoreReady
@@ -1299,4 +1329,5 @@ window.addEventListener('resize', () => {
   camera.updateProjectionMatrix()
   renderer.setSize(window.innerWidth, window.innerHeight)
   composer.setSize(window.innerWidth, window.innerHeight)
+  routeLayer?.setResolution(window.innerWidth, window.innerHeight)
 })

@@ -136,20 +136,41 @@ export function createProfileCard(accent = '#ff4d00') {
   el.append(head, canvas)
   document.body.appendChild(el)
   let folded = false
+  let lastPts = null
+  let cbs = { onHover: null, onSelect: null }
   head.onclick = () => {
     folded = !folded
     el.classList.toggle('folded', folded)
     fold.textContent = folded ? '展开 ▸' : '收起 ▾'
   }
+  const indexAt = (e) => {
+    if (!lastPts || lastPts.length < 2) return null
+    const rect = canvas.getBoundingClientRect()
+    const mx = ((e.clientX - rect.left) / rect.width) * canvas.width
+    const i = Math.round(((mx - 10) / (canvas.width - 20)) * (lastPts.length - 1))
+    return Math.max(0, Math.min(lastPts.length - 1, i))
+  }
+  canvas.addEventListener('mousemove', (e) => {
+    const i = indexAt(e)
+    if (i != null) cbs.onHover?.(i)
+  })
+  canvas.addEventListener('mouseleave', () => cbs.onHover?.(null))
+  canvas.addEventListener('click', (e) => {
+    const i = indexAt(e)
+    if (i != null) cbs.onSelect?.(i)
+  })
   return {
     el,
+    setCallbacks(next) { cbs = { ...cbs, ...next } },
     // weatherDays (optional): aggregated TripWeatherDay[] — when provided, a
     // trip-day-axis band is drawn above the profile; when omitted, band clears.
     update(stats, pts, weatherDays) {
       if (!pts || pts.length < 2) {
         el.classList.add('hidden')
+        lastPts = null
         return
       }
+      lastPts = pts
       el.classList.remove('hidden')
       title.textContent = `高程剖面 · ${(stats.distanceM / 1000).toFixed(1)} km · 最高 ${stats.maxEle}m`
       const ctx = canvas.getContext('2d')
