@@ -1,7 +1,5 @@
 {
-  "name": "monolith-terrain",
-  "compatibility_date": "2026-07-01",
-  "assets": {
-    "directory": "./dist"
-  }
+  "name": "trip-3d",
+  "pages_build_output_dir": "./dist",
+  "compatibility_date": "2026-07-01"
 }

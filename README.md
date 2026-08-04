@@ -1,5 +1,7 @@
 # MONOLITH — interactive 3D topographic map
 
+> **在线访问**: https://trip-3d.pages.dev (Cloudflare Pages)
+
 > **trip-3d fork**:在 monolith-terrain(MIT)底座上增加线路规划 —— 3D 地形打点成线、
 > 高程剖面、线路库(IndexedDB)、GPX 导入导出、URL 分享。实施计划与三轮 Codex review 记录见
 > `docs/plans/2026-08-04-p0-p1-waypoint-routing.md`;设计收敛见

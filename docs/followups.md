@@ -22,3 +22,6 @@
 - [ ] 吸附:TooBig 防御(当前整线路单请求 ≤32 坐标;超出时缺逐段队列)
 - [ ] 搜索:Photon 使用政策核对(当前作 fallback;主用需确认其条款)
 - [ ] 搜索:结果分类图标(town/peak/river 等 type 可视化)
+- [ ] 部署:CF Pages git 集成自动构建(本期 wrangler 手动部署;连接仓库后 push 即发布)
+- [ ] 部署:自定义域名(当前 trip-3d.pages.dev)
+- [ ] 部署:vite manualChunks 拆分 three.js(首屏 ~1.1MB)
