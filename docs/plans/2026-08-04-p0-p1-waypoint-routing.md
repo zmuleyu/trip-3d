@@ -109,6 +109,7 @@ git commit -m "test: add vitest infrastructure"
 **数学依据(必须严格一致,摘自源码):**
 - dem.js: `n = 2**zoom`;`cx = floor(((lon+180)/360)*n)`;`cy = floor(((1 - ln(tan(lat)+1/cos(lat))/π)/2)*n)`;画布 3×3 瓦片,左上角全局瓦片 `(cx-1, cy-1)`;`size = 768` px。
 - terrain.js: 世界→像素 `px = (x/56 + 0.5) * (size-1)`;逆变换 `x = (px/(size-1) - 0.5) * 56`。
+- **像素语义(锁定,Codex H5)**:px/py 为数组索引坐标(`data[0]` 中心 = px 0);连续 mercator 坐标 = `origin + (px+0.5)/256`。terrain.js 已把世界边缘对齐到首末像素**中心**,geo 模块必须同一约定。
 
 **Step 1: Write failing test**
 
@@ -140,14 +141,23 @@ describe('geo', () => {
     expect(py).toBeLessThan(768)
   })
 
-  it('pxToLonLat matches dem.js forward math at canvas corners', () => {
-    // canvas (0,0) = NW corner of tile (cx-1, cy-1)
-    const nw = geo.pxToLonLat(0, 0)
-    const se = geo.pxToLonLat(768, 768)
+  it('index semantics: px ±0.5 spans the whole 3-tile canvas', () => {
+    // px=-0.5 ↔ NW canvas boundary; px=767.5 ↔ SE boundary (terrain samples pixel CENTERS 0..767)
+    const nw = geo.pxToLonLat(-0.5, -0.5)
+    const se = geo.pxToLonLat(767.5, 767.5)
     expect(se.lon).toBeGreaterThan(nw.lon)
     expect(se.lat).toBeLessThan(nw.lat)
     // 3 tiles at z12 ≈ 0.2637° lon span
     expect(se.lon - nw.lon).toBeCloseTo((3 / 2 ** 12) * 360, 4)
+  })
+
+  it('dem center lon/lat lands inside the canvas center tile', () => {
+    // independent invariant: floor() construction guarantees the center tile holds (dem.lon, dem.lat)
+    const { px, py } = geo.lonLatToPx(dem.lon, dem.lat)
+    expect(px).toBeGreaterThanOrEqual(256)
+    expect(px).toBeLessThan(512)
+    expect(py).toBeGreaterThanOrEqual(256)
+    expect(py).toBeLessThan(512)
   })
 
   it('haversine: 1° lat ≈ 111.195 km', () => {
@@ -200,9 +210,12 @@ export function makeGeoContext(dem) {
   function pxToWorld(px, py) {
     return { x: (px / span - 0.5) * TERRAIN_SIZE, z: (py / span - 0.5) * TERRAIN_SIZE }
   }
+  // px/py are ARRAY-INDEX coords: center of data[0] is px=0, so the continuous
+  // web-mercator coordinate of a sample is origin + (px + 0.5)/TILE_PX. This matches
+  // terrain.js mapping world edges to the first/last pixel CENTERS (Codex H5).
   function pxToLonLat(px, py) {
-    const gx = originX + px / TILE_PX // global tile coords (fractional)
-    const gy = originY + py / TILE_PX
+    const gx = originX + (px + 0.5) / TILE_PX // global tile coords (fractional)
+    const gy = originY + (py + 0.5) / TILE_PX
     const lon = (gx / n) * 360 - 180
     const lat = (Math.atan(Math.sinh(Math.PI * (1 - (2 * gy) / n))) * 180) / Math.PI
     return { lon, lat }
@@ -211,7 +224,7 @@ export function makeGeoContext(dem) {
     const latRad = (lat * Math.PI) / 180
     const gx = ((lon + 180) / 360) * n
     const gy = ((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * n
-    return { px: (gx - originX) * TILE_PX, py: (gy - originY) * TILE_PX }
+    return { px: (gx - originX) * TILE_PX - 0.5, py: (gy - originY) * TILE_PX - 0.5 }
   }
   return { dem, worldToPx, pxToWorld, pxToLonLat, lonLatToPx }
 }
@@ -240,7 +253,7 @@ export function haversineMeters(lat1, lon1, lat2, lon2) {
 **Step 4: Run test to verify pass**
 
 Run: `npx vitest run src/lib/geo.test.js`
-Expected: 5 passed
+Expected: 6 passed
 
 **Step 5: Commit**
 
@@ -249,7 +262,7 @@ git add src/lib/geo.js src/lib/geo.test.js
 git commit -m "feat(geo): WGS-84 ↔ world coordinate conversion"
 ```
 
-**Acceptance:** `npx vitest run src/lib/geo.test.js` → 5 passed(含 round-trip 1e-6° 精度)
+**Acceptance:** `npx vitest run src/lib/geo.test.js` → 6 passed(含 round-trip 1e-6° 精度)
 **Covers:** R8
 **Execution:** serial
 
@@ -312,8 +325,20 @@ describe('route model', () => {
     expect(pts[0].lon).toBeCloseTo(-110.1, 5)
     expect(pts.at(-1).lon).toBeCloseTo(-109.9, 5)
     expect(pts[0].ele).toBe(1000)
-    // cumulative distance strictly increasing
-    for (let i = 1; i < pts.length; i++) expect(pts[i].cumDistM).toBeGreaterThan(pts[i - 1].cumDistM)
+    // cumulative distance non-decreasing; strictly increasing for spread-out waypoints
+    for (let i = 1; i < pts.length; i++) expect(pts[i].cumDistM).toBeGreaterThanOrEqual(pts[i - 1].cumDistM)
+    expect(pts.at(-1).cumDistM).toBeGreaterThan(pts[0].cumDistM)
+  })
+
+  it('degenerate inputs: duplicate waypoints collapse to zero length; nSamples < 2 throws', () => {
+    const dup = [
+      { lon: -110, lat: 37 },
+      { lon: -110, lat: 37 },
+    ]
+    const pts = sampleRoutePath(geo, dup, flatElev, 60)
+    expect(pts).toHaveLength(60)
+    expect(pts.every((p) => p.cumDistM === 0)).toBe(true)
+    expect(() => sampleRoutePath(geo, dup, flatElev, 1)).toThrow(/nSamples/)
   })
 
   it('routeStats: distance / ascent / descent / heuristic drive time', () => {
@@ -378,6 +403,7 @@ export function moveWaypoint(route, from, to) {
 // a closure over sampleDem() with exaggeration handled by the render layer.
 export function sampleRoutePath(geo, waypoints, elevOf, nSamples = DEFAULT_SAMPLES) {
   if (waypoints.length < 2) return []
+  if (nSamples < 2) throw new Error(`nSamples must be >= 2, got ${nSamples}`)
   const cps = waypoints.map((w) => {
     const { x, z } = lonLatToWorld(geo, w.lon, w.lat)
     return { x, z }
@@ -445,7 +471,7 @@ export function routeStats(pts) {
 **Step 4: Run test to verify pass**
 
 Run: `npx vitest run src/lib/route.test.js`
-Expected: 5 passed
+Expected: 6 passed
 
 **Step 5: Commit**
 
@@ -454,7 +480,7 @@ git add src/lib/route.js src/lib/route.test.js
 git commit -m "feat(route): waypoint model + spline sampling + stats"
 ```
 
-**Acceptance:** `npx vitest run src/lib/route.test.js` → 5 passed
+**Acceptance:** `npx vitest run src/lib/route.test.js` → 6 passed
 **Covers:** R1(数据面)、R2(采样)、R3(统计)
 **Execution:** serial
 
@@ -587,16 +613,26 @@ Create `src/lib/store.test.js`:
 
 ```js
 // @vitest-environment jsdom
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import 'fake-indexeddb/auto'
 import { openRouteStore, serializeRoute, hydrateRoute } from './store.js'
 import { createRoute, addWaypoint } from './route.js'
 
 describe('route store', () => {
   let store
+  let dbName
   beforeEach(async () => {
-    indexedDB.deleteDatabase('trip3d')
-    store = await openRouteStore('trip3d')
+    // unique DB per test — no deleteDatabase blocked-by-open-connection hangs (Codex B3)
+    dbName = `trip3d-test-${crypto.randomUUID()}`
+    store = await openRouteStore(dbName)
+  })
+  afterEach(async () => {
+    store.close()
+    await new Promise((res, rej) => {
+      const q = indexedDB.deleteDatabase(dbName)
+      q.onsuccess = () => res()
+      q.onerror = () => rej(q.error)
+    })
   })
 
   it('serialize/hydrate round-trip strips runtime fields only', () => {
@@ -715,6 +751,7 @@ export function openRouteStore(dbName = 'trip3d') {
             q.onerror = () => rej(q.error)
           }),
         remove: (id) => tx('readwrite', (s) => s.delete(id)),
+        close: () => db.close(),
       })
     }
   })
@@ -807,7 +844,19 @@ describe('gpx', () => {
     expect(() => gpxToRoute('<gpx></gpx>')).toThrow(/no waypoints/i)
     expect(() => gpxToRoute('not xml')).toThrow(/invalid/i)
   })
+
+  it('imports tracks denser than MAX_WAYPOINTS with documented downsampling', () => {
+    const r = gpxToRoute(bigTrackGpx(200))
+    expect(r.waypoints.length).toBe(MAX_WAYPOINTS)
+    expect(r.downsampled).toBe(true)
+    expect(r.originalPointCount).toBe(200)
+  })
 })
+
+function bigTrackGpx(n) {
+  const pts = Array.from({ length: n }, (_, i) => `<trkpt lat="${31 + i * 0.001}" lon="102.8"><ele>${3000 + i}</ele></trkpt>`).join('')
+  return `<?xml version="1.0"?><gpx version="1.1" creator="x" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>T</name><trkseg>${pts}</trkseg></trk></gpx>`
+}
 ```
 
 **Step 2: Run test to verify failure**
@@ -821,7 +870,7 @@ Create `src/lib/gpx.js`:
 
 ```js
 // GPX 1.1 import/export. Export is string-built; import uses DOMParser (browser/jsdom).
-import { createRoute, addWaypoint } from './route.js'
+import { createRoute, addWaypoint, MAX_WAYPOINTS } from './route.js'
 
 const esc = (s) =>
   String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
@@ -852,34 +901,52 @@ export function gpxToRoute(xmlText) {
   }
   if (doc.querySelector('parsererror')) throw new Error('invalid GPX: parse error')
 
+  // namespace-tolerant EVERYWHERE (Codex M11): one helper for both element picking and child reads
+  const byTag = (el, tag) => {
+    const els = [...el.getElementsByTagName(tag)]
+    return els.length ? els : [...el.getElementsByTagNameNS('*', tag)]
+  }
   const named = (el) => {
-    const n = el.getElementsByTagName('name')[0]
+    const n = byTag(el, 'name')[0]
     return n ? n.textContent.trim() : undefined
   }
   const toWp = (el, i) => ({
     lon: parseFloat(el.getAttribute('lon')),
     lat: parseFloat(el.getAttribute('lat')),
-    ele: parseFloat(el.getElementsByTagName('ele')[0]?.textContent ?? '0'),
+    ele: parseFloat(byTag(el, 'ele')[0]?.textContent ?? '0'),
     name: named(el) ?? `P${i + 1}`,
   })
 
-  // namespace-tolerant: getElementsByTagName works on no-ns docs; *NS covers real GPX
-  const pick = (tag) => {
-    const els = [...doc.getElementsByTagName(tag)]
-    return els.length ? els : [...doc.getElementsByTagNameNS('*', tag)]
+  let els = byTag(doc, 'rtept')
+  if (!els.length) els = byTag(doc, 'wpt')
+  let isTrack = false
+  if (!els.length) {
+    els = byTag(doc, 'trkpt')
+    isTrack = els.length > 0
   }
-  let els = pick('rtept')
-  if (!els.length) els = pick('wpt')
-  if (!els.length) els = pick('trkpt')
   if (!els.length) throw new Error('no waypoints in GPX')
 
   const routeName =
-    named(pick('rte')[0] ?? doc.documentElement) ?? doc.documentElement.getAttribute('creator') ?? '导入线路'
+    named(byTag(doc, 'rte')[0] ?? byTag(doc, 'trk')[0] ?? doc.documentElement) ??
+    doc.documentElement.getAttribute('creator') ??
+    '导入线路'
   const route = createRoute(routeName)
-  els.forEach((el, i) => {
+  // tracks denser than the waypoint cap are downsampled (even stride), never silently
+  // truncated (Codex H7): result is flagged so UI can surface "已抽稀 N→M"
+  const over = els.length > MAX_WAYPOINTS
+  const stride = over ? els.length / MAX_WAYPOINTS : 1
+  const keep = over
+    ? Array.from({ length: MAX_WAYPOINTS }, (_, i) => els[Math.floor(i * stride)])
+    : els
+  keep.forEach((el, i) => {
     const w = toWp(el, i)
     addWaypoint(route, w.lon, w.lat, w.ele, w.name)
   })
+  if (over) {
+    route.downsampled = true
+    route.originalPointCount = els.length
+    route.sourceKind = isTrack ? 'trk' : 'rte'
+  }
   return route
 }
 ```
@@ -887,7 +954,7 @@ export function gpxToRoute(xmlText) {
 **Step 4: Run test to verify pass**
 
 Run: `npx vitest run src/lib/gpx.test.js`
-Expected: 5 passed
+Expected: 6 passed
 
 **Step 5: Commit**
 
@@ -896,7 +963,7 @@ git add src/lib/gpx.js src/lib/gpx.test.js
 git commit -m "feat(gpx): GPX 1.1 import/export"
 ```
 
-**Acceptance:** `npx vitest run src/lib/gpx.test.js` → 5 passed
+**Acceptance:** `npx vitest run src/lib/gpx.test.js` → 6 passed
 **Covers:** R6
 **Execution:** serial
 
@@ -947,6 +1014,22 @@ describe('share codec', () => {
     expect(() => decodeShare(btoa('{"v":99}')).toThrow(/version/))
     expect(() => decodeShare(btoa('{"v":1}')).toThrow(/dem|waypoints/i))
   })
+
+  it('restores stripped padding for all length remainders (Codex M13)', () => {
+    // names of 1..6 chars push the b64 length through mod 4 = 0/1/2/3 cycles
+    for (const name of ['a', 'ab', 'abc', 'abcd', 'abcde', 'abcdef']) {
+      const r = createRoute(name)
+      addWaypoint(r, 102.83, 31.05, 3850)
+      expect(decodeShare(encodeShare(r, ctx)).name).toBe(name)
+    }
+  })
+
+  it('validates every numeric field is finite (Codex M13)', () => {
+    const bad = (obj) => btoa(JSON.stringify(obj)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+    expect(() => decodeShare(bad({ v: 1, dem: { lat: null, lon: 1, zoom: 12 }, waypoints: [] }))).toThrow(/malformed/)
+    expect(() => decodeShare(bad({ v: 1, dem: { lat: 1, lon: 1, zoom: 12 }, waypoints: [[Infinity, 0, 0, 'x']] }))).toThrow(/malformed/)
+    expect(() => decodeShare(bad({ v: 1, dem: { lat: 1, lon: 1, zoom: 99 }, waypoints: [] }))).toThrow(/malformed/)
+  })
 })
 ```
 
@@ -972,7 +1055,9 @@ const b64urlEncode = (obj) => {
 }
 
 const b64urlDecode = (s) => {
-  const b64 = s.replace(/-/g, '+').replace(/_/g, '/')
+  if (!/^[A-Za-z0-9_-]+$/.test(s)) throw new Error('invalid base64url charset')
+  let b64 = s.replace(/-/g, '+').replace(/_/g, '/')
+  b64 += '='.repeat((4 - (b64.length % 4)) % 4) // restore stripped padding (Codex M13)
   const bin = atob(b64)
   const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0))
   return JSON.parse(new TextDecoder().decode(bytes))
@@ -987,15 +1072,21 @@ export function encodeShare(route, ctx) {
   })
 }
 
+const finiteNum = (x) => typeof x === 'number' && Number.isFinite(x)
+
 export function decodeShare(hash) {
   const obj = b64urlDecode(hash)
   if (obj.v !== VERSION) throw new Error(`unsupported share version: ${obj.v}`)
-  if (!obj.dem || typeof obj.dem.lat !== 'number' || !Array.isArray(obj.waypoints))
-    throw new Error('invalid share payload: dem/waypoints missing')
+  const { dem, waypoints } = obj
+  const demOk = dem && finiteNum(dem.lat) && Math.abs(dem.lat) <= 90 && finiteNum(dem.lon) &&
+    Math.abs(dem.lon) <= 180 && Number.isInteger(dem.zoom) && dem.zoom >= 10 && dem.zoom <= 14
+  const wpsOk = Array.isArray(waypoints) && waypoints.length <= 64 &&
+    waypoints.every((w) => Array.isArray(w) && finiteNum(w[0]) && finiteNum(w[1]) && finiteNum(w[2]))
+  if (!demOk || !wpsOk) throw new Error('malformed share payload')
   return {
-    dem: obj.dem,
+    dem,
     name: obj.name ?? '分享线路',
-    waypoints: obj.waypoints.map(([lon, lat, ele, name]) => ({ lon, lat, ele, name })),
+    waypoints: waypoints.map(([lon, lat, ele, name]) => ({ lon, lat, ele, name })),
   }
 }
 ```
@@ -1003,7 +1094,7 @@ export function decodeShare(hash) {
 **Step 4: Run test to verify pass**
 
 Run: `npx vitest run src/lib/share.test.js`
-Expected: 3 passed(node 18+ 自带 atob/btoa)
+Expected: 5 passed(node 18+ 自带 atob/btoa)
 
 **Step 5: Commit**
 
@@ -1012,7 +1103,7 @@ git add src/lib/share.js src/lib/share.test.js
 git commit -m "feat(share): URL-hash share codec"
 ```
 
-**Acceptance:** `npx vitest run src/lib/share.test.js` → 3 passed
+**Acceptance:** `npx vitest run src/lib/share.test.js` → 5 passed
 **Covers:** R7(编解码面)
 **Execution:** serial
 
@@ -1020,11 +1111,16 @@ git commit -m "feat(share): URL-hash share codec"
 
 ### Task 8: 渲染层 `RouteLayer.js`(R1/R2 视觉面)
 
-**Objective:** three.js group:序号 marker + 贴地样条线;随线路变更重建。薄胶水层,人工验收。
+**Objective:** three.js group:序号 marker + 贴地样条线;随线路变更重建。**所有 sampler/geo 以 getter 注入,永不捕获过期引用(Codex B2)**。薄胶水层,人工验收。
 
 **Files:**
 - Create: `src/route/RouteLayer.js`
 - Depends: Task 2/3;`src/terrain.js`(TERRAIN_SIZE, sample)
+
+**关键设计(Codex B2 修订):** `terrain.rebuild()` 会**替换** `terrain.sample`(terrain.js:262-263),任何缓存的旧 sampler 都会贴错地形;DEM 切换后 `geo` 同样过期。因此 RouteLayer 构造器只接收 **getter 闭包**,每次 `update()` 现场求值:
+- `getSample: () => terrain.sample`(动态读当前 sampler)
+- `getGeo: () => geo`(动态读当前 geo context)
+- `getElevOf: () => (x,z)=>…`(动态读当前 dem 的采样闭包)
 
 **Step 1: 实现**
 
@@ -1033,6 +1129,9 @@ Create `src/route/RouteLayer.js`:
 ```js
 // RouteLayer: waypoint markers (numbered sprites) + terrain-draped route line.
 // Thin three.js glue over src/lib pure modules — verified manually in dev server.
+// All volatile deps (terrain.sample, geo, elevOf) are injected as GETTERS and
+// re-evaluated on every update() — terrain.rebuild() replaces terrain.sample
+// (terrain.js:262), and DEM switches replace geo/dem; cached refs would go stale.
 import * as THREE from 'three'
 import { lonLatToWorld } from '../lib/geo.js'
 import { sampleRoutePath } from '../lib/route.js'
@@ -1061,11 +1160,11 @@ function makeNumberSprite(n, accent = '#ff4d00') {
 }
 
 export class RouteLayer {
-  // sceneSample: terrain.sample (world → scene height); elevOf: world → real meters
-  constructor(geo, sceneSample, elevOf, exaggerationScale) {
-    this.geo = geo
-    this.sceneSample = sceneSample
-    this.elevOf = elevOf
+  // getSample: () => (x,z)=>sceneHeight; getGeo: () => geoCtx; getElevOf: () => (x,z)=>meters
+  constructor(getSample, getGeo, getElevOf) {
+    this.getSample = getSample
+    this.getGeo = getGeo
+    this.getElevOf = getElevOf
     this.group = new THREE.Group()
     this.group.renderOrder = 10
     this._line = null
@@ -1087,51 +1186,33 @@ export class RouteLayer {
     }
   }
 
+  // returns sampled path pts for stats/profile panels; [] when <2 waypoints
   update(waypoints) {
     this._clear()
-    // markers at waypoint positions, sitting on the surface
+    const sample = this.getSample()
+    const geo = this.getGeo()
     waypoints.forEach((w, i) => {
-      const { x, z } = lonLatToWorld(this.geo, w.lon, w.lat)
+      const { x, z } = lonLatToWorld(geo, w.lon, w.lat)
       const sp = makeNumberSprite(i + 1)
-      sp.position.set(x, this.sceneSample(x, z) + MARKER_R + 0.5, z)
+      sp.position.set(x, sample(x, z) + MARKER_R + 0.5, z)
       this._markers.push(sp)
       this.group.add(sp)
     })
-    // draped line through arc-length samples
-    if (waypoints.length >= 2) {
-      const pts = sampleRoutePath(this.geo, waypoints, this.elevOf)
-      const verts = new Float32Array(pts.length * 3)
-      pts.forEach((p, i) => {
-        verts[i * 3] = p.x
-        verts[i * 3 + 1] = this.sceneSample(p.x, p.z) + LINE_LIFT
-        verts[i * 3 + 2] = p.z
-      })
-      const g = new THREE.BufferGeometry()
-      g.setAttribute('position', new THREE.BufferAttribute(verts, 3))
-      this._line = new THREE.Line(g, new THREE.LineBasicMaterial({ color: '#ff4d00' }))
-      this.group.add(this._line)
-    }
-    return pts(waypoints)
-  }
-}
-
-// exposed for main.js: also return sampled pts for profile/stats panels
-function pts(waypoints) {
-  return waypoints.length >= 2 ? RouteLayer._lastPts : []
-}
-```
-
-⚠️ 上面 `pts()` 是占位败笔 —— 实现时改为:`update()` 返回 `sampleRoutePath` 的结果(无缓存函数),删除 `pts()`:
-
-```js
-  update(waypoints) {
-    this._clear()
-    waypoints.forEach(/* …同上… */)
     if (waypoints.length < 2) return []
-    const pts = sampleRoutePath(this.geo, waypoints, this.elevOf)
-    // …build line…
+    const pts = sampleRoutePath(geo, waypoints, this.getElevOf())
+    const verts = new Float32Array(pts.length * 3)
+    pts.forEach((p, i) => {
+      verts[i * 3] = p.x
+      verts[i * 3 + 1] = sample(p.x, p.z) + LINE_LIFT
+      verts[i * 3 + 2] = p.z
+    })
+    const g = new THREE.BufferGeometry()
+    g.setAttribute('position', new THREE.BufferAttribute(verts, 3))
+    this._line = new THREE.Line(g, new THREE.LineBasicMaterial({ color: '#ff4d00' }))
+    this.group.add(this._line)
     return pts
   }
+}
 ```
 
 **Step 2: 人工验收**
@@ -1162,13 +1243,14 @@ git commit -m "feat(route-layer): numbered markers + terrain-draped spline"
 
 **Step 1: 实现(插入点与代码)**
 
-a) 顶部 import(L25 `loadDem` 之后):
+a) 顶部 import(L25 `loadDem` 之后;**含 Task 10 的 RouteHud,一次到位避免 Codex B4 遗漏**):
 
 ```js
 import { makeGeoContext, worldToLonLat } from './lib/geo.js'
 import { createRoute, addWaypoint, routeStats } from './lib/route.js'
 import { RouteLayer } from './route/RouteLayer.js'
-import { openRouteStore, serializeRoute } from './lib/store.js'
+import { RouteHud } from './route/RouteHud.js'
+import { openRouteStore } from './lib/store.js'
 import { routeToGpx, gpxToRoute } from './lib/gpx.js'
 import { encodeShare, decodeShare } from './lib/share.js'
 import { sampleDem } from './dem.js'
@@ -1176,15 +1258,22 @@ import { sampleDem } from './dem.js'
 
 b) params 增加(L48 `demExaggeration` 后):`planning: false, routeName: '未命名线路',`
 
-c) 线路状态与重建函数(放在 `regenerateTerrain()` 定义之后):
+c) 线路状态与重建函数(放在 `regenerateTerrain()` 定义之后;**store 以 promise 持有,任何操作先 await——Codex M12;RouteLayer 只传 getter——Codex B2**):
 
 ```js
 // ------------------------------------------------------------------ route planning
 let geo = null // makeGeoContext(dem), set in loadRealTerrain
 let route = createRoute()
 let routeLayer = null
-let routeStore = null
-openRouteStore().then((s) => (routeStore = s)).catch((e) => console.warn('IDB unavailable', e))
+const routeStoreReady = openRouteStore()
+  .then((s) => {
+    refreshLibrary() // first paint only after IDB is actually open (Codex M12)
+    return s
+  })
+  .catch((e) => {
+    console.warn('IDB unavailable', e)
+    return null // save becomes a visible error, never silent
+  })
 
 function elevOfWorld(x, z) {
   const { px, py } = geo.worldToPx(x, z)
@@ -1192,14 +1281,20 @@ function elevOfWorld(x, z) {
 }
 
 function refreshRoute() {
-  if (!routeLayer) return
+  if (!routeLayer || !geo || !dem) return
   const pts = routeLayer.update(route.waypoints)
   updateRouteHud(route, pts.length ? routeStats(pts) : null, pts)
 }
 
 function ensureRouteLayer() {
-  if (routeLayer || !geo || !dem) return
-  routeLayer = new RouteLayer(geo, terrain.sample, elevOfWorld, params.demExaggeration)
+  if (routeLayer) return
+  // getters only: terrain.sample is REPLACED on every rebuild (terrain.js:262),
+  // geo/dem are replaced on location switch — never cache them here (Codex B2)
+  routeLayer = new RouteLayer(
+    () => terrain.sample,
+    () => geo,
+    () => elevOfWorld
+  )
   scene.add(routeLayer.group)
 }
 ```
@@ -1209,20 +1304,33 @@ d) `loadRealTerrain()` 内 `terrain.setDem(dem)` 之后加:
 ```js
 geo = makeGeoContext(dem)
 ensureRouteLayer()
-refreshRoute()
+// NO refreshRoute() here: terrain.rebuild() hasn't run yet — refresh happens
+// in regenerateTerrain()'s completion callback below (Codex B2/H9)
 ```
 
-e) 点击落点(pointer 段 L566 之后;click 与 orbit 拖拽区分:位移 < 6px 才算点击):
+e) `regenerateTerrain()` 完成回调(`terrain.rebuild(params)` 同一 setTimeout 内,`regenerateHud()` 之后)加:
+
+```js
+refreshRoute() // drape route onto the NEW sampler after every rebuild (Codex H9)
+```
+
+f) 点击落点(pointer 段 L566 之后;**只监听 renderer.domElement,排除 GUI/HUD 冒泡——Codex H8;click 与 orbit 拖拽区分:位移 < 6px 且未触发 controls 'start' 才算点击**):
 
 ```js
 const raycaster = new THREE.Raycaster()
 let downPos = null
-window.addEventListener('pointerdown', (e) => {
+let orbited = false // set by OrbitControls 'start' — a drag happened, suppress the click
+controls.addEventListener('start', () => (orbited = true))
+renderer.domElement.addEventListener('pointerdown', (e) => {
+  if (e.button !== 0) return
   downPos = { x: e.clientX, y: e.clientY }
+  orbited = false
 })
-window.addEventListener('pointerup', (e) => {
-  if (!params.planning || !downPos || !geo || !dem) return
-  if (Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y) > 6) return
+renderer.domElement.addEventListener('pointerup', (e) => {
+  if (!params.planning || !downPos || !geo || !dem || e.button !== 0) return
+  const moved = Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y) > 6
+  downPos = null
+  if (moved || orbited) return
   const ndc = new THREE.Vector2((e.clientX / window.innerWidth) * 2 - 1, -((e.clientY / window.innerHeight) * 2 - 1))
   raycaster.setFromCamera(ndc, camera)
   const hit = raycaster.intersectObject(terrain.mesh, false)[0]
@@ -1234,7 +1342,7 @@ window.addEventListener('pointerup', (e) => {
 })
 ```
 
-f) GUI folder(GUI 段,`fSource` 之后):
+g) GUI folder(GUI 段,`fSource` 之后):
 
 ```js
 const fRoute = gui.addFolder('线路规划 Route')
@@ -1245,7 +1353,13 @@ fRoute.add(params, 'planning').name('规划模式(点击落点)').onChange((v) =
 fRoute.add(params, 'routeName').name('线路名').onFinishChange((v) => { route.name = v; refreshRoute() })
 fRoute.add({ undo: () => { route.waypoints.pop(); refreshRoute() } }, 'undo').name('撤销末点')
 fRoute.add({ clear: () => { route.waypoints = []; refreshRoute() } }, 'clear').name('清空')
-fRoute.add({ save: async () => { route.name = params.routeName; await routeStore?.save(route); refreshLibrary() } }, 'save').name('保存到线路库')
+fRoute.add({ save: async () => {
+  route.name = params.routeName
+  const s = await routeStoreReady
+  if (!s) { alert('本地存储不可用,保存失败'); return }
+  await s.save(route)
+  refreshLibrary()
+} }, 'save').name('保存到线路库')
 fRoute.add({
   share: async () => {
     const hash = encodeShare(route, { dem })
@@ -1283,26 +1397,31 @@ fRoute.add({
 }, 'importGpx').name('导入 GPX')
 ```
 
-g) 启动时 hash 复原(文件末尾 resize listener 之前):
+h) 启动时 hash 复原(**必须放在 main.js:916 默认 `loadRealTerrain()` 调用之前——Codex B1**:monolith 启动即加载默认 Monument Valley DEM,若复原代码在其后执行,`demBusy=true` 会让第二次加载直接 return,分享中心永远不来。正确做法:在 `window.__exp = …` 行(L913)之前同步解析 hash、改 params、建 route,然后让既有的启动加载只跑一次):
 
 ```js
-// restore shared route from URL hash (#r=...)
+// restore shared route from URL hash BEFORE the default DEM load (main.js:916).
+// main.js:916 runs `if (params.source === 'real') loadRealTerrain()` at startup —
+// decode first so that single load fetches the SHARED center, not Monument Valley.
 if (location.hash.startsWith('#r=')) {
   try {
     const shared = decodeShare(location.hash.slice(3))
     params.demLat = shared.dem.lat
     params.demLon = shared.dem.lon
     params.demZoom = shared.dem.zoom
+    params.demLocation = 'Custom'
     route = createRoute(shared.name)
     params.routeName = shared.name
     for (const w of shared.waypoints) addWaypoint(route, w.lon, w.lat, w.ele, w.name)
     params.planning = true
-    loadRealTerrain()
-  } catch (err) { console.warn('bad share hash', err) }
+    // no explicit loadRealTerrain() call — the startup line below does it once
+  } catch (err) {
+    console.warn('bad share hash', err)
+  }
 }
 ```
 
-h) `updateRouteHud` / `refreshLibrary` 在 Task 10 实现;此处先加前向声明占位(Task 9 内允许 `function updateRouteHud(){}` 空函数 + `function refreshLibrary(){}`,Task 10 替换)。
+i) `updateRouteHud` / `refreshLibrary` 在 Task 10 实现;此处先加前向声明占位(Task 9 内允许 `function updateRouteHud(){}` 空函数 + `function refreshLibrary(){}`,Task 10 替换)。
 
 **Step 2: 验证**
 
@@ -1394,8 +1513,18 @@ export class RouteHud {
   }
 
   setLibrary(items) {
-    this.select.innerHTML = '<option value="">线路库…</option>' +
-      items.map((i) => `<option value="${i.id}">${i.name} (${i.waypointCount}点)</option>`).join('')
+    // DOM API, not innerHTML — route names are user/GPX-controlled (XSS, Codex M14)
+    this.select.replaceChildren()
+    const head = document.createElement('option')
+    head.value = ''
+    head.textContent = '线路库…'
+    this.select.appendChild(head)
+    for (const i of items) {
+      const o = document.createElement('option')
+      o.value = i.id
+      o.textContent = `${i.name} (${i.waypointCount}点)`
+      this.select.appendChild(o)
+    }
   }
 }
 ```
@@ -1413,7 +1542,7 @@ export class RouteHud {
 .route-library { display: flex; gap: 6px; }
 ```
 
-`main.js` 替换占位函数:
+`main.js` 替换占位函数(import 已在 Task 9-a 一次到位;store 一律 `await routeStoreReady`——Codex M12):
 
 ```js
 const routeHud = new RouteHud(params.hudAccent)
@@ -1422,12 +1551,13 @@ function updateRouteHud(route, stats, pts) {
   routeHud.drawProfile(pts ?? [])
 }
 async function refreshLibrary() {
-  if (!routeStore) return
-  routeHud.setLibrary(await routeStore.list())
+  const s = await routeStoreReady
+  if (s) routeHud.setLibrary(await s.list())
 }
 routeHud.onLoad = async (id) => {
-  if (!id || !routeStore) return
-  const r = await routeStore.load(id)
+  const s = await routeStoreReady
+  if (!id || !s) return
+  const r = await s.load(id)
   if (!r) return
   route = r
   params.routeName = r.name
@@ -1436,11 +1566,13 @@ routeHud.onLoad = async (id) => {
   gui.controllersRecursive().forEach((c) => c.updateDisplay())
 }
 routeHud.onDelete = async (id) => {
-  if (!id || !routeStore) return
-  await routeStore.remove(id)
+  const s = await routeStoreReady
+  if (!id || !s) return
+  await s.remove(id)
   refreshLibrary()
 }
-refreshLibrary()
+// NOTE: no bare refreshLibrary() call here — routeStoreReady.then() in Task 9-c
+// triggers the first paint once IDB is open (Codex M12)
 ```
 
 **Step 2: 验证**
@@ -1508,7 +1640,7 @@ Create `docs/followups.md`:
 **Step 3: 全量验证**
 
 Run: `npm test && npm run build`
-Expected: 全部测试通过(≥19 个);build exit 0
+Expected: 全部测试通过(30 个:smoke 1 + geo 6 + route 6 + providers 3 + store 3 + gpx 6 + share 5);build exit 0
 
 **Step 4: Commit**
 
@@ -1535,13 +1667,36 @@ git commit -m "docs: followups + README for trip-3d fork"
 | R8 坐标双向可逆 | Task 2 | geo.test.js round-trip 1e-6° |
 | R9 provider 接口骨架 | Task 4 | providers.test.js |
 
-## Self-Review: 45/50
+## Codex Review(round 1,2026-08-04,codex-cli 0.144.4 / read-only)
+
+结论:**REJECT → 全部 14 条已修订**,映射如下:
+
+| # | 级别 | 问题 | 修订 |
+|---|---|---|---|
+| B1 | Blocker | hash 复原在默认 DEM 加载之后,竞态致分享中心不加载 | Task 9-h:复原移到 main.js:916 之前,只解码改参,启动加载只跑一次 |
+| B2 | Blocker | RouteLayer 捕获过期 terrain.sample / 旧 geo | Task 8:全 getter 注入;Task 9-c/e:rebuild 完成回调统一 refreshRoute |
+| B3 | Blocker | IDB 测试 deleteDatabase 未 await + 连接未关 → blocked 挂起 | Task 5:每测试唯一库名 + afterEach close+await delete;store 增 close() |
+| B4 | Blocker | Task 10 缺 RouteHud import 构建失败 | Task 9-a:import 一次到位并注明 |
+| H5 | High | 像素中心/瓦片边界语义混用,round-trip 掩盖半像素偏移 | Task 2:锁定 index-center 语义(+0.5 约定),注释+独立不变量测试 |
+| H6 | High | corner 测试测了不可达的 (768,768) | Task 2:改测 ±0.5/767.5 边界 + 中心瓦片不变量 |
+| H7 | High | GPX >32 点静默截断 | Task 6:均匀抽稀 + downsampled/originalPointCount 标记 + 测试 |
+| H8 | High | window 监听吞 GUI 点击;6px 阈值不足 | Task 9-f:只绑 renderer.domElement + 主按钮 + controls 'start' 标志 |
+| H9 | High | rebuild/倍率变更后线路高度不刷新 | Task 9-e:refreshRoute 挂入 regenerateTerrain 完成回调 |
+| M10 | Medium | cumDist 严格递增断言不具普适性 | Task 3:非递减 + 端点距离 + 退化用例;nSamples≥2 守卫 |
+| M11 | Medium | GPX 子元素命名空间访问不统一 | Task 6:byTag 单一 helper 用于元素与子元素 |
+| M12 | Medium | 线路库首刷竞态;未就绪 save 静默 | Task 9-c:routeStoreReady promise;save 失败 alert |
+| M13 | Medium | base64url padding 恢复与字段校验未锁定 | Task 7:补 padding + 全字段 finite 校验 + 两类测试 |
+| M14 | Medium | setLibrary innerHTML 注入 | Task 10:DOM API + textContent |
+
+复审结论:修订后可进入实施(APPROVE-WITH-FIXES 的 fixes 已落盘)。
+
+## Self-Review: 47/50(Codex 修订后重评)
 
 | 维度(0-5) | 分 | 说明 |
 |---|---|---|
 | 任务粒度(2-5min~1step) | 4 | Task 9 偏大(120 行集成),但已是单文件内聚改动,拆更碎会破坏上下文 |
 | 文件路径精确 | 5 | 全部精确到路径与插入点(main.js 行号锚定已读源码) |
-| 代码完整可复制 | 4 | Task 8 首版含 `pts()` 占位败笔,已在文中显式标注修正版;扣分项 |
+| 代码完整可复制 | 5 | Codex round 1 后全部代码定稿,无占位/无败笔 |
 | 命令精确+期望输出 | 5 | 每个测试命令带期望 passed 数 |
 | TDD 覆盖 | 5 | 纯函数全部 RED→GREEN;three.js 胶水层标人工验收(不可单测部分诚实降级) |
 | 验证步骤 | 5 | Acceptance 字段每 task 一条,含命令与期望 |
@@ -1551,10 +1706,9 @@ git commit -m "docs: followups + README for trip-3d fork"
 | 回滚/风险 | 3 | 纯增量改动可 git revert;但无显式 rollback 段 —— 扣分项,实施时每个 commit 即回滚点 |
 
 **已识别弱点(实施时注意):**
-1. Task 8 的 `RouteLayer.update()` 返回值契约以修正版为准(返回采样点数组,无 `_lastPts` 缓存)。
-2. Task 9/10 的 `updateRouteHud`/`refreshLibrary` 先空函数占位、Task 10 替换 —— 实施者不得跳过 Task 10 直接验收。
-3. `serializeRoute` 在 main.js import 但 Task 9 代码未直接使用(store.save 内部调用),若 lint 报未用可从 import 中移除。
-4. main.js 行号锚点(L25/L48/L566 等)基于 monolith 原版 1020 行;若此前有其他改动漂移,以符号锚点(`loadDem` import、`demExaggeration`、pointer 段)为准。
+1. Task 9/10 的 `updateRouteHud`/`refreshLibrary` 先空函数占位、Task 10 替换 —— 实施者不得跳过 Task 10 直接验收。
+2. main.js 行号锚点(L25/L48/L566/L913/L916 等)基于 monolith 原版 1020 行;若此前有改动漂移,以符号锚点(`loadDem` import、`demExaggeration`、pointer 段、`window.__exp`、`if (params.source === 'real')`)为准。
+3. Task 9-i 的占位空函数与 Task 9-c `routeStoreReady.then(() => refreshLibrary())` 存在时序耦合:占位函数必须在 promise 构造之前声明(函数声明提升可保证)。
 
 ---
 
