@@ -1,8 +1,10 @@
 {
-  "state": "IN_PROGRESS",
+  "state": "GOAL_CLOSEOUT_COMPLETE",
   "goal": "R2 规划面板布局重构",
   "owner": "hermes-main-session",
-  "head": "4f4200b",
-  "current_task": "osrm legs + computeLegs TDD",
-  "updated_at": "2026-08-05T00:15:00+08:00"
+  "head": "pending-final-commit",
+  "last_green": "122/122 tests + build ✓ + E2E 全通过(含 rename 稳定性)",
+  "current_task": "done",
+  "next_action": "R3 规划交互增强(中间插入/拖拽排序/多日分段)或分享闭环",
+  "updated_at": "2026-08-05T00:55:00+08:00"
 }

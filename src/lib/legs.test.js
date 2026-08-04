@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeLegs, normalizeOsrmLegs } from './legs.js'
+import { computeLegs, computeLegsFromPts, normalizeOsrmLegs } from './legs.js'
 
 const WPS = [
   { name: 'A', lon: 116.0, lat: 39.0, ele: 100 },
@@ -33,6 +33,29 @@ describe('computeLegs', () => {
     expect(legs).toHaveLength(1)
     expect(legs[0].distanceM).toBe(0)
     expect(legs[0].driveMinutes).toBe(0)
+  })
+})
+
+describe('computeLegsFromPts', () => {
+  const PTS = [
+    { lon: 116.0, lat: 39.0, ele: 100, cumDistM: 0 },
+    { lon: 116.05, lat: 39.0, ele: 300, cumDistM: 4300 },
+    { lon: 116.1, lat: 39.0, ele: 400, cumDistM: 8600 },
+    { lon: 116.1, lat: 39.05, ele: 250, cumDistM: 14200 },
+    { lon: 116.1, lat: 39.1, ele: 250, cumDistM: 19800 },
+  ]
+  it('legs follow the sampled geometry (distances match cumDistM deltas)', () => {
+    const legs = computeLegsFromPts(PTS, WPS)
+    expect(legs).toHaveLength(2)
+    expect(legs[0].distanceM).toBe(8600) // spline distance, not straight haversine
+    expect(legs[0].ascentM).toBe(300)
+    expect(legs[1].distanceM).toBe(19800 - 8600)
+    expect(legs[1].descentM).toBe(150)
+    expect(legs[1].ascentM).toBe(0)
+  })
+  it('null on missing input', () => {
+    expect(computeLegsFromPts(null, WPS)).toBeNull()
+    expect(computeLegsFromPts(PTS, [WPS[0]])).toBeNull()
   })
 })
 

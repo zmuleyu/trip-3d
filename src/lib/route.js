@@ -5,28 +5,37 @@ export const MAX_WAYPOINTS = 32
 export const DEFAULT_SAMPLES = 240
 
 export function createRoute(name = '未命名线路') {
-  return { id: crypto.randomUUID(), name, waypoints: [], revision: 0, createdAt: Date.now() }
+  return { id: crypto.randomUUID(), name, waypoints: [], revision: 0, geometryRevision: 0, createdAt: Date.now() }
 }
 
-// revision increments on every waypoint mutation — collision-free version binding
-// for async consumers (snap geometry, weather results). Replaces fuzzy fingerprints.
+// revision: bumps on ANY user-visible change (incl. rename) — weather/labels bind here.
+// geometryRevision: bumps only when waypoint coordinates/count/order change —
+// snap geometry/legs bind here, so a rename never invalidates snapped state.
 export function addWaypoint(route, lon, lat, ele, name) {
   if (route.waypoints.length >= MAX_WAYPOINTS) return null
   const wp = { id: crypto.randomUUID(), lon, lat, ele, name: name ?? `P${route.waypoints.length + 1}` }
   route.waypoints.push(wp)
   route.revision++
+  route.geometryRevision++
   return wp
 }
 
 export function removeWaypoint(route, index) {
+  if (!Number.isInteger(index) || index < 0 || index >= route.waypoints.length) return false
   route.waypoints.splice(index, 1)
   route.revision++
+  route.geometryRevision++
+  return true
 }
 
 export function moveWaypoint(route, from, to) {
+  const n = route.waypoints.length
+  if (!Number.isInteger(from) || !Number.isInteger(to) || from < 0 || to < 0 || from >= n || to >= n || from === to) return false
   const [wp] = route.waypoints.splice(from, 1)
   route.waypoints.splice(to, 0, wp)
   route.revision++
+  route.geometryRevision++
+  return true
 }
 
 // Arc-length resample of an arbitrary polyline (e.g. OSRM snapped geometry).

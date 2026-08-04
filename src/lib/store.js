@@ -19,6 +19,7 @@ export function hydrateRoute(rec) {
     name: rec.name,
     createdAt: rec.createdAt,
     revision: rec.revision ?? 0,
+    geometryRevision: rec.geometryRevision ?? 0,
     waypoints: (rec.waypoints ?? []).map((w, i) => ({
       id: crypto.randomUUID(),
       lon: w.lon, lat: w.lat, ele: w.ele, name: w.name ?? `P${i + 1}`,

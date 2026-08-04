@@ -25,7 +25,7 @@ import { createHud2D } from './hud2d.js'
 import { loadDem, sampleDem } from './dem.js'
 import { makeGeoContext, worldToLonLat, lonLatToWorld } from './lib/geo.js'
 import { createRoute, addWaypoint, removeWaypoint, moveWaypoint, routeStats, samplePolyline } from './lib/route.js'
-import { computeLegs, normalizeOsrmLegs } from './lib/legs.js'
+import { computeLegs, computeLegsFromPts, normalizeOsrmLegs } from './lib/legs.js'
 import { RouteLayer } from './route/RouteLayer.js'
 import { openRouteStore } from './lib/store.js'
 import { routeToGpx, gpxToRoute } from './lib/gpx.js'
@@ -713,7 +713,7 @@ function refreshRoute() {
   // snapped geometry (WGS-84) is re-sampled with CURRENT geo/elevOf getters each
   // refresh — never cache world-space pts across DEM switches (review #8)
   let pathPts = null
-  if (snapState.on && snapState.geometry && snapState.revision === route.revision && snapState.demKey === currentDemKey()) {
+  if (snapState.on && snapState.geometry && snapState.version === snapVersion() && snapState.demKey === currentDemKey()) {
     pathPts = samplePolyline(geo, snapState.geometry, elevOfWorld)
   }
   const pts = routeLayer.update(route.waypoints, {
@@ -730,6 +730,11 @@ function refreshRoute() {
 
 let lastRoutePts = []
 
+// snap binds to route IDENTITY + geometryRevision — a rename (revision-only)
+// keeps snapped display stable; loading a different route with a colliding
+// revision number can never inherit stale geometry.
+const snapVersion = () => `${route.id}:${route.geometryRevision}`
+
 // ------------------------------------------------------------------ snap state
 // Success-only result cache (WGS-84 geometry); in-flight map dedups concurrent
 // identical requests; failures are never cached (public demo has no SLA).
@@ -739,7 +744,7 @@ const snapState = {
   on: localStorage.getItem(SNAP_LS) === '1',
   geometry: null,
   legs: null,
-  revision: -1,
+  version: '',
   demKey: '',
   requestId: 0,
 }
@@ -762,26 +767,26 @@ async function runSnap() {
   if (wps.length < 2) {
     snapState.geometry = null
     snapState.legs = null
-    snapState.revision = route.revision
+    snapState.version = snapVersion()
     refreshRoute()
     return
   }
   const key = snapRouteKey(wps)
-  const rev = route.revision
+  const ver = snapVersion()
   const reqId = ++snapState.requestId
   const cached = snapCache.get(key)
-  if (cached) { commitSnap(cached.geometry, cached.legs, rev, reqId); return }
+  if (cached) { commitSnap(cached.geometry, cached.legs, ver, reqId); return }
   planningPanel.setSnapState(true, '吸附中…')
   try {
     const { geometry, legs } = await snapFetch(key, wps)
-    if (reqId !== snapState.requestId || rev !== route.revision) return
-    commitSnap(geometry, legs, rev, reqId)
+    if (reqId !== snapState.requestId || ver !== snapVersion()) return
+    commitSnap(geometry, legs, ver, reqId)
   } catch (err) {
     console.warn('snap failed', err)
     if (reqId !== snapState.requestId) return
     snapState.geometry = null
     snapState.legs = null
-    snapState.revision = rev
+    snapState.version = ver
     planningPanel.setSnapState(true, '吸附失败,回退直线')
     toast.show('路网吸附失败,已回退直线')
     refreshRoute()
@@ -833,11 +838,11 @@ function snapFetch(key, wps) {
   return p
 }
 
-function commitSnap(geometry, legs, rev, reqId) {
-  if (reqId !== snapState.requestId || rev !== route.revision) return
+function commitSnap(geometry, legs, ver, reqId) {
+  if (reqId !== snapState.requestId || ver !== snapVersion()) return
   snapState.geometry = geometry
   snapState.legs = legs
-  snapState.revision = rev
+  snapState.version = ver
   snapState.demKey = currentDemKey()
   planningPanel.setSnapState(true, `已吸附(${geometry.length} 点)`)
   refreshRoute()
@@ -1163,10 +1168,10 @@ const profileCard = createProfileCard(params.hudAccent)
 
 function updateRouteUI(route, stats, pts) {
   // legs: real OSRM segments when snap result matches this revision; computed otherwise
-  const osrmLegs = snapState.on && snapState.legs && snapState.revision === route.revision && snapState.demKey === currentDemKey()
+  const osrmLegs = snapState.on && snapState.legs && snapState.version === snapVersion() && snapState.demKey === currentDemKey()
     ? normalizeOsrmLegs(snapState.legs, route.waypoints)
     : null
-  const legs = osrmLegs ?? (route.waypoints.length >= 2 ? computeLegs(route.waypoints) : null)
+  const legs = osrmLegs ?? computeLegsFromPts(pts, route.waypoints) ?? (route.waypoints.length >= 2 ? computeLegs(route.waypoints) : null)
   const wxIndex = weatherState.result && weatherState.revision === route.revision ? weatherState.result.index?.overall : null
   planningPanel.update(route, stats, legs, wxIndex)
   // weather band only when a fresh result matches this route revision
@@ -1415,8 +1420,8 @@ async function refreshLibrary() {
 
 const routeActions = {
   onNameChange: (v) => { route.name = v; params.routeName = v },
-  onUndo: () => { route.waypoints.pop(); route.revision++; refreshRoute(); scheduleSnap() },
-  onClear: () => { route.waypoints = []; route.revision++; refreshRoute(); scheduleSnap() },
+  onUndo: () => { route.waypoints.pop(); route.revision++; route.geometryRevision++; refreshRoute(); scheduleSnap() },
+  onClear: () => { route.waypoints = []; route.revision++; route.geometryRevision++; refreshRoute(); scheduleSnap() },
   onSearch: runSearch,
   onSearchGo: searchGo,
   onSearchAdd: searchAdd,

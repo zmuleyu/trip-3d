@@ -127,4 +127,35 @@ describe('route model', () => {
     removeWaypoint(r, 0)
     expect(r.revision).toBe(4)
   })
+
+  it('geometryRevision: bumps on geometry mutations; rename does NOT bump', () => {
+    const r = createRoute('t')
+    expect(r.geometryRevision).toBe(0)
+    addWaypoint(r, -110.1, 37, 900)
+    addWaypoint(r, -110.0, 37.01, 950)
+    expect(r.geometryRevision).toBe(2)
+    r.waypoints[0].name = '改名'
+    r.revision++ // rename path bumps revision only
+    expect(r.geometryRevision).toBe(2)
+    expect(r.revision).toBe(3)
+    moveWaypoint(r, 0, 1)
+    expect(r.geometryRevision).toBe(3)
+  })
+
+  it('mutation helpers guard bounds: invalid ops are no-ops without revision bump', () => {
+    const r = createRoute('t')
+    addWaypoint(r, -110.1, 37, 900)
+    addWaypoint(r, -110.0, 37.01, 950)
+    const rev = r.revision
+    expect(removeWaypoint(r, -1)).toBe(false)
+    expect(removeWaypoint(r, 5)).toBe(false)
+    expect(removeWaypoint(r, 1.5)).toBe(false)
+    expect(moveWaypoint(r, 0, 0)).toBe(false)
+    expect(moveWaypoint(r, 0, 9)).toBe(false)
+    expect(moveWaypoint(r, -1, 1)).toBe(false)
+    expect(r.waypoints).toHaveLength(2)
+    expect(r.revision).toBe(rev)
+    expect(removeWaypoint(r, 0)).toBe(true)
+    expect(r.waypoints).toHaveLength(1)
+  })
 })

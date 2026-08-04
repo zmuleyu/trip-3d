@@ -143,10 +143,15 @@ export function createPlanningPanel(actions) {
           nm.replaceWith(inp)
           inp.focus()
           inp.select()
-          const commit = () => actions.onWpRename?.(i, inp.value.trim() || w.name)
+          let done = false // Enter commits → re-render detaches input → blur must not re-commit
+          const commit = () => {
+            if (done) return
+            done = true
+            actions.onWpRename?.(i, inp.value.trim() || w.name)
+          }
           inp.onkeydown = (e) => {
             if (e.key === 'Enter') commit()
-            if (e.key === 'Escape') inp.replaceWith(nm)
+            if (e.key === 'Escape') { done = true; inp.replaceWith(nm) }
           }
           inp.onblur = commit
         }
@@ -179,7 +184,14 @@ export function createPlanningPanel(actions) {
       const km = stats && stats.distanceM ? (stats.distanceM / 1000).toFixed(1) : '0.0'
       const big = document.createElement('div')
       big.className = 'pp-plan-big'
-      if (stats) {
+      const allReal = legs?.length && legs.every((l) => l.real)
+      if (allReal) {
+        // real routed duration (OSRM legs) — consistent with the per-leg details
+        const totalS = legs.reduce((s, l) => s + l.durationS, 0)
+        const h = Math.floor(totalS / 3600)
+        const m = Math.round((totalS % 3600) / 60)
+        big.textContent = h ? `${h}h${m}m` : `${m}m`
+      } else if (stats) {
         const h = Math.floor(stats.driveMinutes / 60)
         const m = stats.driveMinutes % 60
         big.textContent = h ? `${h}h${m}m` : `${m}m`
@@ -193,7 +205,7 @@ export function createPlanningPanel(actions) {
       if (weatherIndex != null) sub.textContent += ` · 天气指数 ${weatherIndex}`
       const d = document.createElement('span')
       d.className = 'disclaimer'
-      d.textContent = '(示意,非导航)'
+      d.textContent = allReal ? '(路网时长,非导航)' : '(示意,非导航)'
       sub.appendChild(d)
       stat.append(big, sub)
 
