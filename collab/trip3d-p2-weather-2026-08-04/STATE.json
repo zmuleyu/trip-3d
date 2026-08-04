@@ -1,12 +1,12 @@
 {
-  "state": "IN_PROGRESS",
+  "state": "GOAL_CLOSEOUT_COMPLETE",
   "goal": "trip-3d P2 天气推演(基本功能)",
   "owner": "hermes-main-session",
   "authority": "single-writer",
-  "head": "6b530ff",
-  "dirty": [],
-  "last_green": "36/36 tests, vite build ✓ @ 6b530ff",
-  "current_task": "W2/W3 并行",
-  "next_action": "Codex review PLAN(后台)+ openmeteo provider TDD",
-  "updated_at": "2026-08-04T19:15:00+08:00"
+  "head": "038f659+",
+  "dirty": ["collab/*", "docs/*, README(待提交)"],
+  "last_green": "66/66 tests, vite build ✓, E2E 天气链路全通过",
+  "current_task": "done",
+  "next_action": "最终 commit;下一轮:P3 晴雨档案+分享 或 v1.1 打磨",
+  "updated_at": "2026-08-04T19:50:00+08:00"
 }

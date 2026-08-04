@@ -7,7 +7,7 @@
 >
 > ```bash
 > npm install && npm run dev   # 开发
-> npm test                     # 单元测试(vitest,32 个)
+> npm test                     # 单元测试(vitest,66 个)
 > npm run build                # 构建
 > ```
 

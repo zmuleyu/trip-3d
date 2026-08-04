@@ -1,8 +1,12 @@
 # CHECKPOINT — trip-3d P2 天气推演
 
-**State**: IN_PROGRESS · W1 完成,W2/W3 并行启动
-**恢复点**: 控制面已建;基线 6b530ff 全绿(36 tests + build)
-**并行策略**: Codex review PLAN 后台跑;主线先实施纯函数(W3 provider / W4 helpers / W5 指数,TDD 自证),review 结论回来后再做面板/色带集成(W6/W7)
-**关键决策**(用户已批): 代表点 3 点(首/末/最高);色带按行程日等宽铺;天气卡全放 🌦 面板;显式查询按钮
-**下一步**: 启动 review 进程 → openmeteo.test.js RED → openmeteo.js GREEN
+**State**: GOAL_CLOSEOUT_COMPLETE(W1-W8 全部完成)
+**验收事实**:
+- 66/66 tests ✓(36 既有 + provider 7 + helpers 13 + 指数 8 + 指纹 1 + 工厂 1)
+- vite build ✓;E2E 天气链路全通过(REVIEW.md 验收表)
+- Codex review PLAN:REJECT(12 条)→ 全部处理(REVIEW.md 映射表)
+- 真实 Open-Meteo 查询成功(3 日卡+指数 99 极佳);色带行程日轴渲染;指纹失效/重查绑定正确
+- 截图: hermes cache browser_screenshot_6a03a76ecd634eb78cbc27c073449cf7.png
+**流程固化(第 3 个 goal 验证)**: PLAN→Codex review(后台并行)→纯函数 TDD 先行→集成接线→E2E→closeout;review 发现的集成风险(状态归属/字段名/边界)在接线前修订成本最低
+**下一步候选**: P3 晴雨档案+分享 tab;或 v1.1 打磨(拖拽改线/undo);或天气增强(缓存/粒子)
 **Session**: 本主会话(单 writer)

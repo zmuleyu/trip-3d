@@ -1,7 +1,11 @@
 # trip-3d followups (v1.1+)
 
-- [ ] P2 天气 tab 启用(轨道已有 🌦 占位):Open-Meteo provider + 沿线天气卡 + 剖面卡晴雨色带
+- [ ] P3 晴雨档案:行程=线路+日期区间;Open-Meteo archive(ERA5)回填 source=archive 固化;WeatherDay 持久化到 IndexedDB
 - [ ] P3 分享/行程 tab 启用(轨道已有 ↗ 占位):海报卡 / 飞越视频(MediaRecorder,复用 tour 巡航)
+- [ ] 天气:同日查询 localStorage 缓存(节流 Open-Meteo 请求)
+- [ ] 天气:色带空间分段(需行程日程模型:途经点按天分组的 itinerary)
+- [ ] 天气:场景天气粒子(雨/雪氛围,shader 级,美学增强)
+- [ ] 天气:RainViewer 雷达回波贴图 draping(P3 评估)
 - [ ] 设置抽屉内 lil-gui 逐件原生化(本期整体搬迁未重写)
 - [ ] 图层钮与设置抽屉联动(抽屉里改值后圆钮状态同步)
 - [ ] 移动端布局:轨道沉底变 bottom tab(仅预留,未实现)
