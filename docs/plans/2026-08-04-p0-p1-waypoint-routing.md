@@ -845,11 +845,26 @@ describe('gpx', () => {
     expect(() => gpxToRoute('not xml')).toThrow(/invalid/i)
   })
 
-  it('imports tracks denser than MAX_WAYPOINTS with documented downsampling', () => {
+  it('imports tracks denser than MAX_WAYPOINTS with documented downsampling that PRESERVES endpoints', () => {
     const r = gpxToRoute(bigTrackGpx(200))
     expect(r.waypoints.length).toBe(MAX_WAYPOINTS)
     expect(r.downsampled).toBe(true)
     expect(r.originalPointCount).toBe(200)
+    // endpoint preservation (Codex H16): first kept point = first trackpoint, last = last
+    expect(r.waypoints[0].lat).toBeCloseTo(31, 6)
+    expect(r.waypoints[0].ele).toBe(3000)
+    expect(r.waypoints.at(-1).lat).toBeCloseTo(31 + 199 * 0.001, 4)
+    expect(r.waypoints.at(-1).ele).toBe(3000 + 199)
+  })
+
+  it('rejects non-finite / out-of-range coordinates, defaults missing ele to 0 (Codex M18)', () => {
+    const mk = (attrs) => `<?xml version="1.0"?><gpx version="1.1" creator="x"><rte><rtept ${attrs}/></rte></gpx>`
+    expect(() => gpxToRoute(mk('lat="abc" lon="102"'))).toThrow(/invalid coordinate/)
+    expect(() => gpxToRoute(mk('lat="95" lon="102"'))).toThrow(/invalid coordinate/)
+    expect(() => gpxToRoute(mk('lat="31" lon="-200"'))).toThrow(/invalid coordinate/)
+    expect(() => gpxToRoute(mk('lon="102"'))).toThrow(/invalid coordinate/)
+    const ok = gpxToRoute(mk('lat="31" lon="102"')) // ele missing → 0 by policy
+    expect(ok.waypoints[0].ele).toBe(0)
   })
 })
 
@@ -910,12 +925,17 @@ export function gpxToRoute(xmlText) {
     const n = byTag(el, 'name')[0]
     return n ? n.textContent.trim() : undefined
   }
-  const toWp = (el, i) => ({
-    lon: parseFloat(el.getAttribute('lon')),
-    lat: parseFloat(el.getAttribute('lat')),
-    ele: parseFloat(byTag(el, 'ele')[0]?.textContent ?? '0'),
-    name: named(el) ?? `P${i + 1}`,
-  })
+  // Codex M18: parseFloat results are validated — NaN/out-of-range coords are rejected
+  // instead of silently poisoning geo conversion, spline sampling and three.js geometry
+  const toWp = (el, i) => {
+    const lon = parseFloat(el.getAttribute('lon'))
+    const lat = parseFloat(el.getAttribute('lat'))
+    if (!Number.isFinite(lon) || !Number.isFinite(lat) || Math.abs(lat) > 90 || Math.abs(lon) > 180)
+      throw new Error(`invalid coordinate at point ${i + 1}: lat=${el.getAttribute('lat')} lon=${el.getAttribute('lon')}`)
+    const eleRaw = byTag(el, 'ele')[0]?.textContent
+    const ele = eleRaw == null || eleRaw.trim() === '' ? 0 : parseFloat(eleRaw)
+    return { lon, lat, ele: Number.isFinite(ele) ? ele : 0, name: named(el) ?? `P${i + 1}` }
+  }
 
   let els = byTag(doc, 'rtept')
   if (!els.length) els = byTag(doc, 'wpt')
@@ -934,9 +954,10 @@ export function gpxToRoute(xmlText) {
   // tracks denser than the waypoint cap are downsampled (even stride), never silently
   // truncated (Codex H7): result is flagged so UI can surface "已抽稀 N→M"
   const over = els.length > MAX_WAYPOINTS
-  const stride = over ? els.length / MAX_WAYPOINTS : 1
+  // Codex H16: interpolate over (length-1) so the LAST trackpoint is always kept —
+  // floor(i * len/MAX) drops the endpoint (200→32 kept idx 193, not 199)
   const keep = over
-    ? Array.from({ length: MAX_WAYPOINTS }, (_, i) => els[Math.floor(i * stride)])
+    ? Array.from({ length: MAX_WAYPOINTS }, (_, i) => els[Math.round((i * (els.length - 1)) / (MAX_WAYPOINTS - 1))])
     : els
   keep.forEach((el, i) => {
     const w = toWp(el, i)
@@ -954,7 +975,7 @@ export function gpxToRoute(xmlText) {
 **Step 4: Run test to verify pass**
 
 Run: `npx vitest run src/lib/gpx.test.js`
-Expected: 6 passed
+Expected: 7 passed
 
 **Step 5: Commit**
 
@@ -963,7 +984,7 @@ git add src/lib/gpx.js src/lib/gpx.test.js
 git commit -m "feat(gpx): GPX 1.1 import/export"
 ```
 
-**Acceptance:** `npx vitest run src/lib/gpx.test.js` → 6 passed
+**Acceptance:** `npx vitest run src/lib/gpx.test.js` → 7 passed
 **Covers:** R6
 **Execution:** serial
 
@@ -1044,6 +1065,8 @@ Create `src/lib/share.js`:
 
 ```js
 // URL-hash share codec: { v, dem:{lat,lon,zoom}, name, waypoints } ↔ base64url.
+import { MAX_WAYPOINTS } from './route.js'
+
 const VERSION = 1
 
 const b64urlEncode = (obj) => {
@@ -1080,7 +1103,9 @@ export function decodeShare(hash) {
   const { dem, waypoints } = obj
   const demOk = dem && finiteNum(dem.lat) && Math.abs(dem.lat) <= 90 && finiteNum(dem.lon) &&
     Math.abs(dem.lon) <= 180 && Number.isInteger(dem.zoom) && dem.zoom >= 10 && dem.zoom <= 14
-  const wpsOk = Array.isArray(waypoints) && waypoints.length <= 64 &&
+  // Codex H17: cap must equal the restore path's addWaypoint cap (MAX_WAYPOINTS) —
+  // accepting 64 while restore silently drops 33..64 makes valid payloads lossy
+  const wpsOk = Array.isArray(waypoints) && waypoints.length <= MAX_WAYPOINTS &&
     waypoints.every((w) => Array.isArray(w) && finiteNum(w[0]) && finiteNum(w[1]) && finiteNum(w[2]))
   if (!demOk || !wpsOk) throw new Error('malformed share payload')
   return {
@@ -1243,13 +1268,12 @@ git commit -m "feat(route-layer): numbered markers + terrain-draped spline"
 
 **Step 1: 实现(插入点与代码)**
 
-a) 顶部 import(L25 `loadDem` 之后;**含 Task 10 的 RouteHud,一次到位避免 Codex B4 遗漏**):
+a) 顶部 import(L25 `loadDem` 之后;**不含 RouteHud——它 Task 10 才创建,Task 9 import 它会让本 Task 的 build 验收直接失败(Codex B15)。RouteHud import 由 Task 10 Step 0 显式添加,与文件创建同 Task,杜绝「忘记 import」(B4)与「import 不存在文件」(B15)两类错误**):
 
 ```js
 import { makeGeoContext, worldToLonLat } from './lib/geo.js'
 import { createRoute, addWaypoint, routeStats } from './lib/route.js'
 import { RouteLayer } from './route/RouteLayer.js'
-import { RouteHud } from './route/RouteHud.js'
 import { openRouteStore } from './lib/store.js'
 import { routeToGpx, gpxToRoute } from './lib/gpx.js'
 import { encodeShare, decodeShare } from './lib/share.js'
@@ -1314,23 +1338,28 @@ e) `regenerateTerrain()` 完成回调(`terrain.rebuild(params)` 同一 setTimeou
 refreshRoute() // drape route onto the NEW sampler after every rebuild (Codex H9)
 ```
 
-f) 点击落点(pointer 段 L566 之后;**只监听 renderer.domElement,排除 GUI/HUD 冒泡——Codex H8;click 与 orbit 拖拽区分:位移 < 6px 且未触发 controls 'start' 才算点击**):
+f) 点击落点(pointer 段 L566 之后;**只监听 renderer.domElement,排除 GUI/HUD 冒泡;拖拽判定用「按压期间 controls 是否派发 change」而非 'start'——Codex H8 复审:OrbitControls 在 pointerdown 进入 ROTATE 时同步派发 start,且先于我们的 handler,标志会被自己重置而失效;'change' 只在相机实际运动时派发,才是拖拽的真实信号**):
 
 ```js
 const raycaster = new THREE.Raycaster()
 let downPos = null
-let orbited = false // set by OrbitControls 'start' — a drag happened, suppress the click
-controls.addEventListener('start', () => (orbited = true))
+let dragged = false // any camera 'change' DURING a press means this gesture is a drag
+// OrbitControls fires 'change' only when the camera actually moves (rotate/pan/dolly).
+// ('start' fires synchronously on pointerdown — useless as a drag signal, Codex H8r2.)
+controls.addEventListener('change', () => {
+  if (downPos) dragged = true
+})
 renderer.domElement.addEventListener('pointerdown', (e) => {
   if (e.button !== 0) return
   downPos = { x: e.clientX, y: e.clientY }
-  orbited = false
+  dragged = false
 })
 renderer.domElement.addEventListener('pointerup', (e) => {
   if (!params.planning || !downPos || !geo || !dem || e.button !== 0) return
   const moved = Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y) > 6
+  const wasDrag = dragged
   downPos = null
-  if (moved || orbited) return
+  if (moved || wasDrag) return
   const ndc = new THREE.Vector2((e.clientX / window.innerWidth) * 2 - 1, -((e.clientY / window.innerHeight) * 2 - 1))
   raycaster.setFromCamera(ndc, camera)
   const hit = raycaster.intersectObject(terrain.mesh, false)[0]
@@ -1341,6 +1370,8 @@ renderer.domElement.addEventListener('pointerup', (e) => {
   refreshRoute()
 })
 ```
+
+已知边界(记录在案,非阻塞):damping 余晖期间快速点按可能被误判为 drag 而丢一次点击——这是安全方向的失败(不误加途经点),用户再点一次即可。
 
 g) GUI folder(GUI 段,`fSource` 之后):
 
@@ -1542,7 +1573,15 @@ export class RouteHud {
 .route-library { display: flex; gap: 6px; }
 ```
 
-`main.js` 替换占位函数(import 已在 Task 9-a 一次到位;store 一律 `await routeStoreReady`——Codex M12):
+**Step 0: import**(B15/B4 双重规避:与文件创建同 Task,不会忘 import,也不会 import 不存在文件)
+
+`main.js` 顶部 import 区(Task 9-a 那批)追加:
+
+```js
+import { RouteHud } from './route/RouteHud.js'
+```
+
+`main.js` 替换占位函数(store 一律 `await routeStoreReady`——Codex M12):
 
 ```js
 const routeHud = new RouteHud(params.hudAccent)
@@ -1640,7 +1679,7 @@ Create `docs/followups.md`:
 **Step 3: 全量验证**
 
 Run: `npm test && npm run build`
-Expected: 全部测试通过(30 个:smoke 1 + geo 6 + route 6 + providers 3 + store 3 + gpx 6 + share 5);build exit 0
+Expected: 全部测试通过(31 个:smoke 1 + geo 6 + route 6 + providers 3 + store 3 + gpx 7 + share 5);build exit 0
 
 **Step 4: Commit**
 
@@ -1690,7 +1729,19 @@ git commit -m "docs: followups + README for trip-3d fork"
 
 复审结论:修订后可进入实施(APPROVE-WITH-FIXES 的 fixes 已落盘)。
 
-## Self-Review: 47/50(Codex 修订后重评)
+## Codex Review(round 2,2026-08-04)
+
+结论:REJECT(11/14 已解决;H8 未真解、H7 语义缺口、新 Blocker B15)→ 遗留 5 条已修订:
+
+| # | 问题 | 修订 |
+|---|---|---|
+| B15 | Task 9 import 未创建的 RouteHud → 本 Task build 必败 | Task 9-a 移除该 import;RouteHud import 移入 Task 10(与文件创建同 Task) |
+| H8(r2) | OrbitControls 'start' 在 pointerdown 同步派发,标志被自己重置失效 | 改用按压期间 controls 'change'(相机真实运动)判定拖拽;记录 damping 余晖边界 |
+| H16 | GPX 抽稀 `floor(i*len/MAX)` 丢终点(200→32 得 idx193 非 199) | 改 `round(i*(len-1)/(MAX-1))` + 首尾保留断言 |
+| H17 | decodeShare 接受 64 点但 addWaypoint 上限 32,合法载荷复原丢失 | 校验上限统一为 MAX_WAYPOINTS(import 自 route.js) |
+| M18 | GPX parseFloat 未校验,NaN 污染下游 | toWp 校验有限数+经纬范围,非法即 throw;ele 缺失/非法默认 0(明示策略) |
+
+## Self-Review: 47/50(Codex 两轮修订后重评)
 
 | 维度(0-5) | 分 | 说明 |
 |---|---|---|
