@@ -4,6 +4,39 @@
 export function createPlanningPanel(actions) {
   const el = document.createElement('div')
 
+  // ---- place search (explicit trigger only — Nominatim policy bans autocomplete)
+  const searchWrap = document.createElement('div')
+  searchWrap.className = 'pp-search'
+  const searchInput = document.createElement('input')
+  searchInput.placeholder = '搜索地点(如 四姑娘山)…'
+  const searchBtn = document.createElement('button')
+  searchBtn.textContent = '搜索'
+  searchBtn.className = 'pp-search-btn'
+  searchWrap.append(searchInput, searchBtn)
+  const results = document.createElement('div')
+  results.className = 'pp-results hidden'
+  const attr = document.createElement('div')
+  attr.className = 'pp-attr'
+  attr.textContent = '© OpenStreetMap contributors'
+  results.appendChild(attr)
+  el.append(searchWrap, results)
+
+  const doSearch = () => actions.onSearch?.(searchInput.value)
+  searchBtn.onclick = doSearch
+  searchInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSearch() })
+
+  // ---- snap toggle
+  const snapRow = document.createElement('label')
+  snapRow.className = 'pp-snap-row'
+  const snapCb = document.createElement('input')
+  snapCb.type = 'checkbox'
+  snapRow.append(snapCb, ' 路网吸附(步道/道路)')
+  const snapStatus = document.createElement('span')
+  snapStatus.className = 'pp-snap-status'
+  snapRow.appendChild(snapStatus)
+  snapCb.onchange = () => actions.onSnapToggle?.(snapCb.checked)
+  el.appendChild(snapRow)
+
   const name = document.createElement('input')
   name.className = 'name-input'
   name.value = '未命名线路'
@@ -79,6 +112,48 @@ export function createPlanningPanel(actions) {
         line2.appendChild(d)
       }
       stat.append(line1, line2)
+    },
+
+    // ---- search API (explicit trigger; results rendered with ⊕ add buttons)
+    setSearchBusy(on) {
+      searchBtn.disabled = on
+      searchBtn.textContent = on ? '…' : '搜索'
+    },
+    setSearchResults(list, query) {
+      results.classList.remove('hidden')
+      results.replaceChildren()
+      if (!list.length) {
+        const e = document.createElement('div')
+        e.className = 'pp-empty'
+        e.textContent = `未找到「${query}」`
+        results.appendChild(e)
+      }
+      for (const r of list) {
+        const row = document.createElement('div')
+        row.className = 'pp-result'
+        const txt = document.createElement('span')
+        txt.className = 'pp-result-name'
+        txt.textContent = r.name || r.displayName.split(',')[0]
+        txt.title = r.displayName
+        row.appendChild(txt)
+        const go = document.createElement('button')
+        go.textContent = '飞达'
+        go.onclick = () => actions.onSearchGo?.(r)
+        const add = document.createElement('button')
+        add.textContent = '⊕加点'
+        add.className = 'primary'
+        add.onclick = () => actions.onSearchAdd?.(r)
+        row.append(go, add)
+        results.appendChild(row)
+      }
+      results.appendChild(attr) // OSM attribution always visible with results
+    },
+    hideSearchResults() { results.classList.add('hidden') },
+
+    // ---- snap API
+    setSnapState(on, statusText) {
+      snapCb.checked = on
+      snapStatus.textContent = statusText ?? ''
     },
   }
 }

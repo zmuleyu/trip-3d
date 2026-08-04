@@ -42,7 +42,7 @@ describe('osrm provider', () => {
     let url = ''
     const p = createOsrmProvider({ fetchImpl: async (u) => { url = u; return { ok: true, json: async () => OSRM_FIXTURE } } })
     await p.route([{ lon: 102.83, lat: 31.05 }, { lon: 102.9, lat: 31.02 }])
-    expect(url).toContain('router.project-osrm.org/route/v1/foot/102.83,31.05;102.9,31.02')
+    expect(url).toContain('routing.openstreetmap.de/routed-foot/route/v1/foot/102.83,31.05;102.9,31.02')
     expect(url).toContain('overview=full')
     expect(url).toContain('geometries=geojson')
   })

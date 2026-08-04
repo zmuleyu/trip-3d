@@ -21,6 +21,7 @@ export function createWeatherPanel({ onQuery }) {
     <div class="wx-controls">
       <label>出发日期 <input type="date" class="wx-date" min="${today}" max="${maxStart}" value="${saved.start ?? today}"></label>
       <label>天数 <input type="number" class="wx-days" min="1" max="${MAX_TRIP_DAYS}" value="${saved.days ?? 3}"></label>
+      <label class="wx-allpts"><input type="checkbox" class="wx-allpts-cb"${saved.allPoints ? ' checked' : ''}> 全部途经点</label>
       <button class="wx-go primary">查询天气</button>
     </div>
     <div class="wx-index hidden"></div>
@@ -31,13 +32,15 @@ export function createWeatherPanel({ onQuery }) {
   const dateEl = el.querySelector('.wx-date')
   const daysEl = el.querySelector('.wx-days')
   const goBtn = el.querySelector('.wx-go')
+  const allPtsEl = el.querySelector('.wx-allpts-cb')
   const statusEl = el.querySelector('.wx-status')
   const cardsEl = el.querySelector('.wx-cards')
   const indexEl = el.querySelector('.wx-index')
 
-  const persist = () => localStorage.setItem(LS_KEY, JSON.stringify({ start: dateEl.value, days: +daysEl.value }))
+  const persist = () => localStorage.setItem(LS_KEY, JSON.stringify({ start: dateEl.value, days: +daysEl.value, allPoints: allPtsEl.checked }))
   dateEl.onchange = persist
   daysEl.onchange = persist
+  allPtsEl.onchange = persist
 
   goBtn.onclick = () => {
     const start = dateEl.value
@@ -47,7 +50,7 @@ export function createWeatherPanel({ onQuery }) {
       return
     }
     const dates = tripDates(start, days)
-    onQuery({ start, days, dates })
+    onQuery({ start, days, dates, allPoints: allPtsEl.checked })
   }
 
   function setStatus(text, kind = 'info') {

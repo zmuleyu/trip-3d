@@ -24,7 +24,7 @@ import { createHud3D, findPois } from './hud3d.js'
 import { createHud2D } from './hud2d.js'
 import { loadDem, sampleDem } from './dem.js'
 import { makeGeoContext, worldToLonLat } from './lib/geo.js'
-import { createRoute, addWaypoint, routeStats, routeFingerprint } from './lib/route.js'
+import { createRoute, addWaypoint, routeStats, samplePolyline } from './lib/route.js'
 import { RouteLayer } from './route/RouteLayer.js'
 import { openRouteStore } from './lib/store.js'
 import { routeToGpx, gpxToRoute } from './lib/gpx.js'
@@ -34,6 +34,9 @@ import { createRail, createPanelHost, createLayerButtons, createToast } from './
 import { createPlanningPanel, createLibraryPanel, createProfileCard } from './ui/panels.js'
 import { createWeatherPanel } from './ui/weatherPanel.js'
 import { createOpenMeteoProvider } from './providers/openmeteo.js'
+import { createGeocodeProvider } from './providers/geocode.js'
+import { createRoutingProvider } from './providers/routing.js'
+import { joinGeometries, snapCacheKey } from './lib/snap.js'
 import { pickRepresentativePoints, aggregateTripDays } from './lib/weather.js'
 import { tripIndex } from './lib/tripIndex.js'
 
@@ -613,6 +616,7 @@ renderer.domElement.addEventListener('pointerup', (e) => {
   const wp = addWaypoint(route, lon, lat, Math.round(elevOfWorld(hit.point.x, hit.point.z)))
   if (!wp) return console.warn('waypoint cap reached')
   refreshRoute()
+  scheduleSnap()
 })
 
 // ------------------------------------------------------------------ regeneration helpers
@@ -621,9 +625,18 @@ renderer.domElement.addEventListener('pointerup', (e) => {
 
 let dem = null
 let demBusy = false
+// terrain-ready contract: loadRealTerrain bumps terrainGen at start; when the
+// rebuild completes, waiters resolve with the built generation. Callers compare
+// gens to detect supersession (search-add / snap flows). No demBusy polling.
+let terrainGen = 0
+const terrainWaiters = []
+function whenTerrainBuilt(gen) {
+  return new Promise((res) => terrainWaiters.push({ gen, res }))
+}
 async function loadRealTerrain() {
   if (demBusy) return
   demBusy = true
+  terrainGen++
   loadingEl.textContent = 'fetching elevation tiles…'
   loadingEl.classList.remove('hidden')
   try {
@@ -665,6 +678,8 @@ function regenerateTerrain() {
       if (params.shadowMode === 'static') renderer.shadowMap.needsUpdate = true
       rebuildPending = false
       loadingEl.classList.add('hidden')
+      // resolve terrain-ready waiters with the generation that just built
+      for (const w of terrainWaiters.splice(0)) w.res(terrainGen)
     }, 30)
   )
 }
@@ -690,16 +705,122 @@ function elevOfWorld(x, z) {
 
 function refreshRoute() {
   if (!routeLayer || !geo || !dem) return
+  // snapped geometry (WGS-84) is re-sampled with CURRENT geo/elevOf getters each
+  // refresh — never cache world-space pts across DEM switches (review #8)
+  let pathPts = null
+  if (snapState.on && snapState.geometry && snapState.revision === route.revision && snapState.demKey === currentDemKey()) {
+    pathPts = samplePolyline(geo, snapState.geometry, elevOfWorld)
+  }
   const pts = routeLayer.update(route.waypoints, {
     slopeColors: params.routeSlopeColors,
     arrows: params.routeArrows,
     ticks: params.routeTicks,
+    pathPts,
   })
   lastRoutePts = pts
   updateRouteUI(route, pts.length ? routeStats(pts) : null, pts)
+  // route edited → any in-flight weather query for the old revision is void
+  if (weatherState.result && weatherState.revision !== route.revision) weatherState.requestId++
 }
 
 let lastRoutePts = []
+
+// ------------------------------------------------------------------ snap state
+// Success-only result cache (WGS-84 geometry); in-flight map dedups concurrent
+// identical requests; failures are never cached (public demo has no SLA).
+const SNAP_LS = 'trip3d.snapOn'
+const routingProvider = createRoutingProvider('osrm')
+const snapState = {
+  on: localStorage.getItem(SNAP_LS) === '1',
+  geometry: null,
+  revision: -1,
+  demKey: '',
+  requestId: 0,
+}
+const snapCache = new Map()
+const snapInflight = new Map()
+let snapTimer = null
+
+const currentDemKey = () => (dem ? `${params.demLat.toFixed(4)},${params.demLon.toFixed(4)},${params.demZoom}` : '')
+const snapRouteKey = (wps) => 'osrm:foot:' + wps.map((w) => `${w.lon.toFixed(5)},${w.lat.toFixed(5)}`).join('>')
+
+function scheduleSnap() {
+  if (!snapState.on) return
+  clearTimeout(snapTimer)
+  snapTimer = setTimeout(runSnap, 400)
+}
+
+async function runSnap() {
+  const wps = route.waypoints
+  if (!snapState.on) return
+  if (wps.length < 2) {
+    snapState.geometry = null
+    snapState.revision = route.revision
+    refreshRoute()
+    return
+  }
+  const key = snapRouteKey(wps)
+  const rev = route.revision
+  const reqId = ++snapState.requestId
+  const cached = snapCache.get(key)
+  if (cached) { commitSnap(cached, rev, reqId); return }
+  planningPanel.setSnapState(true, '吸附中…')
+  try {
+    const geometry = await snapFetch(key, wps)
+    if (reqId !== snapState.requestId || rev !== route.revision) return
+    commitSnap(geometry, rev, reqId)
+  } catch (err) {
+    console.warn('snap failed', err)
+    if (reqId !== snapState.requestId) return
+    snapState.geometry = null
+    snapState.revision = rev
+    planningPanel.setSnapState(true, '吸附失败,回退直线')
+    toast.show('路网吸附失败,已回退直线')
+    refreshRoute()
+  }
+}
+
+// whole-route single request (≤32 coords); NoRoute → per-segment sequential
+// fallback where unroutable pairs degrade to straight lines (never cached)
+function snapFetch(key, wps) {
+  if (snapInflight.has(key)) return snapInflight.get(key)
+  const p = (async () => {
+    try {
+      const r = await routingProvider.route(wps.map(({ lon, lat }) => ({ lon, lat })))
+      snapCache.set(key, r.geometry)
+      return r.geometry
+    } catch (err) {
+      if (!/NoRoute/.test(err.message)) throw err
+      const segs = []
+      for (let i = 1; i < wps.length; i++) {
+        const a = wps[i - 1], b = wps[i]
+        const segKey = snapCacheKey('osrm', 'foot', a, b)
+        if (snapCache.has(segKey)) { segs.push(snapCache.get(segKey)); continue }
+        try {
+          const r = await routingProvider.route([{ lon: a.lon, lat: a.lat }, { lon: b.lon, lat: b.lat }])
+          snapCache.set(segKey, r.geometry)
+          segs.push(r.geometry)
+        } catch {
+          segs.push([[a.lon, a.lat], [b.lon, b.lat]])
+        }
+      }
+      return joinGeometries(segs)
+    } finally {
+      snapInflight.delete(key)
+    }
+  })()
+  snapInflight.set(key, p)
+  return p
+}
+
+function commitSnap(geometry, rev, reqId) {
+  if (reqId !== snapState.requestId || rev !== route.revision) return
+  snapState.geometry = geometry
+  snapState.revision = rev
+  snapState.demKey = currentDemKey()
+  planningPanel.setSnapState(true, `已吸附(${geometry.length} 点)`)
+  refreshRoute()
+}
 
 function ensureRouteLayer() {
   if (routeLayer) return
@@ -1021,10 +1142,8 @@ const profileCard = createProfileCard(params.hudAccent)
 
 function updateRouteUI(route, stats, pts) {
   planningPanel.update(route, stats)
-  // weather band only when a fresh result matches this route version
-  const wxDays = weatherState.result && weatherState.fingerprint === routeFingerprint(route)
-    ? weatherState.result.agg
-    : null
+  // weather band only when a fresh result matches this route revision
+  const wxDays = weatherState.result && weatherState.revision === route.revision ? weatherState.result.agg : null
   profileCard.update(stats, pts, wxDays)
 }
 
@@ -1032,12 +1151,14 @@ function updateRouteUI(route, stats, pts) {
 // Results are bound to a route fingerprint + monotonically increasing requestId:
 // route edits invalidate the band; slow responses can never overwrite newer state.
 const weatherProvider = createOpenMeteoProvider()
-const weatherState = { fingerprint: null, requestId: 0, result: null }
+const weatherState = { revision: -1, requestId: 0, result: null }
 
-async function runWeatherQuery({ dates }) {
+async function runWeatherQuery({ dates, allPoints }) {
   if (!route.waypoints.length) { weatherPanel.setEmptyRoute(); return }
-  const rep = pickRepresentativePoints(route.waypoints)
-  const fp = routeFingerprint(route)
+  const rep = allPoints
+    ? route.waypoints.map((w) => ({ ...w, role: w.name }))
+    : pickRepresentativePoints(route.waypoints)
+  const rev = route.revision
   const reqId = ++weatherState.requestId
   weatherPanel.setLoading(rep)
   try {
@@ -1047,7 +1168,7 @@ async function runWeatherQuery({ dates }) {
     for (const p of rep) all.push(...await weatherProvider.daily(p, from, to))
     if (reqId !== weatherState.requestId) return // a newer query superseded this one
     const agg = aggregateTripDays(all)
-    weatherState.fingerprint = fp
+    weatherState.revision = rev
     weatherState.result = { agg, rep }
     weatherPanel.setResult({ agg, rep, index: tripIndex(all) })
     refreshRoute() // re-render profile card with the band bound to this fingerprint
@@ -1058,6 +1179,92 @@ async function runWeatherQuery({ dates }) {
 }
 
 const weatherPanel = createWeatherPanel({ onQuery: runWeatherQuery })
+
+// ------------------------------------------------------------------ place search
+// Explicit trigger only (Enter/button) — Nominatim public instance bans
+// autocomplete. 1 req/s client throttle; nominatim primary, photon fallback.
+const geocoder = createGeocodeProvider('nominatim')
+const geocoderBackup = createGeocodeProvider('photon')
+let searchReqId = 0
+let lastSearchAt = 0
+
+async function runSearch(query) {
+  query = query?.trim()
+  if (!query) return
+  const now = Date.now()
+  if (now - lastSearchAt < 1100) { toast.show('搜索限流 1 次/秒,稍候'); return }
+  lastSearchAt = now
+  const reqId = ++searchReqId
+  planningPanel.setSearchBusy(true)
+  try {
+    let list
+    try {
+      list = await geocoder.search(query)
+    } catch {
+      list = await geocoderBackup.search(query)
+    }
+    if (reqId !== searchReqId) return
+    planningPanel.setSearchResults(list, query)
+  } catch (err) {
+    if (reqId !== searchReqId) return
+    console.warn('search failed', err)
+    planningPanel.setSearchResults([], query)
+    toast.show(`搜索失败:${err.message}`)
+  } finally {
+    if (reqId === searchReqId) planningPanel.setSearchBusy(false)
+  }
+}
+
+function flyToLonLat(lon, lat, dist = 8) {
+  const { x, z } = lonLatToWorld(geo, lon, lat)
+  const y = terrain.sample(x, z)
+  flyTo(new THREE.Vector3(x + dist, y + dist * 0.75, z + dist), new THREE.Vector3(x, y, z))
+}
+
+async function searchGo(r) {
+  if (demBusy || rebuildPending) { toast.show('地形加载中,稍后再试'); return }
+  if (geo && dem) {
+    const { px, py } = geo.lonLatToPx(r.lon, r.lat)
+    if (px >= 0 && px <= dem.size - 1 && py >= 0 && py <= dem.size - 1) {
+      flyToLonLat(r.lon, r.lat)
+      return
+    }
+  }
+  toast.show('目标在当前区域外,加载新地形…')
+  params.demLat = r.lat
+  params.demLon = r.lon
+  const gen = terrainGen + 1
+  loadRealTerrain()
+  const built = await whenTerrainBuilt(gen)
+  if (built < gen) { toast.show('加载被更新的操作取代'); return }
+  flyToLonLat(r.lon, r.lat)
+}
+
+async function searchAdd(r) {
+  if (demBusy || rebuildPending) { toast.show('地形加载中,稍后再试'); return }
+  let inBounds = false
+  if (geo && dem) {
+    const { px, py } = geo.lonLatToPx(r.lon, r.lat)
+    inBounds = px >= 0 && px <= dem.size - 1 && py >= 0 && py <= dem.size - 1
+  }
+  if (!inBounds) {
+    toast.show('目标在当前区域外,加载新地形…')
+    params.demLat = r.lat
+    params.demLon = r.lon
+    const gen = terrainGen + 1
+    loadRealTerrain()
+    const built = await whenTerrainBuilt(gen)
+    if (built < gen) { toast.show('加载被更新的操作取代'); return }
+  }
+  ensureRouteLayer()
+  const { x, z } = lonLatToWorld(geo, r.lon, r.lat)
+  const wp = addWaypoint(route, r.lon, r.lat, Math.round(elevOfWorld(x, z)), r.name || 'POI')
+  if (!wp) { toast.show('已达途经点上限 32'); return }
+  if (!mode.isPlanning()) mode.enterPlanning()
+  refreshRoute()
+  scheduleSnap()
+  toast.show(`已加途经点:${r.name || 'POI'}`)
+}
 
 // profile ↔ 3D sync: hover shows crosshair on the route line; click flies camera
 profileCard.setCallbacks({
@@ -1080,8 +1287,23 @@ async function refreshLibrary() {
 
 const routeActions = {
   onNameChange: (v) => { route.name = v; params.routeName = v },
-  onUndo: () => { route.waypoints.pop(); refreshRoute() },
-  onClear: () => { route.waypoints = []; refreshRoute() },
+  onUndo: () => { route.waypoints.pop(); route.revision++; refreshRoute(); scheduleSnap() },
+  onClear: () => { route.waypoints = []; route.revision++; refreshRoute(); scheduleSnap() },
+  onSearch: runSearch,
+  onSearchGo: searchGo,
+  onSearchAdd: searchAdd,
+  onSnapToggle: (on) => {
+    snapState.on = on
+    localStorage.setItem(SNAP_LS, on ? '1' : '0')
+    if (on) {
+      scheduleSnap()
+    } else {
+      snapState.geometry = null
+      snapState.requestId++
+      planningPanel.setSnapState(false, '')
+      refreshRoute()
+    }
+  },
   onSave: async () => {
     const s = await routeStoreReady
     if (!s) { toast.show('本地存储不可用,保存失败'); return }
@@ -1116,6 +1338,7 @@ const routeActions = {
         params.routeName = route.name
         ensureRouteLayer()
         refreshRoute()
+        scheduleSnap()
         toast.show(route.downsampled ? `GPX 已导入(抽稀 ${route.originalPointCount}→${route.waypoints.length} 点)` : 'GPX 已导入')
       } catch (err) { toast.show(`GPX 导入失败: ${err.message}`, 3200) }
     }
@@ -1123,6 +1346,7 @@ const routeActions = {
   },
 }
 const planningPanel = createPlanningPanel(routeActions)
+planningPanel.setSnapState(snapState.on, '')
 const libraryPanel = createLibraryPanel({
   onLoad: async (id) => {
     const s = await routeStoreReady
@@ -1133,6 +1357,7 @@ const libraryPanel = createLibraryPanel({
     params.routeName = r.name
     ensureRouteLayer()
     refreshRoute()
+    scheduleSnap()
     toast.show(`已加载「${r.name}」`)
   },
   onDelete: async (id) => {
@@ -1226,6 +1451,12 @@ window.__exp = { scene, camera, controls, params, terrain, loadRealTerrain, get 
 
 // real world is the default source — fetch its tiles on startup
 if (params.source === 'real') loadRealTerrain()
+
+// after first build: restore snap toggle UI + re-snap a hash-restored route
+whenTerrainBuilt(1).then(() => {
+  planningPanel.setSnapState(snapState.on, '')
+  if (snapState.on && route.waypoints.length >= 2) scheduleSnap()
+})
 
 const clock = new THREE.Clock()
 

@@ -127,9 +127,11 @@ export class RouteLayer {
   }
 
   // Returns sampled pts ([] when <2 waypoints) — callers feed profile/stats.
-  // opts: { slopeColors, arrows, ticks } (all default true)
+  // opts: { slopeColors, arrows, ticks, pathPts } — pathPts: precomputed pts
+  // (e.g. snapped polyline sampled by caller with CURRENT geo/elevOf getters);
+  // when provided, internal spline sampling is skipped.
   update(waypoints, opts = {}) {
-    const { slopeColors = true, arrows = true, ticks = true } = opts
+    const { slopeColors = true, arrows = true, ticks = true, pathPts = null } = opts
     this._clear()
     const geo = this._getGeo()
     const sceneSample = this._getSceneSample()
@@ -151,7 +153,7 @@ export class RouteLayer {
 
     if (waypoints.length < 2) return []
     const elevOf = this._elevOfWorld() // getter → the fn (call-time geo/dem binding)
-    const pts = sampleRoutePath(geo, waypoints, elevOf)
+    const pts = pathPts ?? sampleRoutePath(geo, waypoints, elevOf)
     const positions = new Float32Array(pts.length * 3)
     const colors = new Float32Array(pts.length * 3)
     pts.forEach((p, i) => {

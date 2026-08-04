@@ -8,6 +8,7 @@ export function serializeRoute(route) {
     name: route.name,
     createdAt: route.createdAt,
     updatedAt: Date.now(),
+    revision: route.revision ?? 0,
     waypoints: route.waypoints.map(({ lon, lat, ele, name }) => ({ lon, lat, ele, name })),
   }
 }
@@ -17,6 +18,7 @@ export function hydrateRoute(rec) {
     id: rec.id,
     name: rec.name,
     createdAt: rec.createdAt,
+    revision: rec.revision ?? 0,
     waypoints: (rec.waypoints ?? []).map((w, i) => ({
       id: crypto.randomUUID(),
       lon: w.lon, lat: w.lat, ele: w.ele, name: w.name ?? `P${i + 1}`,

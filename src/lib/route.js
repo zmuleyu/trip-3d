@@ -5,29 +5,35 @@ export const MAX_WAYPOINTS = 32
 export const DEFAULT_SAMPLES = 240
 
 export function createRoute(name = '未命名线路') {
-  return { id: crypto.randomUUID(), name, createdAt: Date.now(), waypoints: [] }
+  return { id: crypto.randomUUID(), name, waypoints: [], revision: 0, createdAt: Date.now() }
 }
 
+// revision increments on every waypoint mutation — collision-free version binding
+// for async consumers (snap geometry, weather results). Replaces fuzzy fingerprints.
 export function addWaypoint(route, lon, lat, ele, name) {
   if (route.waypoints.length >= MAX_WAYPOINTS) return null
   const wp = { id: crypto.randomUUID(), lon, lat, ele, name: name ?? `P${route.waypoints.length + 1}` }
   route.waypoints.push(wp)
+  route.revision++
   return wp
 }
 
 export function removeWaypoint(route, index) {
   route.waypoints.splice(index, 1)
+  route.revision++
 }
 
 export function moveWaypoint(route, from, to) {
   const [wp] = route.waypoints.splice(from, 1)
   route.waypoints.splice(to, 0, wp)
+  route.revision++
 }
 
 // Arc-length resample of an arbitrary polyline (e.g. OSRM snapped geometry).
 // coords: [[lon, lat], ...] → same pt shape as sampleRoutePath ({x,z,lon,lat,ele,cumDistM}).
 export function samplePolyline(geo, coords, elevOf, nSamples = DEFAULT_SAMPLES) {
   if (!coords || coords.length < 2) return []
+  if (nSamples < 2) throw new Error(`nSamples must be >= 2, got ${nSamples}`)
   const cps = coords.map(([lon, lat]) => lonLatToWorld(geo, lon, lat))
   const segLens = []
   let total = 0

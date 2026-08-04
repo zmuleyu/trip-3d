@@ -436,3 +436,19 @@ body {
 .wx-card-sub { font-size: 10px; opacity: 0.6; margin-top: 2px; }
 .wx-attr { font-size: 9px; opacity: 0.5; margin-top: 8px; }
 .wx-attr a { color: inherit; }
+
+/* ------------------------------------------------------------------ planning search + snap */
+.pp-search { display: flex; gap: 6px; margin-bottom: 6px; }
+.pp-search input { flex: 1; font: inherit; font-size: 11px; border: 1px solid rgba(23,25,27,0.25); background: rgba(255,255,255,0.7); padding: 4px 6px; }
+.pp-search-btn { font: inherit; font-size: 11px; padding: 4px 10px; cursor: pointer; background: #17191b; color: #fff; border: 1px solid #17191b; }
+.pp-search-btn:disabled { opacity: 0.5; cursor: default; }
+.pp-results { border: 1px solid rgba(23,25,27,0.2); background: rgba(255,255,255,0.92); margin-bottom: 6px; max-height: 200px; overflow-y: auto; }
+.pp-results.hidden { display: none; }
+.pp-result { display: flex; align-items: center; gap: 6px; padding: 4px 6px; font-size: 11px; border-bottom: 1px solid rgba(23,25,27,0.08); }
+.pp-result-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: default; }
+.pp-result button { font: inherit; font-size: 10px; padding: 2px 6px; cursor: pointer; background: #fff; border: 1px solid rgba(23,25,27,0.3); }
+.pp-result button.primary { background: #ff4d00; border-color: #ff4d00; color: #fff; }
+.pp-empty { padding: 6px; font-size: 11px; opacity: 0.6; }
+.pp-attr { font-size: 9px; opacity: 0.5; padding: 3px 6px; }
+.pp-snap-row { display: flex; align-items: center; gap: 5px; font-size: 11px; margin-bottom: 6px; cursor: pointer; }
+.pp-snap-status { font-size: 10px; opacity: 0.65; }
