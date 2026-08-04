@@ -37,6 +37,8 @@ import { createOpenMeteoProvider } from './providers/openmeteo.js'
 import { createGeocodeProvider } from './providers/geocode.js'
 import { createRoutingProvider } from './providers/routing.js'
 import { joinGeometries, snapCacheKey } from './lib/snap.js'
+import { parseAmapLink, buildAmapLink } from './lib/amapLink.js'
+import qrcode from 'qrcode-generator'
 import { pickRepresentativePoints, aggregateTripDays } from './lib/weather.js'
 import { tripIndex } from './lib/tripIndex.js'
 
@@ -1266,6 +1268,91 @@ async function searchAdd(r) {
   toast.show(`已加途经点:${r.name || 'POI'}`)
 }
 
+// ------------------------------------------------------------------ amap link interop
+async function importAmapLink(urlStr) {
+  const parsed = parseAmapLink(urlStr?.trim() ?? '')
+  if (!parsed) { toast.show('无法解析:支持 amap.com 行程分享链接'); return }
+  const pts = [parsed.from, ...parsed.vias, parsed.to].filter(Boolean)
+  if (!pts.length) { toast.show('链接中无有效地点'); return }
+  if (demBusy || rebuildPending) { toast.show('地形加载中,稍后再试'); return }
+  const cx = pts.reduce((s, p) => s + p.lon, 0) / pts.length
+  const cy = pts.reduce((s, p) => s + p.lat, 0) / pts.length
+  let inBounds = false
+  if (geo && dem) {
+    const { px, py } = geo.lonLatToPx(cx, cy)
+    inBounds = px >= 0 && px <= dem.size - 1 && py >= 0 && py <= dem.size - 1
+  }
+  if (!inBounds) {
+    toast.show('加载目标区域地形…')
+    params.demLat = cy
+    params.demLon = cx
+    const gen = terrainGen + 1
+    loadRealTerrain()
+    const built = await whenTerrainBuilt(gen)
+    if (built < gen) { toast.show('加载被更新的操作取代'); return }
+  }
+  ensureRouteLayer()
+  let added = 0
+  let anyOutOfView = false
+  for (const p of pts) {
+    const { x, z } = lonLatToWorld(geo, p.lon, p.lat)
+    const { px, py } = geo.worldToPx(x, z)
+    if (px < 0 || px > dem.size - 1 || py < 0 || py > dem.size - 1) anyOutOfView = true
+    const wp = addWaypoint(route, p.lon, p.lat, Math.round(elevOfWorld(x, z)), p.name || `P${route.waypoints.length + 1}`)
+    if (wp) added++
+  }
+  if (!mode.isPlanning()) mode.enterPlanning()
+  refreshRoute()
+  scheduleSnap()
+  toast.show(`已从高德链接导入 ${added} 个途经点`)
+  if (anyOutOfView) setTimeout(() => toast.show('部分点位超出当前地形视野(局部 ~50km),统计仍含全程', 3600), 2300)
+}
+
+function exportAmapLink() {
+  const url = buildAmapLink(route)
+  if (!url) { toast.show('至少 2 个途经点才能生成高德链接'); return }
+  const ov = document.createElement('div')
+  ov.className = 'ui-qr-overlay'
+  const card = document.createElement('div')
+  card.className = 'ui-qr-card'
+  const ttl = document.createElement('div')
+  ttl.className = 'ttl'
+  ttl.textContent = '高德 App 扫码打开此行程'
+  const cv = document.createElement('canvas')
+  const qr = qrcode(0, 'M')
+  qr.addData(url)
+  qr.make()
+  const n = qr.getModuleCount()
+  const scale = Math.max(3, Math.floor(280 / n))
+  cv.width = n * scale
+  cv.height = n * scale
+  const ctx = cv.getContext('2d')
+  ctx.fillStyle = '#fff'
+  ctx.fillRect(0, 0, cv.width, cv.height)
+  ctx.fillStyle = '#17191b'
+  for (let r = 0; r < n; r++) {
+    for (let c = 0; c < n; c++) {
+      if (qr.isDark(r, c)) ctx.fillRect(c * scale, r * scale, scale, scale)
+    }
+  }
+  const lnk = document.createElement('div')
+  lnk.className = 'lnk'
+  lnk.textContent = url
+  const copy = document.createElement('button')
+  copy.textContent = '复制链接'
+  copy.onclick = async () => {
+    try { await navigator.clipboard.writeText(url) } catch { /* clipboard optional */ }
+    toast.show('高德链接已复制')
+  }
+  const close = document.createElement('button')
+  close.textContent = '关闭'
+  close.onclick = () => ov.remove()
+  ov.onclick = (e) => { if (e.target === ov) ov.remove() }
+  card.append(ttl, cv, copy, close, lnk)
+  ov.appendChild(card)
+  document.body.appendChild(ov)
+}
+
 // profile ↔ 3D sync: hover shows crosshair on the route line; click flies camera
 profileCard.setCallbacks({
   onHover: (i) => {
@@ -1292,6 +1379,8 @@ const routeActions = {
   onSearch: runSearch,
   onSearchGo: searchGo,
   onSearchAdd: searchAdd,
+  onImportAmap: importAmapLink,
+  onExportAmap: exportAmapLink,
   onSnapToggle: (on) => {
     snapState.on = on
     localStorage.setItem(SNAP_LS, on ? '1' : '0')

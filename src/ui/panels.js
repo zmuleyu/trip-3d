@@ -37,6 +37,26 @@ export function createPlanningPanel(actions) {
   snapCb.onchange = () => actions.onSnapToggle?.(snapCb.checked)
   el.appendChild(snapRow)
 
+  // ---- amap link import (below snap row)
+  const amapRow = document.createElement('div')
+  amapRow.className = 'pp-amap-row'
+  const amapToggle = document.createElement('button')
+  amapToggle.textContent = '导入高德链接'
+  amapToggle.className = 'pp-amap-toggle'
+  amapRow.appendChild(amapToggle)
+  const amapBox = document.createElement('div')
+  amapBox.className = 'pp-amap-box hidden'
+  const amapInput = document.createElement('input')
+  amapInput.placeholder = '粘贴 amap.com 行程分享链接…'
+  const amapGo = document.createElement('button')
+  amapGo.textContent = '导入'
+  amapGo.className = 'primary'
+  amapBox.append(amapInput, amapGo)
+  amapRow.appendChild(amapBox)
+  amapToggle.onclick = () => amapBox.classList.toggle('hidden')
+  amapGo.onclick = () => actions.onImportAmap?.(amapInput.value)
+  el.appendChild(amapRow)
+
   const name = document.createElement('input')
   name.className = 'name-input'
   name.value = '未命名线路'
@@ -69,6 +89,7 @@ export function createPlanningPanel(actions) {
   mk('清空', actions.onClear)
   mk('保存', actions.onSave, true)
   mk('分享链接', actions.onShare)
+  mk('高德链接', actions.onExportAmap)
   mk('导出GPX', actions.onExportGpx)
   mk('导入GPX', actions.onImportGpx)
   el.appendChild(row)

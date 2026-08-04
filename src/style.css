@@ -461,3 +461,23 @@ body {
 }
 .ui-attrib a { color: inherit; text-decoration: underline; }
 .ui-attrib a:hover { color: #ff4d00; }
+
+/* ------------------------------------------------------------------ amap import/export */
+.pp-amap-row { margin-bottom: 6px; }
+.pp-amap-toggle { font: inherit; font-size: 10px; padding: 2px 8px; cursor: pointer; background: #fff; border: 1px solid rgba(23,25,27,0.3); }
+.pp-amap-box { display: flex; gap: 6px; margin-top: 4px; }
+.pp-amap-box.hidden { display: none; }
+.pp-amap-box input { flex: 1; font: inherit; font-size: 10px; border: 1px solid rgba(23,25,27,0.25); background: rgba(255,255,255,0.7); padding: 3px 6px; }
+.pp-amap-box button { font: inherit; font-size: 10px; padding: 3px 8px; cursor: pointer; background: #ff4d00; border-color: #ff4d00; color: #fff; border: 1px solid #ff4d00; }
+.ui-qr-overlay {
+  position: fixed; inset: 0; z-index: 90; background: rgba(0,0,0,0.45);
+  display: flex; align-items: center; justify-content: center;
+}
+.ui-qr-card {
+  background: rgba(255,255,255,0.97); border: 1px solid #17191b; padding: 16px;
+  font: 11px/1.5 monospace; color: #17191b; text-align: center; max-width: 320px;
+}
+.ui-qr-card canvas { margin: 8px auto; display: block; image-rendering: pixelated; }
+.ui-qr-card .ttl { font-weight: bold; margin-bottom: 4px; }
+.ui-qr-card .lnk { word-break: break-all; font-size: 9px; opacity: 0.6; max-height: 40px; overflow: hidden; }
+.ui-qr-card button { font: inherit; font-size: 11px; padding: 4px 12px; margin: 6px 4px 0; cursor: pointer; background: #17191b; color: #fff; border: 1px solid #17191b; }
