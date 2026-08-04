@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { makeGeoContext } from './geo.js'
 import {
   createRoute, addWaypoint, removeWaypoint, moveWaypoint,
-  sampleRoutePath, routeStats, routeFingerprint, MAX_WAYPOINTS,
+  sampleRoutePath, samplePolyline, routeStats, routeFingerprint, MAX_WAYPOINTS,
 } from './route.js'
 
 const dem = { lat: 36.998, lon: -110.0984, zoom: 12, size: 768 }
@@ -86,5 +86,31 @@ describe('route model', () => {
     const b = routeFingerprint(r)
     r.waypoints[1].lon += 0.001
     expect(routeFingerprint(r)).not.toBe(b)
+  })
+
+  it('samplePolyline: arc-length resample of arbitrary [[lon,lat]] geometry', () => {
+    const coords = [
+      [-110.1, 37.0],
+      [-110.05, 37.0],
+      [-110.0, 37.0],
+    ]
+    const pts = samplePolyline(geo, coords, flatElev, 100)
+    expect(pts).toHaveLength(100)
+    expect(pts[0].lon).toBeCloseTo(-110.1, 5)
+    expect(pts.at(-1).lon).toBeCloseTo(-110.0, 5)
+    expect(pts[0].ele).toBe(1000)
+    // cumulative distance non-decreasing and reaches the polyline length
+    for (let i = 1; i < pts.length; i++) expect(pts[i].cumDistM).toBeGreaterThanOrEqual(pts[i - 1].cumDistM)
+    expect(pts.at(-1).cumDistM).toBeGreaterThan(pts[0].cumDistM)
+    // straight east-west line → lat stays ~37
+    expect(Math.abs(pts[50].lat - 37.0)).toBeLessThan(1e-4)
+  })
+
+  it('samplePolyline: degenerate input', () => {
+    expect(samplePolyline(geo, [], flatElev, 60)).toEqual([])
+    expect(samplePolyline(geo, [[-110, 37]], flatElev, 60)).toEqual([])
+    const dup = samplePolyline(geo, [[-110, 37], [-110, 37]], flatElev, 30)
+    expect(dup).toHaveLength(30)
+    expect(dup.every((p) => p.cumDistM === 0)).toBe(true)
   })
 })

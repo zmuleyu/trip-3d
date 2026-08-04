@@ -1,22 +1,31 @@
-// RoutingProvider — P4 extension point (road-network snapping).
-// MVP ships no implementation; 'none' is the only registered kind.
+// RoutingProvider — OSRM registered (this goal); amap placeholder; more later.
 //
-// @typedef {{ lon: number, lat: number }} LonLat
-// @typedef {{ distanceM: number, durationS: number, geometry: LonLat[] }} RouteLeg
-// Interface: plan(waypoints: LonLat[], opts?: { mode?: 'driving' }) => Promise<RouteLeg[]>
+// Interface: route(points: [{ lon, lat }]) => Promise<{ geometry: [[lon,lat]...], distanceM, durationS }>
+import { createOsrmProvider } from './osrm.js'
 
 class StubRoutingProvider {
   constructor(kind) { this.kind = kind }
-  // eslint-disable-next-line no-unused-vars
-  async plan(waypoints, opts = {}) {
-    throw new Error(`NotImplemented: routing provider '${this.kind}' (reserved for P4)`)
+  async route() {
+    throw new Error(`NotImplemented: routing provider '${this.kind}'`)
   }
 }
 
-const KINDS = { none: StubRoutingProvider }
+// Amap placeholder — 双轨决策:本期仅占位(key + GCJ-02 + 条款评估见 followups)
+class AmapRoutingStub {
+  constructor() { this.kind = 'amap' }
+  async route() {
+    throw new Error('amap provider 占位:待 key 管理 + GCJ-02 转换 + 条款评估(docs/followups.md)')
+  }
+}
+
+const KINDS = {
+  none: () => new StubRoutingProvider('none'),
+  osrm: () => createOsrmProvider(),
+  amap: () => new AmapRoutingStub(),
+}
 
 export function createRoutingProvider(kind) {
-  const Klass = KINDS[kind]
-  if (!Klass) throw new Error(`unknown routing provider: ${kind}`)
-  return new Klass(kind)
+  const make = KINDS[kind]
+  if (!make) throw new Error(`unknown routing provider: ${kind}`)
+  return make()
 }

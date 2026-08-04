@@ -24,6 +24,38 @@ export function moveWaypoint(route, from, to) {
   route.waypoints.splice(to, 0, wp)
 }
 
+// Arc-length resample of an arbitrary polyline (e.g. OSRM snapped geometry).
+// coords: [[lon, lat], ...] → same pt shape as sampleRoutePath ({x,z,lon,lat,ele,cumDistM}).
+export function samplePolyline(geo, coords, elevOf, nSamples = DEFAULT_SAMPLES) {
+  if (!coords || coords.length < 2) return []
+  const cps = coords.map(([lon, lat]) => lonLatToWorld(geo, lon, lat))
+  const segLens = []
+  let total = 0
+  for (let i = 1; i < cps.length; i++) {
+    const a = worldToLonLat(geo, cps[i - 1].x, cps[i - 1].z)
+    const b = worldToLonLat(geo, cps[i].x, cps[i].z)
+    const d = haversineMeters(a.lat, a.lon, b.lat, b.lon)
+    segLens.push(d)
+    total += d
+  }
+  const n = Math.max(2, nSamples)
+  const pts = []
+  for (let i = 0; i < n; i++) {
+    const target = (total * i) / (n - 1)
+    let acc = 0
+    let seg = 0
+    while (seg < segLens.length - 1 && acc + segLens[seg] < target) { acc += segLens[seg]; seg++ }
+    const span = segLens[seg] || 1
+    const f = Math.min(1, Math.max(0, (target - acc) / span))
+    const a = cps[seg], b = cps[seg + 1] ?? cps[seg]
+    const x = a.x + (b.x - a.x) * f
+    const z = a.z + (b.z - a.z) * f
+    const ll = worldToLonLat(geo, x, z)
+    pts.push({ x, z, lon: ll.lon, lat: ll.lat, ele: elevOf(x, z), cumDistM: target })
+  }
+  return pts
+}
+
 // Stable fingerprint of the route's waypoints — used to bind async weather
 // results to the route version they were queried for (stale-response guard).
 export function routeFingerprint(route) {
