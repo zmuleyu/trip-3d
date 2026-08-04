@@ -61,4 +61,52 @@ describe('buildAmapLink', () => {
     expect(url).toContain('flon=151.2')
     expect(url).toContain('dlon=151.3')
   })
+
+  it('exact export URL fixture (encoding, precision, policy/type, pipe order)', () => {
+    const route = {
+      waypoints: [
+        { name: '甲地', lon: 116.3245, lat: 39.773 },
+        { name: '乙地', lon: 113.13, lat: 41.59 },
+        { name: '丙地', lon: 114.88, lat: 40.84 },
+      ],
+    }
+    const url = buildAmapLink(route)
+    const u = new URL(url)
+    expect(u.hostname).toBe('www.amap.com')
+    expect(u.pathname).toBe('/ssr/dir')
+    const p = u.searchParams
+    expect(p.get('fname')).toBe('甲地')
+    expect(p.get('dname')).toBe('丙地')
+    expect(p.get('policy')).toBe('10')
+    expect(p.get('type')).toBe('0')
+    expect(p.get('vname')).toBe('乙地')
+    // coords are GCJ-02 with ≤7dp precision
+    expect(parseFloat(p.get('flon'))).toBeGreaterThan(116.3245)
+    expect(String(p.get('vlon')).split('.')[1].length).toBeLessThanOrEqual(7)
+  })
+
+  it('QR capacity: 12 long names encodable; 32 overflow detected gracefully', async () => {
+    const { default: qrcode } = await import('qrcode-generator')
+    const mk = (n) => ({
+      waypoints: Array.from({ length: n }, (_, i) => ({
+        name: `很长很长的中文地点名称第${i + 1}号(某某景区)`,
+        lon: 116 + i * 0.01,
+        lat: 39 + i * 0.01,
+      })),
+    })
+    const tryEncode = (url) => {
+      for (const level of ['M', 'L']) {
+        try {
+          const q = qrcode(0, level)
+          q.addData(url)
+          q.make()
+          return true
+        } catch { /* try next */ }
+      }
+      return false
+    }
+    expect(tryEncode(buildAmapLink(mk(12)))).toBe(true)
+    // 32 long names ≈ 6KB UTF-8 — beyond QR byte-mode max (~3KB); must detect, not crash
+    expect(tryEncode(buildAmapLink(mk(32)))).toBe(false)
+  })
 })

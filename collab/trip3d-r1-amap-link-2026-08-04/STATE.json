@@ -1,8 +1,10 @@
 {
-  "state": "IN_PROGRESS",
+  "state": "GOAL_CLOSEOUT_COMPLETE",
   "goal": "R1 amap 链接互操作",
   "owner": "hermes-main-session",
-  "head": "ee4ac7d",
-  "current_task": "gcj02 TDD",
-  "updated_at": "2026-08-04T23:10:00+08:00"
+  "head": "pending-final-commit",
+  "last_green": "112/112 tests + build ✓ + E2E 导入/导出通过",
+  "current_task": "done",
+  "next_action": "R2 规划面板布局重构(时间轴列表+行内操作+方案摘要卡+逐段明细)",
+  "updated_at": "2026-08-04T23:55:00+08:00"
 }

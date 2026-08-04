@@ -42,8 +42,17 @@ export function wgs84ToGcj02(lon, lat) {
   return { lon: lon + dLon, lat: lat + dLat }
 }
 
+// Iterative inverse: wgs₀ = gcj − delta(gcj), then refine wgsᵢ = gcj − delta(wgsᵢ₋₁).
+// 3 iterations converge to sub-meter accuracy (one-shot approximation can leave ~2-5m).
 export function gcj02ToWgs84(lon, lat) {
   if (outOfChina(lon, lat)) return { lon, lat }
-  const { dLat, dLon } = delta(lon, lat)
-  return { lon: lon - dLon, lat: lat - dLat }
+  let { dLat, dLon } = delta(lon, lat)
+  let wLat = lat - dLat
+  let wLon = lon - dLon
+  for (let i = 0; i < 3; i++) {
+    const d = delta(wLon, wLat)
+    wLat = lat - d.dLat
+    wLon = lon - d.dLon
+  }
+  return { lon: wLon, lat: wLat }
 }

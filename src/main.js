@@ -659,6 +659,8 @@ async function loadRealTerrain() {
       loadingEl.classList.add('hidden')
       loadingEl.textContent = 'generating terrain…'
     }, 2600)
+    // failure resolves waiters with -1 so import/search flows can report it
+    for (const w of terrainWaiters.splice(0)) w.res(-1)
   } finally {
     demBusy = false
   }
@@ -1275,6 +1277,7 @@ async function importAmapLink(urlStr) {
   const pts = [parsed.from, ...parsed.vias, parsed.to].filter(Boolean)
   if (!pts.length) { toast.show('链接中无有效地点'); return }
   if (demBusy || rebuildPending) { toast.show('地形加载中,稍后再试'); return }
+  snapState.requestId++ // atomic import: void any in-flight snap for the old route
   const cx = pts.reduce((s, p) => s + p.lon, 0) / pts.length
   const cy = pts.reduce((s, p) => s + p.lat, 0) / pts.length
   let inBounds = false
@@ -1289,6 +1292,7 @@ async function importAmapLink(urlStr) {
     const gen = terrainGen + 1
     loadRealTerrain()
     const built = await whenTerrainBuilt(gen)
+    if (built < 0) { toast.show('目标区域地形加载失败,未导入'); return }
     if (built < gen) { toast.show('加载被更新的操作取代'); return }
   }
   ensureRouteLayer()
@@ -1319,9 +1323,23 @@ function exportAmapLink() {
   ttl.className = 'ttl'
   ttl.textContent = '高德 App 扫码打开此行程'
   const cv = document.createElement('canvas')
-  const qr = qrcode(0, 'M')
-  qr.addData(url)
-  qr.make()
+  // error-correction fallback for long URLs: M → L; overflow → error toast
+  let qr = null
+  for (const level of ['M', 'L']) {
+    try {
+      const q = qrcode(0, level)
+      q.addData(url)
+      q.make()
+      qr = q
+      break
+    } catch { /* capacity exceeded, try lower correction */ }
+  }
+  if (!qr) {
+    toast.show('链接过长,无法生成二维码(请用复制链接)')
+    ov.remove()
+    navigator.clipboard?.writeText(url).catch(() => {})
+    return
+  }
   const n = qr.getModuleCount()
   const scale = Math.max(3, Math.floor(280 / n))
   cv.width = n * scale
