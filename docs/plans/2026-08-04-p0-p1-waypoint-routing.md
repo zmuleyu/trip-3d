@@ -309,9 +309,9 @@ describe('route model', () => {
     addWaypoint(r, -110.0, 37, 950)
     addWaypoint(r, -109.9, 37, 920)
     moveWaypoint(r, 0, 2)
-    expect(r.waypoints[2].elev).toBe(900)
+    expect(r.waypoints[2].ele).toBe(900)
     removeWaypoint(r, 1)
-    expect(r.waypoints.map((w) => w.elev)).toEqual([950, 900])
+    expect(r.waypoints.map((w) => w.ele)).toEqual([950, 900])
   })
 
   it('sampleRoutePath returns arc-length-parameterized points with elevation', () => {
@@ -1740,6 +1740,10 @@ git commit -m "docs: followups + README for trip-3d fork"
 | H16 | GPX 抽稀 `floor(i*len/MAX)` 丢终点(200→32 得 idx193 非 199) | 改 `round(i*(len-1)/(MAX-1))` + 首尾保留断言 |
 | H17 | decodeShare 接受 64 点但 addWaypoint 上限 32,合法载荷复原丢失 | 校验上限统一为 MAX_WAYPOINTS(import 自 route.js) |
 | M18 | GPX parseFloat 未校验,NaN 污染下游 | toWp 校验有限数+经纬范围,非法即 throw;ele 缺失/非法默认 0(明示策略) |
+
+## Codex Review(round 3,2026-08-04,实施阶段)
+
+实施 Task 1-7 时实跑 vitest 发现 plan 测试 1 处字段名错误:`moveWaypoint` 测试断言用 `.elev`,但实现(及全库一致)字段名为 `.ele` —— 两轮 review 均未抓到,由真实测试暴露。已修 plan+实现两侧(以 `ele` 为准)。**教训:plan 评审不能替代实跑;纯函数 Task 实施即以 vitest 为准。**
 
 ## Self-Review: 47/50(Codex 两轮修订后重评)
 
