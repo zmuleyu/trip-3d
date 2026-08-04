@@ -13,6 +13,12 @@ describe('provider skeletons', () => {
   })
   it('unknown provider kind throws at factory', () => {
     expect(() => createRoutingProvider('amap')).toThrow(/unknown routing provider/)
-    expect(() => createWeatherProvider('open-meteo')).toThrow(/unknown weather provider/)
+    expect(() => createWeatherProvider('caiyun')).toThrow(/unknown weather provider/)
+  })
+
+  it('open-meteo is registered and returns a working provider shape', () => {
+    const p = createWeatherProvider('open-meteo')
+    expect(p.kind).toBe('open-meteo')
+    expect(typeof p.daily).toBe('function')
   })
 })

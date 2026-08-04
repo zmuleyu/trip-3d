@@ -1,8 +1,8 @@
-// WeatherProvider — P2 extension point (Open-Meteo first, Caiyun/QWeather later).
-// MVP ships no implementation; 'none' is the only registered kind.
+// WeatherProvider — Open-Meteo registered (P2); Caiyun/QWeather reserved (P4).
 //
 // @typedef {{ date: string, precipMm: number, weatherCode: number }} WeatherDay
-// Interface: daily(point: { lon, lat }, fromISO: string, toISO: string) => Promise<WeatherDay[]>
+// Interface: daily(point: { lon, lat, ele? }, fromISO: string, toISO: string) => Promise<WeatherDay[]>
+import { createOpenMeteoProvider } from './openmeteo.js'
 
 class StubWeatherProvider {
   constructor(kind) { this.kind = kind }
@@ -12,10 +12,14 @@ class StubWeatherProvider {
   }
 }
 
-const KINDS = { none: StubWeatherProvider }
+// values are zero-arg factories (open-meteo takes default global fetch)
+const KINDS = {
+  none: () => new StubWeatherProvider('none'),
+  'open-meteo': () => createOpenMeteoProvider(),
+}
 
 export function createWeatherProvider(kind) {
-  const Klass = KINDS[kind]
-  if (!Klass) throw new Error(`unknown weather provider: ${kind}`)
-  return new Klass(kind)
+  const make = KINDS[kind]
+  if (!make) throw new Error(`unknown weather provider: ${kind}`)
+  return make()
 }
