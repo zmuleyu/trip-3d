@@ -1,11 +1,14 @@
 # trip-3d followups (v1.1+)
 
+- [ ] P2 天气 tab 启用(轨道已有 🌦 占位):Open-Meteo provider + 沿线天气卡 + 剖面卡晴雨色带
+- [ ] P3 分享/行程 tab 启用(轨道已有 ↗ 占位):海报卡 / 飞越视频(MediaRecorder,复用 tour 巡航)
+- [ ] 设置抽屉内 lil-gui 逐件原生化(本期整体搬迁未重写)
+- [ ] 图层钮与设置抽屉联动(抽屉里改值后圆钮状态同步)
+- [ ] 移动端布局:轨道沉底变 bottom tab(仅预留,未实现)
 - [ ] 途经点拖拽改线(raycast 命中 marker 后拖动,实时重采样)
 - [ ] 途经点重命名/编辑 UI(现为 P1..Pn 自动命名;GPX/分享可带入名字)
 - [ ] undo/redo 栈(现仅撤销末点)
 - [ ] 多线路同屏对比(不同颜色)
-- [ ] P2 天气:Open-Meteo provider 实现 + 沿线天气卡 + 晴雨色带(见 brainstorming §4)
-- [ ] P3 分享产物:海报卡(Canvas 合成)/ 飞越视频(MediaRecorder,复用 tour 巡航)
 - [ ] P4 路网吸附:openrouteservice / 高德(GCJ-02 边界转换,provider 骨架已就位)
 - [ ] 分享 URL 压缩(lz-string)应对长线路 hash 过长(当前 3 点 hash ≈ 230 字符)
 - [ ] 移动端触控(双指旋转与单指打点手势冲突消解)

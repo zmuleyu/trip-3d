@@ -1,12 +1,12 @@
 {
-  "state": "IN_PROGRESS",
+  "state": "IMPLEMENTATION_COMPLETE",
   "goal": "trip-3d UI 交互改造(地图产品化)",
   "owner": "hermes-main-session",
   "authority": "single-writer",
-  "head": "bd9a32b",
-  "dirty": [],
-  "last_green": "32/32 tests @ bd9a32b, vite build ✓",
-  "current_task": "U2",
-  "next_action": "写 src/ui/mode.test.js(RED)→ mode.js(GREEN)→ commit",
-  "updated_at": "2026-08-04T18:35:00+08:00"
+  "head": "540b639+",
+  "dirty": ["collab/*", "docs/*(待提交)"],
+  "last_green": "36/36 tests, vite build ✓, E2E 6/6 视觉项 ✓",
+  "current_task": "U7",
+  "next_action": "最终 commit + 文档收尾",
+  "updated_at": "2026-08-04T19:05:00+08:00"
 }
