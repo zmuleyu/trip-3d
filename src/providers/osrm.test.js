@@ -38,6 +38,35 @@ describe('osrm provider', () => {
     expect(r.geometry[0]).toEqual([102.83, 31.05])
   })
 
+  it('maps legs to { distanceM, durationS } per leg', async () => {
+    const multi = {
+      code: 'Ok',
+      routes: [
+        {
+          distance: 3000,
+          duration: 2600,
+          geometry: { type: 'LineString', coordinates: [[0, 0], [1, 1], [2, 2]] },
+          legs: [
+            { distance: 1200, duration: 1000 },
+            { distance: 1800, duration: 1600 },
+          ],
+        },
+      ],
+    }
+    const p = createOsrmProvider({ fetchImpl: okJson(multi) })
+    const r = await p.route([{ lon: 0, lat: 0 }, { lon: 1, lat: 1 }, { lon: 2, lat: 2 }])
+    expect(r.legs).toHaveLength(2)
+    expect(r.legs[0]).toEqual({ distanceM: 1200, durationS: 1000 })
+    expect(r.legs[1]).toEqual({ distanceM: 1800, durationS: 1600 })
+  })
+
+  it('missing legs in response → legs is []', async () => {
+    const noLegs = { code: 'Ok', routes: [{ distance: 100, duration: 90, geometry: { type: 'LineString', coordinates: [[0, 0], [1, 1]] } }] }
+    const p = createOsrmProvider({ fetchImpl: okJson(noLegs) })
+    const r = await p.route([{ lon: 0, lat: 0 }, { lon: 1, lat: 1 }])
+    expect(r.legs).toEqual([])
+  })
+
   it('builds URL with foot profile and geojson overview', async () => {
     let url = ''
     const p = createOsrmProvider({ fetchImpl: async (u) => { url = u; return { ok: true, json: async () => OSRM_FIXTURE } } })

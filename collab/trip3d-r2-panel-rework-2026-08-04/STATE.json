@@ -1,0 +1,8 @@
+{
+  "state": "IN_PROGRESS",
+  "goal": "R2 规划面板布局重构",
+  "owner": "hermes-main-session",
+  "head": "4f4200b",
+  "current_task": "osrm legs + computeLegs TDD",
+  "updated_at": "2026-08-05T00:15:00+08:00"
+}

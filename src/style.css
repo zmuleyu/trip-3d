@@ -481,3 +481,29 @@ body {
 .ui-qr-card .ttl { font-weight: bold; margin-bottom: 4px; }
 .ui-qr-card .lnk { word-break: break-all; font-size: 9px; opacity: 0.6; max-height: 40px; overflow: hidden; }
 .ui-qr-card button { font: inherit; font-size: 11px; padding: 4px 12px; margin: 6px 4px 0; cursor: pointer; background: #17191b; color: #fff; border: 1px solid #17191b; }
+
+/* ------------------------------------------------------------------ timeline list + plan card + legs */
+.pp-tl { max-height: 260px; overflow-y: auto; }
+.pp-tl-item { display: flex; gap: 8px; align-items: flex-start; padding: 3px 0; }
+.pp-tl-rail { display: flex; flex-direction: column; align-items: center; width: 12px; flex-shrink: 0; align-self: stretch; }
+.pp-tl-dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 3px; flex-shrink: 0; }
+.pp-tl-dot.start { background: #2e9e4f; }
+.pp-tl-dot.via { background: rgba(23,25,27,0.35); }
+.pp-tl-dot.end { background: #d32f2f; }
+.pp-tl-line { width: 2px; flex: 1; background: rgba(23,25,27,0.2); margin-top: 1px; }
+.pp-tl-body { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; flex: 1; min-width: 0; }
+.pp-tl-name { font-size: 11px; font-weight: bold; cursor: text; max-width: 100%; overflow-wrap: anywhere; }
+.pp-tl-rename { font: inherit; font-size: 11px; border: 1px solid #ff4d00; background: #fff; padding: 1px 4px; width: 140px; }
+.pp-tl-coord { font-size: 9px; opacity: 0.55; }
+.pp-tl-ops { display: none; gap: 2px; margin-left: auto; }
+.pp-tl-item:hover .pp-tl-ops { display: inline-flex; }
+.pp-tl-ops button { font: inherit; font-size: 10px; padding: 0 5px; cursor: pointer; background: #fff; border: 1px solid rgba(23,25,27,0.3); line-height: 1.5; }
+.pp-tl-ops button:hover { border-color: #ff4d00; color: #ff4d00; }
+.pp-plan { border: 1px solid rgba(255,77,0,0.5); }
+.pp-plan-big { font-size: 22px; font-weight: bold; line-height: 1.1; }
+.pp-plan-sub { font-size: 10px; opacity: 0.75; margin-top: 2px; }
+.pp-legs { margin-top: 4px; }
+.pp-legs-head { font: inherit; font-size: 10px; padding: 1px 6px; cursor: pointer; background: none; border: 1px solid rgba(23,25,27,0.25); }
+.pp-legs-list { margin-top: 3px; border-left: 2px solid rgba(255,77,0,0.4); padding-left: 6px; }
+.pp-legs-list.hidden { display: none; }
+.pp-leg { font-size: 10px; padding: 2px 0; border-bottom: 1px dashed rgba(23,25,27,0.12); overflow-wrap: anywhere; }

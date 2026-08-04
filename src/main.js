@@ -24,7 +24,8 @@ import { createHud3D, findPois } from './hud3d.js'
 import { createHud2D } from './hud2d.js'
 import { loadDem, sampleDem } from './dem.js'
 import { makeGeoContext, worldToLonLat, lonLatToWorld } from './lib/geo.js'
-import { createRoute, addWaypoint, routeStats, samplePolyline } from './lib/route.js'
+import { createRoute, addWaypoint, removeWaypoint, moveWaypoint, routeStats, samplePolyline } from './lib/route.js'
+import { computeLegs, normalizeOsrmLegs } from './lib/legs.js'
 import { RouteLayer } from './route/RouteLayer.js'
 import { openRouteStore } from './lib/store.js'
 import { routeToGpx, gpxToRoute } from './lib/gpx.js'
@@ -737,6 +738,7 @@ const routingProvider = createRoutingProvider('osrm')
 const snapState = {
   on: localStorage.getItem(SNAP_LS) === '1',
   geometry: null,
+  legs: null,
   revision: -1,
   demKey: '',
   requestId: 0,
@@ -759,6 +761,7 @@ async function runSnap() {
   if (!snapState.on) return
   if (wps.length < 2) {
     snapState.geometry = null
+    snapState.legs = null
     snapState.revision = route.revision
     refreshRoute()
     return
@@ -767,16 +770,17 @@ async function runSnap() {
   const rev = route.revision
   const reqId = ++snapState.requestId
   const cached = snapCache.get(key)
-  if (cached) { commitSnap(cached, rev, reqId); return }
+  if (cached) { commitSnap(cached.geometry, cached.legs, rev, reqId); return }
   planningPanel.setSnapState(true, '吸附中…')
   try {
-    const geometry = await snapFetch(key, wps)
+    const { geometry, legs } = await snapFetch(key, wps)
     if (reqId !== snapState.requestId || rev !== route.revision) return
-    commitSnap(geometry, rev, reqId)
+    commitSnap(geometry, legs, rev, reqId)
   } catch (err) {
     console.warn('snap failed', err)
     if (reqId !== snapState.requestId) return
     snapState.geometry = null
+    snapState.legs = null
     snapState.revision = rev
     planningPanel.setSnapState(true, '吸附失败,回退直线')
     toast.show('路网吸附失败,已回退直线')
@@ -785,30 +789,42 @@ async function runSnap() {
 }
 
 // whole-route single request (≤32 coords); NoRoute → per-segment sequential
-// fallback where unroutable pairs degrade to straight lines (never cached)
+// fallback where unroutable pairs degrade to straight lines (never cached).
+// Returns { geometry, legs } — legs are real OSRM segments where available,
+// computed straight-line legs for fallback pairs (real:false).
 function snapFetch(key, wps) {
   if (snapInflight.has(key)) return snapInflight.get(key)
   const p = (async () => {
     try {
       const r = await routingProvider.route(wps.map(({ lon, lat }) => ({ lon, lat })))
-      snapCache.set(key, r.geometry)
-      return r.geometry
+      const out = { geometry: r.geometry, legs: r.legs }
+      snapCache.set(key, out)
+      return out
     } catch (err) {
       if (!/NoRoute/.test(err.message)) throw err
       const segs = []
+      const legs = []
       for (let i = 1; i < wps.length; i++) {
         const a = wps[i - 1], b = wps[i]
         const segKey = snapCacheKey('osrm', 'foot', a, b)
-        if (snapCache.has(segKey)) { segs.push(snapCache.get(segKey)); continue }
+        if (snapCache.has(segKey)) {
+          const c = snapCache.get(segKey)
+          segs.push(c.geometry)
+          legs.push(...c.legs)
+          continue
+        }
         try {
           const r = await routingProvider.route([{ lon: a.lon, lat: a.lat }, { lon: b.lon, lat: b.lat }])
-          snapCache.set(segKey, r.geometry)
+          const out = { geometry: r.geometry, legs: r.legs }
+          snapCache.set(segKey, out)
           segs.push(r.geometry)
+          legs.push(...r.legs)
         } catch {
           segs.push([[a.lon, a.lat], [b.lon, b.lat]])
+          legs.push(computeLegs([a, b])[0]) // straight fallback, real:false, never cached
         }
       }
-      return joinGeometries(segs)
+      return { geometry: joinGeometries(segs), legs }
     } finally {
       snapInflight.delete(key)
     }
@@ -817,9 +833,10 @@ function snapFetch(key, wps) {
   return p
 }
 
-function commitSnap(geometry, rev, reqId) {
+function commitSnap(geometry, legs, rev, reqId) {
   if (reqId !== snapState.requestId || rev !== route.revision) return
   snapState.geometry = geometry
+  snapState.legs = legs
   snapState.revision = rev
   snapState.demKey = currentDemKey()
   planningPanel.setSnapState(true, `已吸附(${geometry.length} 点)`)
@@ -1145,7 +1162,13 @@ const panelHost = createPanelHost()
 const profileCard = createProfileCard(params.hudAccent)
 
 function updateRouteUI(route, stats, pts) {
-  planningPanel.update(route, stats)
+  // legs: real OSRM segments when snap result matches this revision; computed otherwise
+  const osrmLegs = snapState.on && snapState.legs && snapState.revision === route.revision && snapState.demKey === currentDemKey()
+    ? normalizeOsrmLegs(snapState.legs, route.waypoints)
+    : null
+  const legs = osrmLegs ?? (route.waypoints.length >= 2 ? computeLegs(route.waypoints) : null)
+  const wxIndex = weatherState.result && weatherState.revision === route.revision ? weatherState.result.index?.overall : null
+  planningPanel.update(route, stats, legs, wxIndex)
   // weather band only when a fresh result matches this route revision
   const wxDays = weatherState.result && weatherState.revision === route.revision ? weatherState.result.agg : null
   profileCard.update(stats, pts, wxDays)
@@ -1173,7 +1196,7 @@ async function runWeatherQuery({ dates, allPoints }) {
     if (reqId !== weatherState.requestId) return // a newer query superseded this one
     const agg = aggregateTripDays(all)
     weatherState.revision = rev
-    weatherState.result = { agg, rep }
+    weatherState.result = { agg, rep, index: tripIndex(all) }
     weatherPanel.setResult({ agg, rep, index: tripIndex(all), repLabel: allPoints ? '途经点' : '代表点' })
     refreshRoute() // re-render profile card with the band bound to this fingerprint
   } catch (err) {
@@ -1399,6 +1422,9 @@ const routeActions = {
   onSearchAdd: searchAdd,
   onImportAmap: importAmapLink,
   onExportAmap: exportAmapLink,
+  onWpRemove: (i) => { removeWaypoint(route, i); refreshRoute(); scheduleSnap() },
+  onWpMove: (i, dir) => { moveWaypoint(route, i, i + dir); refreshRoute(); scheduleSnap() },
+  onWpRename: (i, name) => { route.waypoints[i].name = name; route.revision++; refreshRoute() },
   onSnapToggle: (on) => {
     snapState.on = on
     localStorage.setItem(SNAP_LS, on ? '1' : '0')

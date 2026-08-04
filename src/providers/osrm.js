@@ -22,6 +22,7 @@ export function createOsrmProvider({ fetchImpl = fetch } = {}) {
         geometry: r.geometry.coordinates,
         distanceM: r.distance,
         durationS: r.duration,
+        legs: (r.legs ?? []).map((l) => ({ distanceM: l.distance, durationS: l.duration })),
       }
     },
   }

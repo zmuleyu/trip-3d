@@ -64,12 +64,24 @@ export function createPlanningPanel(actions) {
   el.appendChild(name)
 
   const wpList = document.createElement('div')
-  wpList.className = 'ui-wp-list'
+  wpList.className = 'ui-wp-list pp-tl'
   el.appendChild(wpList)
 
   const stat = document.createElement('div')
-  stat.className = 'ui-stat-card'
+  stat.className = 'ui-stat-card pp-plan'
   el.appendChild(stat)
+
+  // collapsible per-leg details
+  const legsBox = document.createElement('div')
+  legsBox.className = 'pp-legs hidden'
+  const legsHead = document.createElement('button')
+  legsHead.className = 'pp-legs-head'
+  legsHead.textContent = '详情 ▾'
+  const legsList = document.createElement('div')
+  legsList.className = 'pp-legs-list'
+  legsHead.onclick = () => legsList.classList.toggle('hidden')
+  legsBox.append(legsHead, legsList)
+  el.appendChild(legsBox)
 
   const hint = document.createElement('div')
   hint.className = 'hint'
@@ -97,42 +109,111 @@ export function createPlanningPanel(actions) {
   return {
     el,
     get nameEl() { return name },
-    update(route, stats) {
+    // update(route, stats, legs, weatherIndex) — timeline list + summary card + legs
+    update(route, stats, legs = null, weatherIndex = null) {
       if (document.activeElement !== name) name.value = route.name
       wpList.replaceChildren()
+      const n = route.waypoints.length
       route.waypoints.forEach((w, i) => {
         const item = document.createElement('div')
-        item.className = 'ui-wp-item'
-        const coord = `${w.lon.toFixed(4)}, ${w.lat.toFixed(4)} · ${Math.round(w.ele)}m`
-        item.innerHTML = `<span class="n">${i + 1}</span><span></span>`
-        item.children[1].textContent = w.name
-        const c = document.createElement('span')
-        c.className = 'coord'
-        c.textContent = coord
-        item.appendChild(c)
+        item.className = 'pp-tl-item'
+        const role = i === 0 ? 'start' : i === n - 1 && n > 1 ? 'end' : 'via'
+
+        const rail = document.createElement('div')
+        rail.className = 'pp-tl-rail'
+        const dot = document.createElement('span')
+        dot.className = `pp-tl-dot ${role}`
+        rail.appendChild(dot)
+        if (i < n - 1) {
+          const line = document.createElement('span')
+          line.className = 'pp-tl-line'
+          rail.appendChild(line)
+        }
+
+        const body = document.createElement('div')
+        body.className = 'pp-tl-body'
+        const nm = document.createElement('span')
+        nm.className = 'pp-tl-name'
+        nm.textContent = w.name
+        nm.title = '双击重命名'
+        nm.ondblclick = () => {
+          const inp = document.createElement('input')
+          inp.className = 'pp-tl-rename'
+          inp.value = w.name
+          nm.replaceWith(inp)
+          inp.focus()
+          inp.select()
+          const commit = () => actions.onWpRename?.(i, inp.value.trim() || w.name)
+          inp.onkeydown = (e) => {
+            if (e.key === 'Enter') commit()
+            if (e.key === 'Escape') inp.replaceWith(nm)
+          }
+          inp.onblur = commit
+        }
+        const coord = document.createElement('span')
+        coord.className = 'pp-tl-coord'
+        coord.textContent = `${w.lon.toFixed(4)}, ${w.lat.toFixed(4)} · ${Math.round(w.ele)}m`
+        const ops = document.createElement('span')
+        ops.className = 'pp-tl-ops'
+        const mkOp = (label, title, fn) => {
+          const b = document.createElement('button')
+          b.textContent = label
+          b.title = title
+          b.onclick = fn
+          ops.appendChild(b)
+        }
+        if (i > 0) mkOp('↑', '上移', () => actions.onWpMove?.(i, -1))
+        if (i < n - 1) mkOp('↓', '下移', () => actions.onWpMove?.(i, 1))
+        mkOp('✕', '删除', () => actions.onWpRemove?.(i))
+        body.append(nm, coord, ops)
+        item.append(rail, body)
         wpList.appendChild(item)
       })
-      if (!route.waypoints.length) {
+
+      stat.replaceChildren()
+      if (!n) {
         stat.innerHTML = '<span class="disclaimer">点击地形落第一个途经点</span>'
+        legsBox.classList.add('hidden')
         return
       }
       const km = stats && stats.distanceM ? (stats.distanceM / 1000).toFixed(1) : '0.0'
-      stat.replaceChildren()
-      const line1 = document.createElement('div')
-      const b = document.createElement('b')
-      b.textContent = `${km} km`
-      line1.appendChild(b)
-      line1.append(` · ${route.waypoints.length} 点`)
-      if (stats) line1.append(` · ↑${stats.ascentM}m ↓${stats.descentM}m`)
-      const line2 = document.createElement('div')
+      const big = document.createElement('div')
+      big.className = 'pp-plan-big'
       if (stats) {
-        line2.textContent = `最高 ${stats.maxEle}m · 示意车程 ${Math.floor(stats.driveMinutes / 60)}h${stats.driveMinutes % 60}m `
-        const d = document.createElement('span')
-        d.className = 'disclaimer'
-        d.textContent = '(启发式,非导航)'
-        line2.appendChild(d)
+        const h = Math.floor(stats.driveMinutes / 60)
+        const m = stats.driveMinutes % 60
+        big.textContent = h ? `${h}h${m}m` : `${m}m`
+      } else {
+        big.textContent = `${km} km`
       }
-      stat.append(line1, line2)
+      const sub = document.createElement('div')
+      sub.className = 'pp-plan-sub'
+      sub.textContent = `${km} km · ${n} 点`
+      if (stats) sub.textContent += ` · ↑${stats.ascentM}m ↓${stats.descentM}m · 最高 ${stats.maxEle}m`
+      if (weatherIndex != null) sub.textContent += ` · 天气指数 ${weatherIndex}`
+      const d = document.createElement('span')
+      d.className = 'disclaimer'
+      d.textContent = '(示意,非导航)'
+      sub.appendChild(d)
+      stat.append(big, sub)
+
+      // per-leg details
+      if (legs?.length) {
+        legsBox.classList.remove('hidden')
+        legsList.replaceChildren()
+        legs.forEach((l, i) => {
+          const r = document.createElement('div')
+          r.className = 'pp-leg'
+          const dur = l.real
+            ? ` ${Math.floor(l.durationS / 3600)}h${Math.round((l.durationS % 3600) / 60)}m`
+            : ` ~${l.driveMinutes}m`
+          const ele = l.ascentM != null ? ` ↑${l.ascentM}m ↓${l.descentM}m` : ''
+          r.textContent = `${i + 1}. ${l.from} → ${l.to} · ${(l.distanceM / 1000).toFixed(1)}km${ele}${dur}${l.real ? ' (路网)' : ''}`
+          legsList.appendChild(r)
+        })
+      } else {
+        legsBox.classList.add('hidden')
+      }
     },
 
     // ---- search API (explicit trigger; results rendered with ⊕ add buttons)
