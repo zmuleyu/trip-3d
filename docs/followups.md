@@ -17,3 +17,8 @@
 - [ ] 分享 URL 压缩(lz-string)应对长线路 hash 过长(当前 3 点 hash ≈ 230 字符)
 - [ ] 移动端触控(双指旋转与单指打点手势冲突消解)
 - [ ] 分享链接含 exaggeration/相机视角等视觉参数(现仅 dem 中心+zoom+waypoints)
+- [ ] OSRM 自托管路径(FOSSGIS routed-foot 为公共服务,无 SLA;重度使用须自建 osrm-backend foot profile)
+- [ ] 高德实体化:AmapProvider(key 管理 + GCJ-02 转换 + 条款评估;geocode/routing stub 已占位,调用即抛)
+- [ ] 吸附:TooBig 防御(当前整线路单请求 ≤32 坐标;超出时缺逐段队列)
+- [ ] 搜索:Photon 使用政策核对(当前作 fallback;主用需确认其条款)
+- [ ] 搜索:结果分类图标(town/peak/river 等 type 可视化)

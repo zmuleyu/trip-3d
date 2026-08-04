@@ -23,7 +23,7 @@ import { createLabels, disposeLabels } from './labels.js'
 import { createHud3D, findPois } from './hud3d.js'
 import { createHud2D } from './hud2d.js'
 import { loadDem, sampleDem } from './dem.js'
-import { makeGeoContext, worldToLonLat } from './lib/geo.js'
+import { makeGeoContext, worldToLonLat, lonLatToWorld } from './lib/geo.js'
 import { createRoute, addWaypoint, routeStats, samplePolyline } from './lib/route.js'
 import { RouteLayer } from './route/RouteLayer.js'
 import { openRouteStore } from './lib/store.js'
@@ -1170,7 +1170,7 @@ async function runWeatherQuery({ dates, allPoints }) {
     const agg = aggregateTripDays(all)
     weatherState.revision = rev
     weatherState.result = { agg, rep }
-    weatherPanel.setResult({ agg, rep, index: tripIndex(all) })
+    weatherPanel.setResult({ agg, rep, index: tripIndex(all), repLabel: allPoints ? '途经点' : '代表点' })
     refreshRoute() // re-render profile card with the band bound to this fingerprint
   } catch (err) {
     console.warn('weather query failed', err)

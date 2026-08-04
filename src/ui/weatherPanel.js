@@ -76,10 +76,10 @@ export function createWeatherPanel({ onQuery }) {
       cardsEl.replaceChildren()
       setStatus('先在规划 tab 打点成线(至少 1 个途经点)', 'error')
     },
-    // agg: aggregateTripDays result; rep: representative points; index: tripIndex result
-    setResult({ agg, rep, index }) {
+    // agg: aggregateTripDays result; rep: points queried; index: tripIndex result; repLabel: 代表点|途经点
+    setResult({ agg, rep, index, repLabel = '代表点' }) {
       goBtn.disabled = false
-      setStatus(`${agg[0].date} ~ ${agg.at(-1).date} · ${rep.length} 个代表点 · 数据为预报,出行前请复核`)
+      setStatus(`${agg[0].date} ~ ${agg.at(-1).date} · ${rep.length} 个${repLabel} · 数据为预报,出行前请复核`)
       if (index) {
         indexEl.classList.remove('hidden')
         indexEl.innerHTML = `出行指数 <b>${index.overall}</b> <span>${indexLabel(index.overall)}</span>` +

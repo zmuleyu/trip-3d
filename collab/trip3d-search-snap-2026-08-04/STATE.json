@@ -1,12 +1,12 @@
 {
-  "state": "IN_PROGRESS",
+  "state": "GOAL_CLOSEOUT_COMPLETE",
   "goal": "搜索驱动打点+路网吸附+多点天气(双轨:高德占位)",
   "owner": "hermes-main-session",
   "authority": "single-writer",
-  "head": "003e61a",
+  "head": "pending-final-commit",
   "dirty": [],
-  "last_green": "71/71 tests, vite build ✓ @ 003e61a",
-  "current_task": "G1/G2",
-  "next_action": "Codex review 后台 + geocode provider TDD",
-  "updated_at": "2026-08-04T21:10:00+08:00"
+  "last_green": "92/92 tests, vite build ✓, E2E 搜索/界外打点/吸附/多点天气全通过",
+  "current_task": "done",
+  "next_action": "下一轮:P3 签名功能(日照/帷幕/视频)或高德实体化评估或 v1.1 打磨",
+  "updated_at": "2026-08-04T21:55:00+08:00"
 }
