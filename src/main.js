@@ -24,7 +24,7 @@ import { createHud3D, findPois } from './hud3d.js'
 import { createHud2D } from './hud2d.js'
 import { loadDem, sampleDem } from './dem.js'
 import { makeGeoContext, worldToLonLat } from './lib/geo.js'
-import { createRoute, addWaypoint, routeStats } from './lib/route.js'
+import { createRoute, addWaypoint, routeStats, routeFingerprint } from './lib/route.js'
 import { RouteLayer } from './route/RouteLayer.js'
 import { openRouteStore } from './lib/store.js'
 import { routeToGpx, gpxToRoute } from './lib/gpx.js'
@@ -32,6 +32,10 @@ import { encodeShare, decodeShare } from './lib/share.js'
 import { createModeMachine, MODES } from './ui/mode.js'
 import { createRail, createPanelHost, createLayerButtons, createToast } from './ui/chrome.js'
 import { createPlanningPanel, createLibraryPanel, createProfileCard } from './ui/panels.js'
+import { createWeatherPanel } from './ui/weatherPanel.js'
+import { createOpenMeteoProvider } from './providers/openmeteo.js'
+import { pickRepresentativePoints, aggregateTripDays } from './lib/weather.js'
+import { tripIndex } from './lib/tripIndex.js'
 
 // ------------------------------------------------------------------ params
 
@@ -1001,8 +1005,43 @@ const profileCard = createProfileCard(params.hudAccent)
 
 function updateRouteUI(route, stats, pts) {
   planningPanel.update(route, stats)
-  profileCard.update(stats, pts)
+  // weather band only when a fresh result matches this route version
+  const wxDays = weatherState.result && weatherState.fingerprint === routeFingerprint(route)
+    ? weatherState.result.agg
+    : null
+  profileCard.update(stats, pts, wxDays)
 }
+
+// ------------------------------------------------------------------ weather state
+// Results are bound to a route fingerprint + monotonically increasing requestId:
+// route edits invalidate the band; slow responses can never overwrite newer state.
+const weatherProvider = createOpenMeteoProvider()
+const weatherState = { fingerprint: null, requestId: 0, result: null }
+
+async function runWeatherQuery({ dates }) {
+  if (!route.waypoints.length) { weatherPanel.setEmptyRoute(); return }
+  const rep = pickRepresentativePoints(route.waypoints)
+  const fp = routeFingerprint(route)
+  const reqId = ++weatherState.requestId
+  weatherPanel.setLoading(rep)
+  try {
+    const from = dates[0]
+    const to = dates[dates.length - 1]
+    const all = []
+    for (const p of rep) all.push(...await weatherProvider.daily(p, from, to))
+    if (reqId !== weatherState.requestId) return // a newer query superseded this one
+    const agg = aggregateTripDays(all)
+    weatherState.fingerprint = fp
+    weatherState.result = { agg, rep }
+    weatherPanel.setResult({ agg, rep, index: tripIndex(all) })
+    refreshRoute() // re-render profile card with the band bound to this fingerprint
+  } catch (err) {
+    console.warn('weather query failed', err)
+    weatherPanel.setError(`天气查询失败:${err.message}(网络不可用或超出预报窗口)`)
+  }
+}
+
+const weatherPanel = createWeatherPanel({ onQuery: runWeatherQuery })
 
 async function refreshLibrary() {
   const s = await routeStoreReady
@@ -1100,13 +1139,14 @@ function showTab(id) {
   if (mode.isPlanning()) mode.exitPlanning()
   rail.setActive(id)
   if (id === 'library') panelHost.show('library', '线路库', null, libraryPanel.el)
+  if (id === 'weather') panelHost.show('weather', '天气推演', null, weatherPanel.el)
 }
 
 const rail = createRail({
   items: [
     { id: 'planning', icon: '🗺', label: '规划', onSelect: () => mode.togglePlanning() },
     { id: 'library', icon: '📁', label: '线路库', onSelect: () => showTab('library') },
-    { id: 'weather', icon: '🌦', label: '天气', badge: 'P2', disabled: true, onSelect: () => {} },
+    { id: 'weather', icon: '🌦', label: '天气', onSelect: () => showTab('weather') },
     { id: 'share', icon: '↗', label: '分享', badge: 'P3', disabled: true, onSelect: () => {} },
   ],
   settingsItem: { id: 'settings', icon: '⚙', label: '设置', onSelect: () => toggleSettings() },

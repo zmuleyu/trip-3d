@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { makeGeoContext } from './geo.js'
 import {
   createRoute, addWaypoint, removeWaypoint, moveWaypoint,
-  sampleRoutePath, routeStats, MAX_WAYPOINTS,
+  sampleRoutePath, routeStats, routeFingerprint, MAX_WAYPOINTS,
 } from './route.js'
 
 const dem = { lat: 36.998, lon: -110.0984, zoom: 12, size: 768 }
@@ -74,5 +74,17 @@ describe('route model', () => {
   it('sampleRoutePath with <2 waypoints returns []', () => {
     expect(sampleRoutePath(geo, [], flatElev, 120)).toEqual([])
     expect(sampleRoutePath(geo, [{ lon: 0, lat: 0 }], flatElev, 120)).toEqual([])
+  })
+
+  it('routeFingerprint changes on waypoint edit, stable on identical input', () => {
+    const r = createRoute('t')
+    addWaypoint(r, -110.1, 37, 900)
+    const a = routeFingerprint(r)
+    expect(routeFingerprint(r)).toBe(a)
+    addWaypoint(r, -110.0, 37.01, 950)
+    expect(routeFingerprint(r)).not.toBe(a)
+    const b = routeFingerprint(r)
+    r.waypoints[1].lon += 0.001
+    expect(routeFingerprint(r)).not.toBe(b)
   })
 })

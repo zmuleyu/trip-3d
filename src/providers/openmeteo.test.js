@@ -11,8 +11,8 @@ const FIXTURE = {
     temperature_2m_max: [12.3, 11.0, 9.8],
     temperature_2m_min: [2.1, 1.0, -0.5],
     precipitation_sum: [0.0, 3.2, 0.4],
-    weathercode: [2, 61, 3],
-    windspeed_10m_max: [14.5, 33.2, 18.0],
+    weather_code: [2, 61, 3],
+    wind_speed_10m_max: [14.5, 33.2, 18.0],
   },
 }
 
@@ -48,7 +48,7 @@ describe('open-meteo provider', () => {
     expect(seenUrl).toContain('https://api.open-meteo.com/v1/forecast?')
     expect(seenUrl).toContain('latitude=31.05')
     expect(seenUrl).toContain('longitude=102.83')
-    expect(seenUrl).toContain('daily=temperature_2m_max%2Ctemperature_2m_min%2Cprecipitation_sum%2Cweathercode%2Cwindspeed_10m_max')
+    expect(seenUrl).toContain('daily=temperature_2m_max%2Ctemperature_2m_min%2Cprecipitation_sum%2Cweather_code%2Cwind_speed_10m_max')
     expect(seenUrl).toContain('timezone=auto')
     expect(seenUrl).toContain('start_date=2026-09-14')
     expect(seenUrl).toContain('end_date=2026-09-16')
@@ -86,5 +86,14 @@ describe('open-meteo provider', () => {
       fetchImpl: async () => ({ ok: true, json: async () => ({ latitude: 0 }) }),
     })
     await expect(p.daily({ lon: 0, lat: 0 }, '2026-09-14', '2026-09-15')).rejects.toThrow(/daily/)
+  })
+
+  it('throws when a daily array is shorter than time (length mismatch)', async () => {
+    const bad = JSON.parse(JSON.stringify(FIXTURE))
+    bad.daily.weather_code = [2]
+    const p = createOpenMeteoProvider({
+      fetchImpl: async () => ({ ok: true, json: async () => bad }),
+    })
+    await expect(p.daily({ lon: 0, lat: 0 }, '2026-09-14', '2026-09-16')).rejects.toThrow(/length mismatch/)
   })
 })

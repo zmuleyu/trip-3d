@@ -24,6 +24,16 @@ export function moveWaypoint(route, from, to) {
   route.waypoints.splice(to, 0, wp)
 }
 
+// Stable fingerprint of the route's waypoints — used to bind async weather
+// results to the route version they were queried for (stale-response guard).
+export function routeFingerprint(route) {
+  const wps = route.waypoints
+  if (!wps.length) return `${route.id}:empty`
+  const f = wps[0], l = wps[wps.length - 1]
+  const mid = wps.reduce((s, w) => s + w.lon * 1e-6 + w.lat * 1e-3, 0).toFixed(6)
+  return `${route.id}:${wps.length}:${f.lon.toFixed(4)},${f.lat.toFixed(4)}:${l.lon.toFixed(4)},${l.lat.toFixed(4)}:${mid}`
+}
+
 // Catmull-Rom (uniform) over world-space control points; sampled by arc length.
 // elevOf: (x, z) => meters — injected so tests can use fakes; production passes
 // a closure over sampleDem() with exaggeration handled by the render layer.

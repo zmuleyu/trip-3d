@@ -30,8 +30,41 @@ const RAIN_CODES = new Set([
 ])
 
 export function isRainDay(day) {
-  if (day.precipMm >= 1) return true
+  // finite normalization: null/NaN/negative precip counts as 0
+  const p = Number.isFinite(day.precipMm) && day.precipMm > 0 ? day.precipMm : 0
+  if (p >= 1) return true
   return RAIN_CODES.has(day.weatherCode)
+}
+
+const finiteOr = (v, fallback) => (Number.isFinite(v) ? v : fallback)
+
+function pickWorst(cur, d) {
+  return {
+    precipMm: Math.max(cur?.precipMm ?? -1, finiteOr(d.precipMm, 0)),
+    windMax: Math.max(cur?.windMax ?? -1, finiteOr(d.windMax, 0)),
+    tempMin: Math.min(cur?.tempMin ?? 999, finiteOr(d.tempMin, 999)),
+    tempMax: Math.max(cur?.tempMax ?? -999, finiteOr(d.tempMax, -999)),
+    weatherCode: Math.max(cur?.weatherCode ?? -1, finiteOr(d.weatherCode, 0)),
+  }
+}
+
+// Aggregate multi-point WeatherDay[] into one row per date using the safety-first
+// "worst point" rule: max precip, max wind, min tempMin, most severe weather code.
+// Returns TripWeatherDay[] sorted by date; each row keeps `points` for the panel.
+export function aggregateTripDays(days) {
+  const byDate = new Map()
+  for (const d of days) {
+    const cur = byDate.get(d.date)
+    if (!cur) {
+      byDate.set(d.date, { date: d.date, points: [d], ...pickWorst(null, d) })
+    } else {
+      cur.points.push(d)
+      Object.assign(cur, pickWorst(cur, d))
+    }
+  }
+  return [...byDate.values()]
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map((d) => ({ ...d, isRain: isRainDay(d) }))
 }
 
 export function tripDates(startISO, days) {

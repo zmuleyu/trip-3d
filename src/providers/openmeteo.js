@@ -2,7 +2,8 @@
 // https://open-meteo.com/ — data: national weather services, CC-BY 4.0.
 // fetchImpl is injected for tests (fixture); production passes the global fetch.
 const BASE = 'https://api.open-meteo.com/v1/forecast'
-const DAILY = 'temperature_2m_max,temperature_2m_min,precipitation_sum,weathercode,windspeed_10m_max'
+// official current field names (legacy aliases weathercode/windspeed_10m_max not used)
+const DAILY = 'temperature_2m_max,temperature_2m_min,precipitation_sum,weather_code,wind_speed_10m_max'
 
 export function createOpenMeteoProvider({ fetchImpl = fetch } = {}) {
   return {
@@ -26,6 +27,10 @@ export function createOpenMeteoProvider({ fetchImpl = fetch } = {}) {
       const d = body.daily
       if (!d || !Array.isArray(d.time) || !d.time.length)
         throw new Error('open-meteo: empty daily block')
+      const n = d.time.length
+      for (const key of ['temperature_2m_max', 'temperature_2m_min', 'precipitation_sum', 'weather_code', 'wind_speed_10m_max'])
+        if (!Array.isArray(d[key]) || d[key].length !== n)
+          throw new Error(`open-meteo: daily.${key} length mismatch`)
 
       const pt = { lon: point.lon, lat: point.lat, ele: point.ele }
       return d.time.map((date, i) => ({
@@ -34,8 +39,8 @@ export function createOpenMeteoProvider({ fetchImpl = fetch } = {}) {
         tempMax: d.temperature_2m_max[i],
         tempMin: d.temperature_2m_min[i],
         precipMm: d.precipitation_sum[i],
-        weatherCode: d.weathercode[i],
-        windMax: d.windspeed_10m_max[i],
+        weatherCode: d.weather_code[i],
+        windMax: d.wind_speed_10m_max[i], // km/h — Open-Meteo default unit
         source: 'forecast',
       }))
     },

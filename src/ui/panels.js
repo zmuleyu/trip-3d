@@ -143,7 +143,9 @@ export function createProfileCard(accent = '#ff4d00') {
   }
   return {
     el,
-    update(stats, pts) {
+    // weatherDays (optional): aggregated TripWeatherDay[] — when provided, a
+    // trip-day-axis band is drawn above the profile; when omitted, band clears.
+    update(stats, pts, weatherDays) {
       if (!pts || pts.length < 2) {
         el.classList.add('hidden')
         return
@@ -153,6 +155,26 @@ export function createProfileCard(accent = '#ff4d00') {
       const ctx = canvas.getContext('2d')
       const { width: W, height: H } = canvas
       ctx.clearRect(0, 0, W, H)
+      const BAND_H = 12
+      const hasBand = Array.isArray(weatherDays) && weatherDays.length > 0
+      const bandTop = 2
+      const profileTop = hasBand ? bandTop + BAND_H + 6 : bandTop
+      // trip-day band (itinerary axis, NOT spatial): one column per trip day
+      if (hasBand) {
+        const colW = (W - 20) / weatherDays.length
+        weatherDays.forEach((d, i) => {
+          ctx.fillStyle = d.isRain ? 'rgba(74,144,217,0.55)' : 'rgba(240,234,214,0.7)'
+          ctx.fillRect(10 + i * colW, bandTop, Math.max(colW - 1, 1), BAND_H)
+          if (weatherDays.length <= 8 || i === 0 || i === weatherDays.length - 1) {
+            ctx.fillStyle = '#17191b'
+            ctx.font = '8px monospace'
+            ctx.textAlign = 'center'
+            ctx.fillText(d.date.slice(5), 10 + i * colW + colW / 2, bandTop + 9)
+          }
+        })
+        ctx.textAlign = 'left'
+      }
+      // elevation profile
       const eles = pts.map((p) => p.ele)
       const min = Math.min(...eles), max = Math.max(...eles), span = Math.max(max - min, 1)
       ctx.strokeStyle = accent
@@ -160,14 +182,14 @@ export function createProfileCard(accent = '#ff4d00') {
       ctx.beginPath()
       pts.forEach((p, i) => {
         const x = (i / (pts.length - 1)) * (W - 20) + 10
-        const y = H - 16 - ((p.ele - min) / span) * (H - 36)
-        i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)
+        const yy = profileTop + (1 - (p.ele - min) / span) * (H - 16 - profileTop)
+        i ? ctx.lineTo(x, yy) : ctx.moveTo(x, yy)
       })
       ctx.stroke()
       ctx.fillStyle = '#17191b'
       ctx.font = '10px monospace'
       ctx.fillText(`${Math.round(min)} m`, 10, H - 4)
-      ctx.fillText(`${Math.round(max)} m`, 10, 10)
+      ctx.fillText(`${Math.round(max)} m`, 10, profileTop + 10)
     },
   }
 }

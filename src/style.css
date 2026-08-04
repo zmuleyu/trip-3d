@@ -405,3 +405,34 @@ body {
 
 /* legacy route-hud replaced by chrome */
 .route-hud { display: none !important; }
+
+/* ------------------------------------------------------------------ weather panel */
+.wx-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; font-size: 11px; }
+.wx-controls label { display: flex; align-items: center; gap: 4px; }
+.wx-controls input { font: inherit; border: 1px solid rgba(23,25,27,0.22); background: rgba(255,255,255,0.7); padding: 3px 5px; }
+.wx-days { width: 48px; }
+.wx-go {
+  font: inherit; font-size: 11px; padding: 4px 12px; cursor: pointer;
+  background: #ff4d00; border: 1px solid #ff4d00; color: #fff;
+}
+.wx-go:disabled { opacity: 0.5; cursor: default; }
+.wx-status { font-size: 10px; opacity: 0.65; margin: 6px 0; }
+.wx-status[data-kind=error] { color: #b3261e; opacity: 1; }
+.wx-index {
+  border: 1px solid rgba(23,25,27,0.22); background: rgba(255,255,255,0.55);
+  padding: 6px 10px; font-size: 12px; margin: 6px 0;
+}
+.wx-index.hidden { display: none; }
+.wx-index b { font-size: 18px; color: #ff4d00; }
+.wx-index span { margin-left: 6px; }
+.wx-index em { font-style: normal; font-size: 10px; opacity: 0.6; margin-left: 10px; }
+.wx-cards { max-height: 320px; overflow-y: auto; }
+.wx-card { border: 1px solid rgba(23,25,27,0.15); margin: 5px 0; padding: 5px 8px; font-size: 11px; background: rgba(255,255,255,0.5); }
+.wx-card.rain { border-left: 3px solid #4a90d9; }
+.wx-card-head { display: flex; gap: 10px; align-items: baseline; }
+.wx-card-head .d { font-weight: bold; }
+.wx-card-head .p { color: #4a90d9; }
+.wx-card-head .w { opacity: 0.6; margin-left: auto; }
+.wx-card-sub { font-size: 10px; opacity: 0.6; margin-top: 2px; }
+.wx-attr { font-size: 9px; opacity: 0.5; margin-top: 8px; }
+.wx-attr a { color: inherit; }
