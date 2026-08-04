@@ -26,10 +26,12 @@ import { loadDem, sampleDem } from './dem.js'
 import { makeGeoContext, worldToLonLat } from './lib/geo.js'
 import { createRoute, addWaypoint, routeStats } from './lib/route.js'
 import { RouteLayer } from './route/RouteLayer.js'
-import { RouteHud } from './route/RouteHud.js'
 import { openRouteStore } from './lib/store.js'
 import { routeToGpx, gpxToRoute } from './lib/gpx.js'
 import { encodeShare, decodeShare } from './lib/share.js'
+import { createModeMachine, MODES } from './ui/mode.js'
+import { createRail, createPanelHost, createLayerButtons, createToast } from './ui/chrome.js'
+import { createPlanningPanel, createLibraryPanel, createProfileCard } from './ui/panels.js'
 
 // ------------------------------------------------------------------ params
 
@@ -682,7 +684,7 @@ function elevOfWorld(x, z) {
 function refreshRoute() {
   if (!routeLayer || !geo || !dem) return
   const pts = routeLayer.update(route.waypoints)
-  updateRouteHud(route, pts.length ? routeStats(pts) : null, pts)
+  updateRouteUI(route, pts.length ? routeStats(pts) : null, pts)
 }
 
 function ensureRouteLayer() {
@@ -723,58 +725,6 @@ const copyCtrl = gui
     'copy'
   )
   .name('copy parameters')
-
-const fRoute = gui.addFolder('线路规划 Route')
-fRoute.add(params, 'planning').name('规划模式(点击落点)').onChange((v) => {
-  if (v && !dem) loadRealTerrain()
-  ensureRouteLayer()
-})
-fRoute.add(params, 'routeName').name('线路名').onFinishChange((v) => { route.name = v; refreshRoute() })
-fRoute.add({ undo: () => { route.waypoints.pop(); refreshRoute() } }, 'undo').name('撤销末点')
-fRoute.add({ clear: () => { route.waypoints = []; refreshRoute() } }, 'clear').name('清空')
-fRoute.add({ save: async () => {
-  route.name = params.routeName
-  const s = await routeStoreReady
-  if (!s) { alert('本地存储不可用,保存失败'); return }
-  await s.save(route)
-  refreshLibrary()
-} }, 'save').name('保存到线路库')
-fRoute.add({
-  share: async () => {
-    const hash = encodeShare(route, { dem })
-    const url = `${location.origin}${location.pathname}#r=${hash}`
-    await navigator.clipboard.writeText(url)
-    history.replaceState(null, '', `#r=${hash}`)
-  },
-}, 'share').name('复制分享链接')
-fRoute.add({
-  exportGpx: () => {
-    const blob = new Blob([routeToGpx(route)], { type: 'application/gpx+xml' })
-    const a = document.createElement('a')
-    a.href = URL.createObjectURL(blob)
-    a.download = `${route.name || 'route'}.gpx`
-    a.click()
-    URL.revokeObjectURL(a.href)
-  },
-}, 'exportGpx').name('导出 GPX')
-fRoute.add({
-  importGpx: () => {
-    const inp = document.createElement('input')
-    inp.type = 'file'
-    inp.accept = '.gpx'
-    inp.onchange = async () => {
-      try {
-        route = gpxToRoute(await inp.files[0].text())
-        params.routeName = route.name
-        ensureRouteLayer()
-        refreshRoute()
-        gui.controllersRecursive().forEach((c) => c.updateDisplay())
-        if (route.downsampled) console.info(`GPX 已抽稀 ${route.originalPointCount}→${route.waypoints.length} 点`)
-      } catch (err) { alert(`GPX 导入失败: ${err.message}`) }
-    }
-    inp.click()
-  },
-}, 'importGpx').name('导入 GPX')
 
 const fSource = gui.addFolder('Terrain source')
 fSource
@@ -891,7 +841,7 @@ fMap
   .add(params, 'contourInterval', 0.04, 0.6, 0.01)
   .name('contour interval')
   .onChange((v) => (terrain.mapUniforms.uContourInterval.value = v))
-fMap
+const contourOpacityCtrl = fMap
   .add(params, 'contourOpacity', 0, 1, 0.02)
   .name('contour opacity')
   .onChange((v) => (terrain.mapUniforms.uContourOpacity.value = v))
@@ -899,9 +849,9 @@ fMap
   .addColor(params, 'contourColor')
   .name('contour color')
   .onChange((v) => terrain.mapUniforms.uContourColor.value.set(v))
+const gridOpacityCtrl = fMap.add(params, 'gridOpacity', 0, 1, 0.02).name('grid opacity').onChange((v) => (terrain.mapUniforms.uGridOpacity.value = v))
+const labelsCtrl = fMap.add(params, 'labels').name('place labels').onChange((v) => (labels.visible = v))
 fMap.add(params, 'gridStep', 2, 14, 0.5).name('grid size').onChange((v) => (terrain.mapUniforms.uGridStep.value = v))
-fMap.add(params, 'gridOpacity', 0, 1, 0.02).name('grid opacity').onChange((v) => (terrain.mapUniforms.uGridOpacity.value = v))
-fMap.add(params, 'labels').name('place labels').onChange((v) => (labels.visible = v))
 
 const fLook = gui.addFolder('Look')
 fLook.add(params, 'exposure', 0.2, 3, 0.02).onChange((v) => (exposureFx.uniforms.get('exposure').value = v))
@@ -918,7 +868,7 @@ fLook.addColor(params, 'fogColor').onChange((v) => {
 fLook.add(params, 'surveyLines').name('survey circles').onChange((v) => (hud3.lines.visible = v))
 
 const fHud = gui.addFolder('HUD')
-fHud.add(params, 'hud').name('show HUD').onChange((v) => hud2.setVisible(v))
+const hudCtrl = fHud.add(params, 'hud').name('show HUD').onChange((v) => hud2.setVisible(v))
 fHud.add(params, 'hudOpacity', 0, 1, 0.02).name('HUD opacity').onChange((v) => hud2.setOpacity(v))
 fHud
   .add(params, 'uiBlur', 0, 30, 1)
@@ -1044,35 +994,142 @@ fLight.close()
 
 // ------------------------------------------------------------------ loop
 
-// ------------------------------------------------------------------ route HUD wiring
-const routeHud = new RouteHud(params.hudAccent)
-function updateRouteHud(route, stats, pts) {
-  routeHud.setStats(route, stats)
-  routeHud.drawProfile(pts ?? [])
+// ------------------------------------------------------------------ ui chrome (rail / panels / mode)
+const toast = createToast()
+const panelHost = createPanelHost()
+const profileCard = createProfileCard(params.hudAccent)
+
+function updateRouteUI(route, stats, pts) {
+  planningPanel.update(route, stats)
+  profileCard.update(stats, pts)
 }
+
 async function refreshLibrary() {
   const s = await routeStoreReady
-  if (s) routeHud.setLibrary(await s.list())
+  if (s) libraryPanel.setItems(await s.list())
 }
-routeHud.onLoad = async (id) => {
-  const s = await routeStoreReady
-  if (!id || !s) return
-  const r = await s.load(id)
-  if (!r) return
-  route = r
-  params.routeName = r.name
-  ensureRouteLayer()
-  refreshRoute()
-  gui.controllersRecursive().forEach((c) => c.updateDisplay())
+
+const routeActions = {
+  onNameChange: (v) => { route.name = v; params.routeName = v },
+  onUndo: () => { route.waypoints.pop(); refreshRoute() },
+  onClear: () => { route.waypoints = []; refreshRoute() },
+  onSave: async () => {
+    const s = await routeStoreReady
+    if (!s) { toast.show('本地存储不可用,保存失败'); return }
+    await s.save(route)
+    await refreshLibrary()
+    toast.show(`已保存「${route.name}」`)
+    showTab('library')
+  },
+  onShare: async () => {
+    const hash = encodeShare(route, { dem })
+    const url = `${location.origin}${location.pathname}#r=${hash}`
+    try { await navigator.clipboard.writeText(url) } catch { /* clipboard may be unavailable */ }
+    history.replaceState(null, '', `#r=${hash}`)
+    toast.show('分享链接已复制')
+  },
+  onExportGpx: () => {
+    const blob = new Blob([routeToGpx(route)], { type: 'application/gpx+xml' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = `${route.name || 'route'}.gpx`
+    a.click()
+    URL.revokeObjectURL(a.href)
+    toast.show('GPX 已导出')
+  },
+  onImportGpx: () => {
+    const inp = document.createElement('input')
+    inp.type = 'file'
+    inp.accept = '.gpx'
+    inp.onchange = async () => {
+      try {
+        route = gpxToRoute(await inp.files[0].text())
+        params.routeName = route.name
+        ensureRouteLayer()
+        refreshRoute()
+        toast.show(route.downsampled ? `GPX 已导入(抽稀 ${route.originalPointCount}→${route.waypoints.length} 点)` : 'GPX 已导入')
+      } catch (err) { toast.show(`GPX 导入失败: ${err.message}`, 3200) }
+    }
+    inp.click()
+  },
 }
-routeHud.onDelete = async (id) => {
-  const s = await routeStoreReady
-  if (!id || !s) return
-  await s.remove(id)
-  refreshLibrary()
+const planningPanel = createPlanningPanel(routeActions)
+const libraryPanel = createLibraryPanel({
+  onLoad: async (id) => {
+    const s = await routeStoreReady
+    if (!id || !s) return
+    const r = await s.load(id)
+    if (!r) return
+    route = r
+    params.routeName = r.name
+    ensureRouteLayer()
+    refreshRoute()
+    toast.show(`已加载「${r.name}」`)
+  },
+  onDelete: async (id) => {
+    const s = await routeStoreReady
+    if (!id || !s) return
+    await s.remove(id)
+    refreshLibrary()
+    toast.show('已删除')
+  },
+})
+
+// mode machine drives planning mode + panel visibility
+const mode = createModeMachine({
+  onChange: (m) => {
+    const planning = m === MODES.PLANNING
+    params.planning = planning
+    if (planning) {
+      if (!dem) loadRealTerrain()
+      ensureRouteLayer()
+      refreshRoute()
+      rail.setActive('planning')
+      panelHost.show('planning', '线路规划', 'ESC 退出', planningPanel.el)
+    } else {
+      rail.clearActive()
+      panelHost.hide()
+    }
+  },
+})
+window.addEventListener('keydown', (e) => mode.handleKey(e.key))
+
+function showTab(id) {
+  if (id === 'planning') { mode.enterPlanning(); return }
+  if (panelHost.currentId === id) { panelHost.hide(); rail.clearActive(); return }
+  if (mode.isPlanning()) mode.exitPlanning()
+  rail.setActive(id)
+  if (id === 'library') panelHost.show('library', '线路库', null, libraryPanel.el)
 }
-// NOTE: no bare refreshLibrary() here — routeStoreReady.then() above triggers
-// the first paint once IDB is open
+
+const rail = createRail({
+  items: [
+    { id: 'planning', icon: '🗺', label: '规划', onSelect: () => mode.togglePlanning() },
+    { id: 'library', icon: '📁', label: '线路库', onSelect: () => showTab('library') },
+    { id: 'weather', icon: '🌦', label: '天气', badge: 'P2', disabled: true, onSelect: () => {} },
+    { id: 'share', icon: '↗', label: '分享', badge: 'P3', disabled: true, onSelect: () => {} },
+  ],
+  settingsItem: { id: 'settings', icon: '⚙', label: '设置', onSelect: () => toggleSettings() },
+})
+
+// settings drawer hosts the whole lil-gui (demoted chrome)
+const settingsDrawer = document.createElement('div')
+settingsDrawer.className = 'ui-settings'
+document.body.appendChild(settingsDrawer)
+settingsDrawer.appendChild(gui.domElement)
+function toggleSettings() {
+  settingsDrawer.classList.toggle('open')
+}
+
+// high-frequency layer toggles (reuse lil-gui controllers so onChange chains fire)
+createLayerButtons({
+  buttons: [
+    { id: 'contour', icon: '〰', tip: '等高线', initial: params.contourOpacity > 0, onToggle: (id, on) => contourOpacityCtrl.setValue(on ? 1 : 0) },
+    { id: 'grid', icon: '⊹', tip: '测量网格', initial: params.gridOpacity > 0, onToggle: (id, on) => gridOpacityCtrl.setValue(on ? 1 : 0) },
+    { id: 'labels', icon: '▲', tip: '山峰标签', initial: params.labels, onToggle: (id, on) => labelsCtrl.setValue(on) },
+    { id: 'hud', icon: '◎', tip: 'HUD', initial: params.hud, onToggle: (id, on) => hudCtrl.setValue(on) },
+  ],
+})
 
 // restore shared route from URL hash BEFORE the default DEM load below.
 // The startup line runs `if (params.source === 'real') loadRealTerrain()` once —

@@ -263,3 +263,145 @@ body {
 }
 .route-profile { display: block; width: 560px; height: 120px; }
 .route-library { display: flex; gap: 6px; }
+
+/* ------------------------------------------------------------------ ui chrome */
+.ui-rail {
+  position: fixed; left: 0; top: 0; bottom: 0; width: 52px;
+  background: rgba(255,255,255,0.86); backdrop-filter: blur(9px);
+  border-right: 1px solid rgba(23,25,27,0.22);
+  display: flex; flex-direction: column; align-items: center;
+  padding-top: 10px; z-index: 40; font-family: 'Courier New', ui-monospace, monospace;
+}
+.ui-rail-logo {
+  width: 34px; height: 34px; margin-bottom: 14px;
+  display: grid; place-items: center; font-weight: bold; font-size: 13px;
+  background: #17191b; color: #fff;
+}
+.ui-rail-btn {
+  width: 40px; height: 44px; margin: 2px 0; border: none; background: none;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  font-size: 16px; cursor: pointer; position: relative; border-radius: 4px;
+  color: #17191b; font-family: inherit;
+}
+.ui-rail-btn .lbl { font-size: 9px; margin-top: 1px; }
+.ui-rail-btn.active { background: #ff4d00; color: #fff; }
+.ui-rail-btn.active::before {
+  content: ''; position: absolute; left: -6px; top: 8px; bottom: 8px;
+  width: 3px; background: #ff4d00;
+}
+.ui-rail-btn.disabled { opacity: 0.38; cursor: default; }
+.ui-rail-badge {
+  position: absolute; top: 2px; right: 2px; font-size: 8px;
+  background: #17191b; color: #fff; padding: 0 3px; border-radius: 2px;
+}
+.ui-rail-spacer { flex: 1; }
+.ui-rail-gear { border-top: 1px solid rgba(23,25,27,0.22); border-radius: 0; width: 100%; }
+
+.ui-panel {
+  position: fixed; left: 60px; top: 12px; width: 292px; max-height: calc(100vh - 24px);
+  overflow-y: auto; background: rgba(255,255,255,0.86); backdrop-filter: blur(9px);
+  border: 1px solid rgba(23,25,27,0.22); z-index: 30; padding: 12px 14px;
+  font-family: 'Courier New', ui-monospace, monospace; color: #17191b;
+}
+.ui-panel.hidden { display: none; }
+.ui-panel h2 {
+  font-size: 13px; letter-spacing: 1px; display: flex;
+  justify-content: space-between; align-items: center; margin-bottom: 8px;
+}
+.ui-panel-hint { font-size: 10px; opacity: 0.55; font-weight: normal; }
+
+.ui-layers {
+  position: fixed; right: 14px; top: 14px; z-index: 30;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.ui-layer-btn {
+  width: 38px; height: 38px; border-radius: 50%;
+  background: rgba(255,255,255,0.86); backdrop-filter: blur(9px);
+  border: 1px solid rgba(23,25,27,0.22); font-size: 15px; cursor: pointer;
+  display: grid; place-items: center; position: relative; color: #17191b;
+}
+.ui-layer-btn.on { border-color: #ff4d00; box-shadow: 0 0 0 1px #ff4d00 inset; }
+.ui-layer-tip {
+  position: absolute; right: 44px; top: 50%; transform: translateY(-50%);
+  font-size: 10px; background: #17191b; color: #fff; padding: 2px 6px;
+  white-space: nowrap; opacity: 0; border-radius: 2px; pointer-events: none;
+  transition: opacity 0.15s; font-family: 'Courier New', ui-monospace, monospace;
+}
+.ui-layer-btn:hover .ui-layer-tip { opacity: 0.9; }
+
+.ui-toast {
+  position: fixed; left: 50%; top: 20px; transform: translateX(-50%);
+  background: #17191b; color: #fff; padding: 7px 16px; z-index: 60;
+  font: 12px 'Courier New', ui-monospace, monospace; border-radius: 3px;
+  transition: opacity 0.25s;
+}
+.ui-toast.hidden { opacity: 0; pointer-events: none; }
+
+/* settings drawer hosting lil-gui */
+.ui-settings {
+  position: fixed; right: 0; top: 0; bottom: 0; width: 320px;
+  background: rgba(255,255,255,0.92); backdrop-filter: blur(9px);
+  border-left: 1px solid rgba(23,25,27,0.22); z-index: 35;
+  overflow-y: auto; padding: 10px;
+  transform: translateX(100%); transition: transform 0.2s ease;
+}
+.ui-settings.open { transform: translateX(0); }
+.ui-settings .lil-gui {
+  position: static !important; width: 100% !important; z-index: 1 !important;
+}
+
+/* planning panel internals */
+.ui-wp-list { font-size: 12px; }
+.ui-wp-item {
+  display: flex; align-items: center; gap: 8px; padding: 4px 2px;
+  border-bottom: 1px dashed rgba(23,25,27,0.12);
+}
+.ui-wp-item .n {
+  width: 18px; height: 18px; border-radius: 50%; background: #ff4d00; color: #fff;
+  display: grid; place-items: center; font-size: 10px; flex: none;
+}
+.ui-wp-item .coord { opacity: 0.6; font-size: 10px; margin-left: auto; }
+.ui-panel .name-input {
+  width: 100%; margin: 4px 0 8px; padding: 5px 8px; font: inherit; font-size: 13px;
+  border: 1px solid rgba(23,25,27,0.22); background: rgba(255,255,255,0.7);
+}
+.ui-stat-card {
+  margin-top: 10px; border: 1px solid rgba(23,25,27,0.22); padding: 8px 10px;
+  background: rgba(255,255,255,0.55); font-size: 11px; line-height: 1.8;
+}
+.ui-stat-card b { font-size: 15px; }
+.ui-stat-card .disclaimer { font-size: 9px; opacity: 0.5; }
+.ui-btn-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.ui-btn-row button {
+  font: inherit; font-size: 11px; padding: 4px 10px; cursor: pointer;
+  border: 1px solid #17191b; background: none; color: #17191b;
+}
+.ui-btn-row button.primary { background: #ff4d00; border-color: #ff4d00; color: #fff; }
+.ui-panel .hint { font-size: 10px; opacity: 0.55; margin: 8px 0 0; }
+.ui-lib-item {
+  display: flex; align-items: center; gap: 6px; padding: 5px 2px;
+  border-bottom: 1px dashed rgba(23,25,27,0.12); font-size: 12px;
+}
+.ui-lib-item .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ui-lib-item button {
+  font: inherit; font-size: 10px; padding: 2px 8px; cursor: pointer;
+  border: 1px solid #17191b; background: none;
+}
+.ui-empty { font-size: 11px; opacity: 0.55; padding: 8px 0; }
+
+/* profile floating card */
+.ui-profile {
+  position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%);
+  width: 620px; max-width: calc(100vw - 140px);
+  background: rgba(255,255,255,0.86); backdrop-filter: blur(9px);
+  border: 1px solid rgba(23,25,27,0.22); z-index: 30; padding: 8px 12px 6px;
+  font-family: 'Courier New', ui-monospace, monospace; color: #17191b;
+}
+.ui-profile.hidden { display: none; }
+.ui-profile .head { display: flex; justify-content: space-between; font-size: 12px; cursor: pointer; }
+.ui-profile .head .fold { opacity: 0.6; }
+.ui-profile canvas { display: block; width: 100%; margin-top: 4px; }
+.ui-profile.folded canvas { display: none; }
+
+/* legacy route-hud replaced by chrome */
+.route-hud { display: none !important; }
