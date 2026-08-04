@@ -452,3 +452,12 @@ body {
 .pp-attr { font-size: 9px; opacity: 0.5; padding: 3px 6px; }
 .pp-snap-row { display: flex; align-items: center; gap: 5px; font-size: 11px; margin-bottom: 6px; cursor: pointer; }
 .pp-snap-status { font-size: 10px; opacity: 0.65; }
+
+/* ------------------------------------------------------------------ attribution footer */
+.ui-attrib {
+  position: fixed; left: 60px; bottom: 6px; z-index: 40;
+  font: 9px/1.4 monospace; color: rgba(23,25,27,0.55);
+  pointer-events: auto; user-select: none;
+}
+.ui-attrib a { color: inherit; text-decoration: underline; }
+.ui-attrib a:hover { color: #ff4d00; }

@@ -1401,11 +1401,22 @@ const rail = createRail({
   items: [
     { id: 'planning', icon: '🗺', label: '规划', onSelect: () => mode.togglePlanning() },
     { id: 'library', icon: '📁', label: '线路库', onSelect: () => showTab('library') },
-    { id: 'weather', icon: '🌦', label: '天气', onSelect: () => showTab('weather') },
+    { id: 'weather', icon: '🌦', label: '天气', badge: null, disabled: false, onSelect: () => showTab('weather') },
     { id: 'share', icon: '↗', label: '分享', badge: 'P3', disabled: true, onSelect: () => {} },
   ],
   settingsItem: { id: 'settings', icon: '⚙', label: '设置', onSelect: () => toggleSettings() },
 })
+
+// data attribution (compliance: OSM ODbL / FOSSGIS / Open-Meteo CC-BY / Mapzen tiles)
+const attrib = document.createElement('div')
+attrib.className = 'ui-attrib'
+attrib.innerHTML =
+  '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors · ' +
+  'search <a href="https://nominatim.openstreetmap.org/" target="_blank" rel="noreferrer">Nominatim</a> · ' +
+  'routing <a href="https://map.project-osrm.org/about.html" target="_blank" rel="noreferrer">OSRM/FOSSGIS</a> · ' +
+  'weather <a href="https://open-meteo.com/" target="_blank" rel="noreferrer">Open-Meteo</a> · ' +
+  'elevation <a href="https://registry.opendata.aws/terrain-tiles/" target="_blank" rel="noreferrer">Mapzen Terrarium</a>'
+document.body.appendChild(attrib)
 
 // settings drawer hosts the whole lil-gui (demoted chrome)
 const settingsDrawer = document.createElement('div')
