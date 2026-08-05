@@ -104,7 +104,7 @@ body {
   min-width: 190px;
 }
 .hud-tl { top: 34px; left: 34px; }
-.hud-brt { bottom: 78px; left: 34px; min-width: 160px; }
+.hud-brt { bottom: 78px; left: 62px; min-width: 160px; }
 
 .hud-kicker {
   display: flex;
@@ -320,7 +320,7 @@ body {
   border: 1px solid rgba(23,25,27,0.22); font-size: 15px; cursor: pointer;
   display: grid; place-items: center; position: relative; color: #17191b;
 }
-.ui-layer-btn.on { border-color: #ff4d00; box-shadow: 0 0 0 1px #ff4d00 inset; }
+.ui-layer-btn.on { background: #ff4d00; border-color: #ff4d00; color: #fff; box-shadow: 0 1px 5px rgba(0,0,0,0.3); }
 .ui-layer-tip {
   position: absolute; right: 44px; top: 50%; transform: translateY(-50%);
   font-size: 10px; background: #17191b; color: #fff; padding: 2px 6px;
@@ -554,3 +554,21 @@ body {
 .ui-fly-overlay .fill { height: 100%; width: 0; background: #ff4d00; transition: width 0.2s linear; }
 .ui-fly-overlay .fly-cancel { background: transparent; border: 1px solid rgba(23,25,27,0.4); font: 10px monospace; padding: 3px 8px; cursor: pointer; color: #17191b; }
 .ui-fly-overlay .fly-cancel:hover { border-color: #ff4d00; color: #ff4d00; }
+
+/* ------------------------------------------------------------------ UX1 layout fixes */
+/* P0-3: panel opacity — no bleed-through from the scene beneath */
+.ui-panel { background: rgba(255,255,255,0.96) !important; backdrop-filter: blur(8px); }
+/* P0-1: sun panel and overview inset share the bottom-right — stack, don't overlap */
+.ui-sun-panel { bottom: 26px; }
+body.sun-open .ui-overview { bottom: 196px; }
+/* layer buttons: subtle shadow on pale terrain */
+.ui-layer-btn { box-shadow: 0 1px 4px rgba(0,0,0,0.18); }
+/* P1-1: planning ops split into a compact edit row */
+.pp-ops-edit { display: flex; gap: 4px; }
+.pp-ops-edit button { flex: 1; padding: 4px 0; font-size: 10px; background: transparent; border: 1px solid rgba(23,25,27,0.25); color: rgba(23,25,27,0.8); font-family: monospace; cursor: pointer; }
+.pp-ops-edit button:hover { border-color: #ff4d00; color: #ff4d00; }
+.pp-ops-edit button.danger:hover { border-color: #d32f2f; color: #d32f2f; }
+.pp-ops-main { display: flex; gap: 6px; margin-top: 5px; }
+.pp-ops-main button { flex: 1; padding: 7px 0; font-size: 11px; font-family: monospace; cursor: pointer; background: transparent; border: 1px solid rgba(23,25,27,0.35); color: #17191b; }
+.pp-ops-main button.primary { background: #ff4d00; border-color: #ff4d00; color: #fff; font-weight: bold; }
+.pp-ops-main button:hover:not(.primary) { border-color: #ff4d00; color: #ff4d00; }

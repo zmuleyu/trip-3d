@@ -103,26 +103,34 @@ export function createPlanningPanel(actions) {
   hint.textContent = '点击地形继续加点 · ESC 退出规划'
   el.appendChild(hint)
 
-  const row = document.createElement('div')
-  row.className = 'ui-btn-row'
-  const mk = (label, fn, primary = false) => {
+  // action rows: compact edit group + main group (share/export exits live in the share tab)
+  const opsEdit = document.createElement('div')
+  opsEdit.className = 'pp-ops-edit'
+  const mkE = (label, fn, danger = false) => {
+    const b = document.createElement('button')
+    b.textContent = label
+    if (danger) b.classList.add('danger')
+    b.onclick = fn
+    opsEdit.appendChild(b)
+  }
+  mkE('撤销', actions.onUndo)
+  mkE('重做', actions.onRedo)
+  mkE('清空', actions.onClear, true)
+  mkE('反向', actions.onReverse)
+  mkE('闭环', actions.onCloseLoop)
+  el.appendChild(opsEdit)
+  const opsMain = document.createElement('div')
+  opsMain.className = 'pp-ops-main'
+  const mkM = (label, fn, primary = false) => {
     const b = document.createElement('button')
     b.textContent = label
     if (primary) b.classList.add('primary')
     b.onclick = fn
-    row.appendChild(b)
+    opsMain.appendChild(b)
   }
-  mk('撤销', actions.onUndo)
-  mk('重做', actions.onRedo)
-  mk('清空', actions.onClear)
-  mk('反向', actions.onReverse)
-  mk('闭环', actions.onCloseLoop)
-  mk('保存', actions.onSave, true)
-  mk('分享链接', actions.onShare)
-  mk('高德链接', actions.onExportAmap)
-  mk('导出GPX', actions.onExportGpx)
-  mk('导入GPX', actions.onImportGpx)
-  el.appendChild(row)
+  mkM('保存', actions.onSave, true)
+  mkM('导入GPX', actions.onImportGpx)
+  el.appendChild(opsMain)
 
   return {
     el,
