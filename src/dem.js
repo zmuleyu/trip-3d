@@ -24,13 +24,23 @@ export async function loadDem({ lat, lon, zoom, tilesAcross = 3 }) {
       const ty = cy + dy
       if (ty < 0 || ty >= n) continue
       jobs.push(
-        fetch(TILE_URL(zoom, tx, ty))
-          .then((r) => {
-            if (!r.ok) throw new Error(`elevation tile ${zoom}/${tx}/${ty} → HTTP ${r.status}`)
-            return r.blob()
-          })
-          .then(createImageBitmap)
-          .then((img) => ctx.drawImage(img, (dx + half) * TILE_PX, (dy + half) * TILE_PX))
+        // one retry per tile — a single transient failure shouldn't kill a 25-tile batch
+        (async () => {
+          let lastErr
+          for (let attempt = 0; attempt < 2; attempt++) {
+            try {
+              const r = await fetch(TILE_URL(zoom, tx, ty))
+              if (!r.ok) throw new Error(`elevation tile ${zoom}/${tx}/${ty} → HTTP ${r.status}`)
+              const img = await createImageBitmap(await r.blob())
+              ctx.drawImage(img, (dx + half) * TILE_PX, (dy + half) * TILE_PX)
+              img.close() // release the decoded bitmap promptly (5×5 batches peak ~6MiB)
+              return
+            } catch (err) {
+              lastErr = err
+            }
+          }
+          throw lastErr
+        })()
       )
     }
   }

@@ -35,8 +35,12 @@ export function decodeShare(hash) {
   const obj = b64urlDecode(hash)
   if (obj.v !== VERSION) throw new Error(`unsupported share version: ${obj.v}`)
   const { dem, waypoints } = obj
+  // ta is an optional whitelist ({3,5}) — a crafted hash must not trigger huge
+  // canvas allocations or fetch storms (review P1). Missing/invalid → default 3.
+  const ta = dem?.ta === undefined ? 3 : dem.ta
   const demOk = dem && finiteNum(dem.lat) && Math.abs(dem.lat) <= 90 && finiteNum(dem.lon) &&
-    Math.abs(dem.lon) <= 180 && Number.isInteger(dem.zoom) && dem.zoom >= 8 && dem.zoom <= 14
+    Math.abs(dem.lon) <= 180 && Number.isInteger(dem.zoom) && dem.zoom >= 8 && dem.zoom <= 14 &&
+    (ta === 3 || ta === 5)
   // cap must equal the restore path's addWaypoint cap — a larger accepted payload
   // would be silently lossy on restore
   const wpsOk = Array.isArray(waypoints) && waypoints.length <= MAX_WAYPOINTS &&

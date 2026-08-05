@@ -1,8 +1,10 @@
 {
-  "state": "IN_PROGRESS",
+  "state": "GOAL_CLOSEOUT_COMPLETE",
   "goal": "R4 交互/视觉整体打磨",
   "owner": "hermes-main-session",
-  "head": "43e42a0",
-  "current_task": "诊断列表重影/重复渲染",
-  "updated_at": "2026-08-05T02:20:00+08:00"
+  "head": "pending-final-commit",
+  "last_green": "124/124 tests + build ✓ + E2E 广域/驾车/面板全通过",
+  "current_task": "done",
+  "next_action": "分享闭环(海报卡/飞越视频);侧线 CF git 集成",
+  "updated_at": "2026-08-05T03:20:00+08:00"
 }

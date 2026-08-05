@@ -8,7 +8,7 @@ const fmtDur = (minutes) => {
   const h = Math.floor(m / 60)
   if (h < 24) return `${h}h${m % 60}m`
   const d = Math.floor(h / 24)
-  return `${d}天${h % 24}h`
+  return `${d}天${h % 24}h${m % 60 ? `${m % 60}m` : ''}`
 }
 
 export function createPlanningPanel(actions) {

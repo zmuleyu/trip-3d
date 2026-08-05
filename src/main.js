@@ -305,6 +305,8 @@ hud3.lines.visible = params.surveyLines
 scene.add(hud3.group)
 
 function flyTo(pos, target) {
+  tour.active = false // programmatic fit wins over an in-flight tour (review P1)
+  camera.up.set(0, 1, 0)
   tween.p0.copy(camera.position)
   tween.t0.copy(controls.target)
   tween.p1.copy(pos)
@@ -1365,8 +1367,11 @@ function pickViewForSpan(wps) {
   const lons = wps.map((w) => w.lon)
   const lats = wps.map((w) => w.lat)
   const latMid = lats.reduce((a, b) => a + b, 0) / lats.length
+  // circular longitude span (antimeridian-safe): e.g. 179.9→-179.9 spans 0.2°, not 359.8°
+  const rawSpan = Math.max(...lons) - Math.min(...lons)
+  const lonSpan = rawSpan > 180 ? 360 - rawSpan : rawSpan
   const spanDeg = Math.max(
-    (Math.max(...lons) - Math.min(...lons)) * Math.cos((latMid * Math.PI) / 180),
+    lonSpan * Math.cos((latMid * Math.PI) / 180),
     Math.max(...lats) - Math.min(...lats)
   )
   if (spanDeg > 3) return { zoom: 8, tilesAcross: 5 }
