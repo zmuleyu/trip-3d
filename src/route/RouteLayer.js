@@ -148,6 +148,8 @@ export class RouteLayer {
       else sp = makeTextSprite(String(i + 1))
       const lift = sp.center && sp.center.y < 0.5 ? MARKER_R + 0.2 : MARKER_R + 0.5
       sp.position.set(x, sceneSample(x, z) + lift, z)
+      sp.userData.isMarker = true
+      sp.userData.index = i
       this.group.add(sp)
     })
 
@@ -241,5 +243,13 @@ export class RouteLayer {
 
   hideCrosshair() {
     if (this.crosshair) this.crosshair.visible = false
+  }
+
+  // Returns waypoint index whose marker sprite is hit, or -1. Sprite raycast
+  // uses each sprite's scaled quad as hit area.
+  hitWaypoint(raycaster) {
+    const markers = this.group.children.filter((c) => c.userData?.isMarker)
+    const hits = raycaster.intersectObjects(markers, false)
+    return hits.length ? hits[0].object.userData.index : -1
   }
 }

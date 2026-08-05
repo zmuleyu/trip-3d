@@ -172,7 +172,27 @@ export function createPlanningPanel(actions) {
         mkOp('✕', '删除', () => actions.onWpRemove?.(i))
         body.append(nm, coord, ops)
         item.append(rail, body)
+        // drag-sort: HTML5 DnD between timeline rows
+        item.draggable = true
+        item.ondragstart = (e) => { e.dataTransfer.setData('text/plain', String(i)); e.dataTransfer.effectAllowed = 'move' }
+        item.ondragover = (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move' }
+        item.ondrop = (e) => {
+          e.preventDefault()
+          const from = +e.dataTransfer.getData('text/plain')
+          if (Number.isInteger(from)) actions.onWpMoveTo?.(from, i)
+        }
         wpList.appendChild(item)
+        // between-row insert divider
+        if (i < n - 1) {
+          const sep = document.createElement('div')
+          sep.className = 'pp-tl-sep'
+          const add = document.createElement('button')
+          add.textContent = '⊕'
+          add.title = '在此插入途经点(下一次地形点击落在此处)'
+          add.onclick = () => actions.onInsertAt?.(i + 1)
+          sep.appendChild(add)
+          wpList.appendChild(sep)
+        }
       })
 
       stat.replaceChildren()

@@ -507,3 +507,9 @@ body {
 .pp-legs-list { margin-top: 3px; border-left: 2px solid rgba(255,77,0,0.4); padding-left: 6px; }
 .pp-legs-list.hidden { display: none; }
 .pp-leg { font-size: 10px; padding: 2px 0; border-bottom: 1px dashed rgba(23,25,27,0.12); overflow-wrap: anywhere; }
+
+/* ------------------------------------------------------------------ timeline insert separators */
+.pp-tl-sep { display: flex; align-items: center; height: 8px; margin-left: 4px; }
+.pp-tl-sep::before { content: ''; flex: 0 0 2px; height: 8px; background: rgba(23,25,27,0.2); }
+.pp-tl-sep button { display: none; font: inherit; font-size: 10px; line-height: 1; padding: 1px 6px; margin-left: 6px; cursor: pointer; background: #fff; border: 1px solid #ff4d00; color: #ff4d00; border-radius: 8px; }
+.pp-tl-sep:hover button { display: inline-block; }

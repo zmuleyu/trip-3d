@@ -1,0 +1,8 @@
+{
+  "state": "IN_PROGRESS",
+  "goal": "R3 规划交互三件套",
+  "owner": "hermes-main-session",
+  "head": "f060e55",
+  "current_task": "insertWaypoint TDD + RouteLayer 标记拾取",
+  "updated_at": "2026-08-05T01:30:00+08:00"
+}

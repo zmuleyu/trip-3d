@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { makeGeoContext } from './geo.js'
 import {
-  createRoute, addWaypoint, removeWaypoint, moveWaypoint,
+  createRoute, addWaypoint, insertWaypoint, removeWaypoint, moveWaypoint,
   sampleRoutePath, samplePolyline, routeStats, routeFingerprint, MAX_WAYPOINTS,
 } from './route.js'
 
@@ -126,6 +126,20 @@ describe('route model', () => {
     expect(r.revision).toBe(3)
     removeWaypoint(r, 0)
     expect(r.revision).toBe(4)
+  })
+
+  it('insertWaypoint: mid-insert shifts others, clamps out-of-range, bumps both revisions', () => {
+    const r = createRoute('t')
+    addWaypoint(r, -110.1, 37, 900, 'A')
+    addWaypoint(r, -110.0, 37.01, 950, 'C')
+    const wp = insertWaypoint(r, 1, -110.05, 37.005, 920, 'B')
+    expect(wp.name).toBe('B')
+    expect(r.waypoints.map((w) => w.name)).toEqual(['A', 'B', 'C'])
+    expect(r.geometryRevision).toBe(3)
+    // clamp: index > length → append
+    insertWaypoint(r, 99, -109.9, 37.02, 960, 'D')
+    expect(r.waypoints.at(-1).name).toBe('D')
+    expect(r.waypoints).toHaveLength(4)
   })
 
   it('geometryRevision: bumps on geometry mutations; rename does NOT bump', () => {

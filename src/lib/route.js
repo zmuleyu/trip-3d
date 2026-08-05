@@ -20,6 +20,16 @@ export function addWaypoint(route, lon, lat, ele, name) {
   return wp
 }
 
+export function insertWaypoint(route, index, lon, lat, ele, name) {
+  if (route.waypoints.length >= MAX_WAYPOINTS) return null
+  const at = Math.max(0, Math.min(index, route.waypoints.length)) // clamp: end = append
+  const wp = { id: crypto.randomUUID(), lon, lat, ele, name: name ?? `P${route.waypoints.length + 1}` }
+  route.waypoints.splice(at, 0, wp)
+  route.revision++
+  route.geometryRevision++
+  return wp
+}
+
 export function removeWaypoint(route, index) {
   if (!Number.isInteger(index) || index < 0 || index >= route.waypoints.length) return false
   route.waypoints.splice(index, 1)

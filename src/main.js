@@ -24,7 +24,7 @@ import { createHud3D, findPois } from './hud3d.js'
 import { createHud2D } from './hud2d.js'
 import { loadDem, sampleDem } from './dem.js'
 import { makeGeoContext, worldToLonLat, lonLatToWorld } from './lib/geo.js'
-import { createRoute, addWaypoint, removeWaypoint, moveWaypoint, routeStats, samplePolyline } from './lib/route.js'
+import { createRoute, addWaypoint, insertWaypoint, removeWaypoint, moveWaypoint, routeStats, samplePolyline } from './lib/route.js'
 import { computeLegs, computeLegsFromPts, normalizeOsrmLegs } from './lib/legs.js'
 import { RouteLayer } from './route/RouteLayer.js'
 import { openRouteStore } from './lib/store.js'
@@ -597,13 +597,55 @@ window.addEventListener('pointermove', (e) => {
 const raycaster = new THREE.Raycaster()
 let downPos = null
 let dragged = false
+// waypoint drag: capture-phase pointerdown beats OrbitControls' bubble listener,
+// so disabling controls here prevents the camera from starting to orbit.
+let markerDrag = null // { index, moved }
+let insertIndex = null // pending insert position (timeline ⊕)
 controls.addEventListener('change', () => {
   if (downPos) dragged = true
 })
+const ndcOf = (e) => new THREE.Vector2((e.clientX / window.innerWidth) * 2 - 1, -((e.clientY / window.innerHeight) * 2 - 1))
 renderer.domElement.addEventListener('pointerdown', (e) => {
   if (e.button !== 0) return
   downPos = { x: e.clientX, y: e.clientY }
   dragged = false
+  if (params.planning && routeLayer && geo && dem) {
+    raycaster.setFromCamera(ndcOf(e), camera)
+    const hit = routeLayer.hitWaypoint(raycaster)
+    if (hit >= 0) {
+      markerDrag = { index: hit, moved: false }
+      controls.enabled = false
+    }
+  }
+}, { capture: true })
+renderer.domElement.addEventListener('pointermove', (e) => {
+  if (!markerDrag) return
+  markerDrag.moved = true
+  raycaster.setFromCamera(ndcOf(e), camera)
+  const hit = raycaster.intersectObject(terrain.mesh, false)[0]
+  if (!hit) return
+  const { lon, lat } = worldToLonLat(geo, hit.point.x, hit.point.z)
+  const w = route.waypoints[markerDrag.index]
+  if (!w) return
+  // temp coords during drag — revisions bump once on pointerup
+  w.lon = lon
+  w.lat = lat
+  w.ele = Math.round(elevOfWorld(hit.point.x, hit.point.z))
+  refreshRoute()
+})
+window.addEventListener('pointerup', (e) => {
+  if (markerDrag) {
+    controls.enabled = true
+    if (markerDrag.moved) {
+      route.revision++
+      route.geometryRevision++
+      refreshRoute()
+      scheduleSnap()
+    }
+    markerDrag = null
+    downPos = null
+    return
+  }
 })
 renderer.domElement.addEventListener('pointerup', (e) => {
   if (!params.planning || !downPos || !geo || !dem || e.button !== 0) return
@@ -611,12 +653,17 @@ renderer.domElement.addEventListener('pointerup', (e) => {
   const wasDrag = dragged
   downPos = null
   if (moved || wasDrag) return
-  const ndc = new THREE.Vector2((e.clientX / window.innerWidth) * 2 - 1, -((e.clientY / window.innerHeight) * 2 - 1))
+  const ndc = ndcOf(e)
   raycaster.setFromCamera(ndc, camera)
   const hit = raycaster.intersectObject(terrain.mesh, false)[0]
   if (!hit) return
   const { lon, lat } = worldToLonLat(geo, hit.point.x, hit.point.z)
-  const wp = addWaypoint(route, lon, lat, Math.round(elevOfWorld(hit.point.x, hit.point.z)))
+  const ele = Math.round(elevOfWorld(hit.point.x, hit.point.z))
+  const wp = insertIndex != null ? insertWaypoint(route, insertIndex, lon, lat, ele) : addWaypoint(route, lon, lat, ele)
+  if (insertIndex != null) {
+    insertIndex = null
+    toast.show('已插入途经点')
+  }
   if (!wp) return console.warn('waypoint cap reached')
   refreshRoute()
   scheduleSnap()
@@ -1429,7 +1476,13 @@ const routeActions = {
   onExportAmap: exportAmapLink,
   onWpRemove: (i) => { removeWaypoint(route, i); refreshRoute(); scheduleSnap() },
   onWpMove: (i, dir) => { moveWaypoint(route, i, i + dir); refreshRoute(); scheduleSnap() },
+  onWpMoveTo: (from, to) => { if (moveWaypoint(route, from, to)) { refreshRoute(); scheduleSnap() } },
   onWpRename: (i, name) => { route.waypoints[i].name = name; route.revision++; refreshRoute() },
+  onInsertAt: (index) => {
+    insertIndex = index
+    toast.show(`点击地形,新途经点将插入到第 ${index + 1} 位(ESC 取消)`)
+  },
+  resetInsert: () => { insertIndex = null },
   onSnapToggle: (on) => {
     snapState.on = on
     localStorage.setItem(SNAP_LS, on ? '1' : '0')
@@ -1524,7 +1577,14 @@ const mode = createModeMachine({
     }
   },
 })
-window.addEventListener('keydown', (e) => mode.handleKey(e.key))
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && insertIndex != null) {
+    insertIndex = null // cancel pending insert before exiting planning
+    toast.show('已取消插入')
+    return
+  }
+  mode.handleKey(e.key)
+})
 
 function showTab(id) {
   if (id === 'planning') { mode.enterPlanning(); return }
