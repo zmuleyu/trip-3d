@@ -599,12 +599,27 @@ let downPos = null
 let dragged = false
 // waypoint drag: capture-phase pointerdown beats OrbitControls' bubble listener,
 // so disabling controls here prevents the camera from starting to orbit.
-let markerDrag = null // { index, moved }
+// markerDrag: { index, pointerId, startX, startY, moved, prevEnabled } — threshold
+// before "moved" (no revision churn on jitter); pointerId-bound; cancel-safe.
+let markerDrag = null
 let insertIndex = null // pending insert position (timeline ⊕)
 controls.addEventListener('change', () => {
   if (downPos) dragged = true
 })
 const ndcOf = (e) => new THREE.Vector2((e.clientX / window.innerWidth) * 2 - 1, -((e.clientY / window.innerHeight) * 2 - 1))
+const DRAG_THRESHOLD_PX = 5
+function endMarkerDrag(commit) {
+  if (!markerDrag) return
+  controls.enabled = markerDrag.prevEnabled
+  if (commit && markerDrag.moved) {
+    route.revision++
+    route.geometryRevision++
+    refreshRoute()
+    scheduleSnap()
+  }
+  markerDrag = null
+  downPos = null
+}
 renderer.domElement.addEventListener('pointerdown', (e) => {
   if (e.button !== 0) return
   downPos = { x: e.clientX, y: e.clientY }
@@ -613,13 +628,14 @@ renderer.domElement.addEventListener('pointerdown', (e) => {
     raycaster.setFromCamera(ndcOf(e), camera)
     const hit = routeLayer.hitWaypoint(raycaster)
     if (hit >= 0) {
-      markerDrag = { index: hit, moved: false }
+      markerDrag = { index: hit, pointerId: e.pointerId, startX: e.clientX, startY: e.clientY, moved: false, prevEnabled: controls.enabled }
       controls.enabled = false
     }
   }
 }, { capture: true })
 renderer.domElement.addEventListener('pointermove', (e) => {
-  if (!markerDrag) return
+  if (!markerDrag || e.pointerId !== markerDrag.pointerId) return
+  if (!markerDrag.moved && Math.hypot(e.clientX - markerDrag.startX, e.clientY - markerDrag.startY) < DRAG_THRESHOLD_PX) return
   markerDrag.moved = true
   raycaster.setFromCamera(ndcOf(e), camera)
   const hit = raycaster.intersectObject(terrain.mesh, false)[0]
@@ -634,19 +650,12 @@ renderer.domElement.addEventListener('pointermove', (e) => {
   refreshRoute()
 })
 window.addEventListener('pointerup', (e) => {
-  if (markerDrag) {
-    controls.enabled = true
-    if (markerDrag.moved) {
-      route.revision++
-      route.geometryRevision++
-      refreshRoute()
-      scheduleSnap()
-    }
-    markerDrag = null
-    downPos = null
-    return
-  }
+  if (markerDrag && e.pointerId === markerDrag.pointerId) endMarkerDrag(true)
 })
+window.addEventListener('pointercancel', (e) => {
+  if (markerDrag && e.pointerId === markerDrag.pointerId) endMarkerDrag(false)
+})
+window.addEventListener('blur', () => endMarkerDrag(false))
 renderer.domElement.addEventListener('pointerup', (e) => {
   if (!params.planning || !downPos || !geo || !dem || e.button !== 0) return
   const moved = Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y) > 6
