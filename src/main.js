@@ -632,6 +632,7 @@ const DRAG_THRESHOLD_PX = 5
 function endMarkerDrag(commit) {
   if (!markerDrag) return
   controls.enabled = markerDrag.prevEnabled
+  renderer.domElement.style.cursor = ''
   if (commit && markerDrag.moved) {
     route.revision++
     route.geometryRevision++
@@ -655,9 +656,10 @@ renderer.domElement.addEventListener('pointerdown', (e) => {
   }
 }, { capture: true })
 renderer.domElement.addEventListener('pointermove', (e) => {
-  if (!markerDrag || e.pointerId !== markerDrag.pointerId) return
+  if (!markerDrag || e.pointerId !== markerDrag.pointerId) { hoverCursor(e); return }
   if (!markerDrag.moved && Math.hypot(e.clientX - markerDrag.startX, e.clientY - markerDrag.startY) < DRAG_THRESHOLD_PX) return
   markerDrag.moved = true
+  renderer.domElement.style.cursor = 'grabbing'
   raycaster.setFromCamera(ndcOf(e), camera)
   const hit = raycaster.intersectObject(terrain.mesh, false)[0]
   if (!hit) return
@@ -670,6 +672,16 @@ renderer.domElement.addEventListener('pointermove', (e) => {
   w.ele = Math.round(elevOfWorld(hit.point.x, hit.point.z))
   refreshRoute()
 })
+// marker hover affordance: grab cursor over waypoint markers (throttled ~90ms)
+let hoverTimer = 0
+function hoverCursor(e) {
+  const now = performance.now()
+  if (now - hoverTimer < 90) return
+  hoverTimer = now
+  if (!params.planning || !routeLayer || !geo) { renderer.domElement.style.cursor = ''; return }
+  raycaster.setFromCamera(ndcOf(e), camera)
+  renderer.domElement.style.cursor = routeLayer.hitWaypoint(raycaster) >= 0 ? 'grab' : ''
+}
 window.addEventListener('pointerup', (e) => {
   if (markerDrag && e.pointerId === markerDrag.pointerId) endMarkerDrag(true)
 })
@@ -1985,6 +1997,28 @@ const rail = createRail({
   ],
   settingsItem: { id: 'settings', icon: '⚙', label: '设置', onSelect: () => toggleSettings() },
 })
+
+// shortcuts help overlay (rail bottom, above settings)
+const helpBtn = document.createElement('button')
+helpBtn.className = 'ui-rail-btn ui-rail-help'
+helpBtn.innerHTML = '<span class="ico">?</span><span class="lbl">快捷键</span>'
+rail.el.insertBefore(helpBtn, rail.el.lastElementChild)
+const helpOv = document.createElement('div')
+helpOv.className = 'ui-help-overlay hidden'
+helpOv.innerHTML = `<div class="ui-help-card">
+  <div class="ttl">快捷键与手势</div>
+  <div class="row"><b>点击地形</b> 添加途经点(规划模式)</div>
+  <div class="row"><b>拖拽标记</b> 移动途经点位置</div>
+  <div class="row"><b>双击名字</b> 重命名途经点</div>
+  <div class="row"><b>Ctrl+Z / Ctrl+Y</b> 撤销 / 重做</div>
+  <div class="row"><b>ESC</b> 退出规划 / 取消插入</div>
+  <div class="row"><b>行间 ⊕</b> 在该段后插入途经点</div>
+  <button class="close">关闭</button>
+</div>`
+document.body.appendChild(helpOv)
+helpBtn.onclick = () => helpOv.classList.toggle('hidden')
+helpOv.querySelector('.close').onclick = () => helpOv.classList.add('hidden')
+helpOv.onclick = (e) => { if (e.target === helpOv) helpOv.classList.add('hidden') }
 
 // data attribution (compliance: OSM ODbL / FOSSGIS / Open-Meteo CC-BY / Mapzen tiles)
 const attrib = document.createElement('div')

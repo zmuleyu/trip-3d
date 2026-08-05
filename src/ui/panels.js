@@ -72,6 +72,14 @@ export function createPlanningPanel(actions) {
   amapGo.onclick = () => actions.onImportAmap?.(amapInput.value)
   el.appendChild(amapRow)
 
+  const secOf = (label) => {
+    const d = document.createElement('div')
+    d.className = 'pp-section'
+    d.textContent = label
+    return d
+  }
+
+  el.appendChild(secOf('线路'))
   const name = document.createElement('input')
   name.className = 'name-input'
   name.value = '未命名线路'
@@ -82,6 +90,7 @@ export function createPlanningPanel(actions) {
   wpList.className = 'ui-wp-list pp-tl'
   el.appendChild(wpList)
 
+  el.appendChild(secOf('统计'))
   const stat = document.createElement('div')
   stat.className = 'ui-stat-card pp-plan'
   el.appendChild(stat)
@@ -91,7 +100,7 @@ export function createPlanningPanel(actions) {
   legsBox.className = 'pp-legs hidden'
   const legsHead = document.createElement('button')
   legsHead.className = 'pp-legs-head'
-  legsHead.textContent = '详情 ▾'
+  legsHead.textContent = '逐段详情 ▾'
   const legsList = document.createElement('div')
   legsList.className = 'pp-legs-list'
   legsHead.onclick = () => legsList.classList.toggle('hidden')
@@ -102,6 +111,8 @@ export function createPlanningPanel(actions) {
   hint.className = 'hint'
   hint.textContent = '点击地形继续加点 · ESC 退出规划'
   el.appendChild(hint)
+
+  el.appendChild(secOf('操作'))
 
   // action rows: compact edit group + main group (share/export exits live in the share tab)
   const opsEdit = document.createElement('div')
@@ -238,6 +249,9 @@ export function createPlanningPanel(actions) {
         return
       }
       const km = stats && stats.distanceM ? (stats.distanceM / 1000).toFixed(1) : '0.0'
+      const bigLabel = document.createElement('div')
+      bigLabel.className = 'pp-plan-big-label'
+      bigLabel.textContent = '总时长'
       const big = document.createElement('div')
       big.className = 'pp-plan-big'
       const allReal = legs?.length && legs.every((l) => l.real)
@@ -259,7 +273,7 @@ export function createPlanningPanel(actions) {
       d.className = 'disclaimer'
       d.textContent = allReal ? `(${profile === 'car' ? '驾车' : '步行'}路网时长,非导航)` : '(示意,非导航)'
       sub.appendChild(d)
-      stat.append(big, sub)
+      stat.append(bigLabel, big, sub)
 
       // per-leg details
       if (legs?.length) {

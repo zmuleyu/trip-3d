@@ -572,3 +572,27 @@ body.sun-open .ui-overview { bottom: 196px; }
 .pp-ops-main button { flex: 1; padding: 7px 0; font-size: 11px; font-family: monospace; cursor: pointer; background: transparent; border: 1px solid rgba(23,25,27,0.35); color: #17191b; }
 .pp-ops-main button.primary { background: #ff4d00; border-color: #ff4d00; color: #fff; font-weight: bold; }
 .pp-ops-main button:hover:not(.primary) { border-color: #ff4d00; color: #ff4d00; }
+
+/* ------------------------------------------------------------------ UX2 visual unification */
+/* section headers inside the planning panel */
+.pp-section { font: 9px monospace; color: rgba(23,25,27,0.45); letter-spacing: 1.5px; margin: 9px 0 3px; border-bottom: 1px dashed rgba(23,25,27,0.15); padding-bottom: 2px; }
+.pp-section:first-of-type { margin-top: 4px; }
+/* summary card big-number label */
+.pp-plan-big-label { font: 9px monospace; color: rgba(23,25,27,0.5); letter-spacing: 1px; }
+/* legs details head: button affordance */
+.pp-legs-head { width: 100%; text-align: left; padding: 5px 8px; background: rgba(23,25,27,0.05); border: 1px solid rgba(23,25,27,0.2); color: #17191b; font: 10px monospace; cursor: pointer; }
+.pp-legs-head:hover { border-color: #ff4d00; color: #ff4d00; background: rgba(255,77,0,0.06); }
+/* timeline ⊕ separators: faintly visible by default, full on hover */
+.pp-tl-sep button { opacity: 0.35; transition: opacity 0.15s; }
+.pp-tl-sep:hover button, .pp-tl-sep button:hover { opacity: 1; }
+/* glass treatment for HUD telemetry/sector blocks */
+.hud-block { background: rgba(255,255,255,0.82); backdrop-filter: blur(6px); border: 1px solid rgba(23,25,27,0.18); padding: 6px 9px; }
+/* shortcuts help overlay */
+.ui-help-overlay { position: fixed; inset: 0; background: rgba(23,25,27,0.35); z-index: 80; display: grid; place-items: center; }
+.ui-help-overlay.hidden { display: none; }
+.ui-help-card { background: #fff; border: 1px solid rgba(23,25,27,0.4); box-shadow: 0 4px 16px rgba(0,0,0,0.25); padding: 14px 16px; width: 280px; font: 11px monospace; color: #17191b; }
+.ui-help-card .ttl { font-weight: bold; margin-bottom: 8px; }
+.ui-help-card .row { margin-bottom: 5px; line-height: 1.5; }
+.ui-help-card .row b { color: #ff4d00; margin-right: 6px; }
+.ui-help-card .close { margin-top: 6px; width: 100%; padding: 6px 0; background: transparent; border: 1px solid rgba(23,25,27,0.35); font: 10px monospace; cursor: pointer; color: #17191b; }
+.ui-help-card .close:hover { border-color: #ff4d00; color: #ff4d00; }
