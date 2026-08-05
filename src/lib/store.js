@@ -9,7 +9,8 @@ export function serializeRoute(route) {
     createdAt: route.createdAt,
     updatedAt: Date.now(),
     revision: route.revision ?? 0,
-    waypoints: route.waypoints.map(({ lon, lat, ele, name }) => ({ lon, lat, ele, name })),
+    waypoints: route.waypoints.map(({ id, lon, lat, ele, name }) => ({ id, lon, lat, ele, name })),
+    dayEnds: route.dayEnds ?? [],
   }
 }
 
@@ -21,9 +22,10 @@ export function hydrateRoute(rec) {
     revision: rec.revision ?? 0,
     geometryRevision: rec.geometryRevision ?? 0,
     waypoints: (rec.waypoints ?? []).map((w, i) => ({
-      id: crypto.randomUUID(),
+      id: w.id ?? crypto.randomUUID(), // preserve ids so dayEnds references survive
       lon: w.lon, lat: w.lat, ele: w.ele, name: w.name ?? `P${i + 1}`,
     })),
+    dayEnds: rec.dayEnds ?? [],
   }
 }
 

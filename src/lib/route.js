@@ -50,6 +50,61 @@ export function moveWaypoint(route, from, to) {
 
 // Arc-length resample of an arbitrary polyline (e.g. OSRM snapped geometry).
 // coords: [[lon, lat], ...] → same pt shape as sampleRoutePath ({x,z,lon,lat,ele,cumDistM}).
+// Reverse the waypoint order (一键反向).
+export function reverseWaypoints(route) {
+  if (route.waypoints.length < 2) return false
+  route.waypoints.reverse()
+  route.revision++
+  route.geometryRevision++
+  normalizeDayEnds(route)
+  return true
+}
+
+// Append a copy of the start when the route isn't already a loop (一键闭环).
+export function closeLoop(route) {
+  const wps = route.waypoints
+  if (wps.length < 2) return false
+  const first = wps[0]
+  const last = wps[wps.length - 1]
+  if (Math.hypot(first.lon - last.lon, first.lat - last.lat) < 0.0003) return false // already closed
+  wps.push({ id: crypto.randomUUID(), lon: first.lon, lat: first.lat, ele: first.ele, name: `${first.name}` })
+  route.revision++
+  route.geometryRevision++
+  return true
+}
+
+// ---------------------------------------------------------------- multi-day segmentation
+// dayEnds: waypoint IDs marking each day's end (id-based — indices drift under
+// reorder/remove, ids follow the waypoint). The final waypoint is implicitly
+// the last day's end and should not be marked.
+export function toggleDayEnd(route, index) {
+  if (!Number.isInteger(index) || index < 0 || index >= route.waypoints.length) return false
+  if (!route.dayEnds) route.dayEnds = []
+  const id = route.waypoints[index].id
+  const at = route.dayEnds.indexOf(id)
+  if (at >= 0) route.dayEnds.splice(at, 1)
+  else route.dayEnds.push(id)
+  route.revision++ // labels/weather concern — geometry untouched
+  return true
+}
+
+// Drop day-end markers whose waypoint no longer exists.
+export function normalizeDayEnds(route) {
+  if (!route.dayEnds) return
+  const alive = new Set(route.waypoints.map((w) => w.id))
+  route.dayEnds = route.dayEnds.filter((id) => alive.has(id))
+}
+
+// Day number (1-based) for the waypoint at index: days increment AFTER each marked end.
+export function dayNumberAt(route, index) {
+  if (!route.dayEnds?.length) return 1
+  let day = 1
+  for (let i = 0; i < index; i++) {
+    if (route.dayEnds.includes(route.waypoints[i].id)) day++
+  }
+  return day
+}
+
 export function samplePolyline(geo, coords, elevOf, nSamples = DEFAULT_SAMPLES) {
   if (!coords || coords.length < 2) return []
   if (nSamples < 2) throw new Error(`nSamples must be >= 2, got ${nSamples}`)

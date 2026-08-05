@@ -76,6 +76,14 @@ describe('osrm provider', () => {
     expect(url).toContain('geometries=geojson')
   })
 
+  it('appends exclude param when set (car: 避开高速)', async () => {
+    let url = ''
+    const p = createOsrmProvider({ fetchImpl: async (u) => { url = u; return { ok: true, json: async () => OSRM_FIXTURE } }, profile: 'car', exclude: 'motorway' })
+    await p.route([{ lon: 102.83, lat: 31.05 }, { lon: 102.9, lat: 31.02 }])
+    expect(url).toContain('routed-car/route/v1/driving/')
+    expect(url).toContain('&exclude=motorway')
+  })
+
   it('throws on <2 points', async () => {
     const p = createOsrmProvider({ fetchImpl: okJson(OSRM_FIXTURE) })
     await expect(p.route([{ lon: 0, lat: 0 }])).rejects.toThrow(/2/)

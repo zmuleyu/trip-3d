@@ -8,16 +8,18 @@ const HOST = 'https://routing.openstreetmap.de'
 // service name → OSRM v1 path profile segment (FOSSGIS convention)
 const PATH_PROFILE = { foot: 'foot', car: 'driving', bike: 'bike' }
 
-export function createOsrmProvider({ fetchImpl = fetch, profile = 'foot' } = {}) {
+export function createOsrmProvider({ fetchImpl = fetch, profile = 'foot', exclude = null } = {}) {
   const service = `routed-${profile}`
   const pathProfile = PATH_PROFILE[profile] ?? 'foot'
   return {
     kind: 'osrm',
     profile,
+    exclude,
     async route(points) {
       if (!points || points.length < 2) throw new Error('osrm: need >= 2 points')
       const coords = points.map((p) => `${p.lon},${p.lat}`).join(';')
-      const url = `${HOST}/${service}/route/v1/${pathProfile}/${coords}?overview=full&geometries=geojson&steps=false`
+      let url = `${HOST}/${service}/route/v1/${pathProfile}/${coords}?overview=full&geometries=geojson&steps=false`
+      if (exclude) url += `&exclude=${exclude}` // e.g. motorway (car: 避开高速)
       const res = await fetchImpl(url)
       if (!res.ok) throw new Error(`osrm HTTP ${res.status}`)
       const body = await res.json()

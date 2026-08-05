@@ -45,6 +45,15 @@ export function createPlanningPanel(actions) {
   snapProfile.className = 'pp-snap-profile'
   snapProfile.innerHTML = '<option value="foot">步行</option><option value="car">驾车</option>'
   snapRow.appendChild(snapProfile)
+  const snapExclude = document.createElement('label')
+  snapExclude.className = 'pp-snap-exclude hidden'
+  const exCb = document.createElement('input')
+  exCb.type = 'checkbox'
+  snapExclude.append(exCb, ' 避开高速')
+  exCb.onchange = () => actions.onSnapExcludeHwy?.(exCb.checked)
+  snapRow.appendChild(snapExclude)
+  const syncExcludeVis = (p) => snapExclude.classList.toggle('hidden', p !== 'car')
+  snapProfile.addEventListener('change', () => syncExcludeVis(snapProfile.value))
   const snapStatus = document.createElement('span')
   snapStatus.className = 'pp-snap-status'
   snapRow.appendChild(snapStatus)
@@ -113,7 +122,10 @@ export function createPlanningPanel(actions) {
     row.appendChild(b)
   }
   mk('撤销', actions.onUndo)
+  mk('重做', actions.onRedo)
   mk('清空', actions.onClear)
+  mk('反向', actions.onReverse)
+  mk('闭环', actions.onCloseLoop)
   mk('保存', actions.onSave, true)
   mk('分享链接', actions.onShare)
   mk('高德链接', actions.onExportAmap)
@@ -153,6 +165,12 @@ export function createPlanningPanel(actions) {
         const nm = document.createElement('span')
         nm.className = 'pp-tl-name'
         nm.textContent = isLoop && i === n - 1 ? `${w.name}(环线终点)` : w.name
+        // day badge from dayEnds (multi-day segmentation)
+        const day = actions.dayNumberAt?.(i) ?? 1
+        const badge = document.createElement('span')
+        badge.className = 'pp-day-badge'
+        badge.textContent = `D${day}`
+        nm.prepend(badge)
         nm.title = '双击重命名'
         nm.ondblclick = () => {
           const inp = document.createElement('input')
@@ -187,6 +205,7 @@ export function createPlanningPanel(actions) {
         }
         if (i > 0) mkOp('↑', '上移', () => actions.onWpMove?.(i, -1))
         if (i < n - 1) mkOp('↓', '下移', () => actions.onWpMove?.(i, 1))
+        if (i < n - 1) mkOp('☀', '设为/取消此天终点(多日分段)', () => actions.onToggleDayEnd?.(i))
         mkOp('✕', '删除', () => actions.onWpRemove?.(i))
         body.append(nm, coord, ops)
         item.append(rail, body)
@@ -299,10 +318,11 @@ export function createPlanningPanel(actions) {
     hideSearchResults() { results.classList.add('hidden') },
 
     // ---- snap API
-    setSnapState(on, statusText, profile) {
+    setSnapState(on, statusText, profile, excludeHwy) {
       snapCb.checked = on
       snapStatus.textContent = statusText ?? ''
-      if (profile) snapProfile.value = profile
+      if (profile) { snapProfile.value = profile; syncExcludeVis(profile) }
+      if (excludeHwy !== undefined) exCb.checked = excludeHwy
     },
   }
 }
@@ -388,7 +408,7 @@ export function createProfileCard(accent = '#ff4d00') {
     setCallbacks(next) { cbs = { ...cbs, ...next } },
     // weatherDays (optional): aggregated TripWeatherDay[] — when provided, a
     // trip-day-axis band is drawn above the profile; when omitted, band clears.
-    update(stats, pts, weatherDays) {
+    update(stats, pts, weatherDays, dayBounds) {
       if (!pts || pts.length < 2) {
         el.classList.add('hidden')
         lastPts = null
@@ -431,6 +451,23 @@ export function createProfileCard(accent = '#ff4d00') {
         i ? ctx.lineTo(x, yy) : ctx.moveTo(x, yy)
       })
       ctx.stroke()
+      // day boundary separators (multi-day segmentation): accent dashed verticals
+      if (Array.isArray(dayBounds) && dayBounds.length) {
+        ctx.save()
+        ctx.strokeStyle = accent
+        ctx.globalAlpha = 0.75
+        ctx.setLineDash([3, 3])
+        ctx.lineWidth = 1
+        for (const b of dayBounds) {
+          const x = 10 + b.frac * (W - 20)
+          ctx.beginPath()
+          ctx.moveTo(x, profileTop - 2)
+          ctx.lineTo(x, H - 6)
+          ctx.stroke()
+          ctx.fillText(`D${b.day}`, x + 2, profileTop + 8)
+        }
+        ctx.restore()
+      }
       ctx.fillStyle = '#17191b'
       ctx.font = '10px monospace'
       ctx.fillText(`${Math.round(min)} m`, 10, H - 4)

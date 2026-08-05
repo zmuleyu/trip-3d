@@ -26,6 +26,8 @@ export function encodeShare(route, ctx) {
     dem: { lat: ctx.dem.lat, lon: ctx.dem.lon, zoom: ctx.dem.zoom, ...(ctx.dem.size > 768 ? { ta: Math.round(ctx.dem.size / 256) } : {}) },
     name: route.name,
     waypoints: route.waypoints.map(({ lon, lat, ele, name }) => [lon, lat, ele, name]),
+    // dayEnds as waypoint INDICES (ids don't survive the hash round-trip)
+    ...(route.dayEnds?.length ? { days: route.dayEnds.map((id) => route.waypoints.findIndex((w) => w.id === id)).filter((i) => i >= 0) } : {}),
   })
 }
 
@@ -44,11 +46,16 @@ export function decodeShare(hash) {
   // cap must equal the restore path's addWaypoint cap — a larger accepted payload
   // would be silently lossy on restore
   const wpsOk = Array.isArray(waypoints) && waypoints.length <= MAX_WAYPOINTS &&
-    waypoints.every((w) => Array.isArray(w) && finiteNum(w[0]) && finiteNum(w[1]) && finiteNum(w[2]))
+    waypoints.every((w) => Array.isArray(w) && w.length === 4 && finiteNum(w[0]) && finiteNum(w[1]) && finiteNum(w[2]))
   if (!demOk || !wpsOk) throw new Error('malformed share payload')
+  // days: optional waypoint indices within range
+  const daysOk = obj.days === undefined ||
+    (Array.isArray(obj.days) && obj.days.every((i) => Number.isInteger(i) && i >= 0 && i < waypoints.length))
+  if (!daysOk) throw new Error('malformed share payload')
   return {
     dem,
     name: obj.name ?? '分享线路',
     waypoints: waypoints.map(([lon, lat, ele, name]) => ({ lon, lat, ele, name })),
+    days: obj.days, // waypoint indices → mapped to fresh ids on restore
   }
 }

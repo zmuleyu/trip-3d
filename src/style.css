@@ -514,3 +514,6 @@ body {
 .pp-tl-sep::before { content: ''; flex: 0 0 2px; height: 8px; background: rgba(23,25,27,0.2); }
 .pp-tl-sep button { display: none; font: inherit; font-size: 10px; line-height: 1; padding: 1px 6px; margin-left: 6px; cursor: pointer; background: #fff; border: 1px solid #ff4d00; color: #ff4d00; border-radius: 8px; }
 .pp-tl-sep:hover button { display: inline-block; }
+
+/* ------------------------------------------------------------------ day badge (multi-day) */
+.pp-day-badge { display: inline-block; font-size: 8px; font-weight: bold; background: rgba(255,77,0,0.12); color: #ff4d00; border: 1px solid rgba(255,77,0,0.4); border-radius: 3px; padding: 0 3px; margin-right: 4px; vertical-align: 1px; }

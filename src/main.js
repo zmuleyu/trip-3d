@@ -24,7 +24,8 @@ import { createHud3D, findPois } from './hud3d.js'
 import { createHud2D } from './hud2d.js'
 import { loadDem, sampleDem } from './dem.js'
 import { makeGeoContext, worldToLonLat, lonLatToWorld } from './lib/geo.js'
-import { createRoute, addWaypoint, insertWaypoint, removeWaypoint, moveWaypoint, routeStats, samplePolyline } from './lib/route.js'
+import { createRoute, addWaypoint, insertWaypoint, removeWaypoint, moveWaypoint, reverseWaypoints, closeLoop, toggleDayEnd, normalizeDayEnds, dayNumberAt, routeStats, samplePolyline } from './lib/route.js'
+import { createHistory } from './lib/history.js'
 import { computeLegs, computeLegsFromPts, normalizeOsrmLegs } from './lib/legs.js'
 import { RouteLayer } from './route/RouteLayer.js'
 import { openRouteStore } from './lib/store.js'
@@ -782,12 +783,15 @@ function refreshRoute() {
     pathPts,
   })
   lastRoutePts = pts
+  normalizeDayEnds(route) // id-based markers: drop refs to deleted waypoints
+  history.record(route) // safe: dedup no-ops on non-route refreshes
   updateRouteUI(route, pts.length ? routeStats(pts) : null, pts)
   // route edited → any in-flight weather query for the old revision is void
   if (weatherState.result && weatherState.revision !== route.revision) weatherState.requestId++
 }
 
 let lastRoutePts = []
+const history = createHistory() // undo/redo snapshots; record() dedups unchanged states
 
 // snap binds to route IDENTITY + geometryRevision — a rename (revision-only)
 // keeps snapped display stable; loading a different route with a colliding
@@ -799,8 +803,10 @@ const snapVersion = () => `${route.id}:${route.geometryRevision}`
 // identical requests; failures are never cached (public demo has no SLA).
 const SNAP_LS = 'trip3d.snapOn'
 const SNAP_PROFILE_LS = 'trip3d.snapProfile'
+const SNAP_EXCLUDE_LS = 'trip3d.snapExcludeHwy'
 let snapProfile = localStorage.getItem(SNAP_PROFILE_LS) || 'foot'
-const getRouter = () => createRoutingProvider('osrm', { profile: snapProfile })
+let snapExcludeHwy = localStorage.getItem(SNAP_EXCLUDE_LS) === '1'
+const getRouter = () => createRoutingProvider('osrm', { profile: snapProfile, exclude: snapProfile === 'car' && snapExcludeHwy ? 'motorway' : null })
 const snapState = {
   on: localStorage.getItem(SNAP_LS) === '1',
   geometry: null,
@@ -814,7 +820,7 @@ const snapInflight = new Map()
 let snapTimer = null
 
 const currentDemKey = () => (dem ? `${params.demLat.toFixed(4)},${params.demLon.toFixed(4)},${params.demZoom}x${params.tilesAcross}` : '')
-const snapRouteKey = (wps) => `osrm:${snapProfile}:` + wps.map((w) => `${w.lon.toFixed(5)},${w.lat.toFixed(5)}`).join('>')
+const snapRouteKey = (wps) => `osrm:${snapProfile}:${snapProfile === 'car' && snapExcludeHwy ? 'xm' : ''}:` + wps.map((w) => `${w.lon.toFixed(5)},${w.lat.toFixed(5)}`).join('>')
 
 function scheduleSnap() {
   if (!snapState.on) return
@@ -872,7 +878,7 @@ function snapFetch(key, wps) {
       const legs = []
       for (let i = 1; i < wps.length; i++) {
         const a = wps[i - 1], b = wps[i]
-        const segKey = snapCacheKey('osrm', snapProfile, a, b)
+        const segKey = snapCacheKey('osrm', `${snapProfile}${snapProfile === 'car' && snapExcludeHwy ? 'xm' : ''}`, a, b)
         if (snapCache.has(segKey)) {
           const c = snapCache.get(segKey)
           segs.push(c.geometry)
@@ -1237,7 +1243,24 @@ function updateRouteUI(route, stats, pts) {
   planningPanel.update(route, stats, legs, wxIndex, snapProfile)
   // weather band only when a fresh result matches this route revision
   const wxDays = weatherState.result && weatherState.revision === route.revision ? weatherState.result.agg : null
-  profileCard.update(stats, pts, wxDays)
+  // day boundary positions on the profile axis (multi-day segmentation)
+  let dayBounds = null
+  if (route.dayEnds?.length && pts?.length >= 2) {
+    const total = pts[pts.length - 1].cumDistM || 1
+    dayBounds = route.dayEnds.map((id) => {
+      const wi = route.waypoints.findIndex((w) => w.id === id)
+      if (wi < 0) return null
+      const w = route.waypoints[wi]
+      let best = 0
+      let bd = Infinity
+      for (let i = 0; i < pts.length; i++) {
+        const d = (pts[i].lon - w.lon) ** 2 + (pts[i].lat - w.lat) ** 2
+        if (d < bd) { bd = d; best = i }
+      }
+      return { frac: pts[best].cumDistM / total, day: dayNumberAt(route, wi) }
+    }).filter(Boolean)
+  }
+  profileCard.update(stats, pts, wxDays, dayBounds)
 }
 
 // ------------------------------------------------------------------ weather state
@@ -1526,8 +1549,13 @@ async function refreshLibrary() {
 
 const routeActions = {
   onNameChange: (v) => { route.name = v; params.routeName = v },
-  onUndo: () => { route.waypoints.pop(); route.revision++; route.geometryRevision++; refreshRoute(); scheduleSnap() },
-  onClear: () => { route.waypoints = []; route.revision++; route.geometryRevision++; refreshRoute(); scheduleSnap() },
+  onUndo: () => { if (history.undo(route)) { refreshRoute(); scheduleSnap() } },
+  onRedo: () => { if (history.redo(route)) { refreshRoute(); scheduleSnap() } },
+  onClear: () => { route.waypoints = []; route.dayEnds = []; route.revision++; route.geometryRevision++; refreshRoute(); scheduleSnap() },
+  onReverse: () => { if (reverseWaypoints(route)) { refreshRoute(); scheduleSnap(); toast.show('已反向') } },
+  onCloseLoop: () => { if (closeLoop(route)) { refreshRoute(); scheduleSnap(); toast.show('已闭环') } else toast.show('已是环线或点位不足') },
+  onToggleDayEnd: (i) => { if (toggleDayEnd(route, i)) refreshRoute() },
+  dayNumberAt: (i) => dayNumberAt(route, i),
   onSearch: runSearch,
   onSearchGo: searchGo,
   onSearchAdd: searchAdd,
@@ -1546,6 +1574,15 @@ const routeActions = {
     snapProfile = p
     localStorage.setItem(SNAP_PROFILE_LS, p)
     snapState.version = '' // force re-snap with new profile
+    snapState.geometry = null
+    snapState.legs = null
+    if (snapState.on) scheduleSnap()
+    refreshRoute()
+  },
+  onSnapExcludeHwy: (on) => {
+    snapExcludeHwy = on
+    localStorage.setItem(SNAP_EXCLUDE_LS, on ? '1' : '0')
+    snapState.version = ''
     snapState.geometry = null
     snapState.legs = null
     if (snapState.on) scheduleSnap()
@@ -1596,6 +1633,7 @@ const routeActions = {
         route = gpxToRoute(await inp.files[0].text())
         params.routeName = route.name
         ensureRouteLayer()
+        history.reset(route)
         refreshRoute()
         scheduleSnap()
         toast.show(route.downsampled ? `GPX 已导入(抽稀 ${route.originalPointCount}→${route.waypoints.length} 点)` : 'GPX 已导入')
@@ -1605,7 +1643,7 @@ const routeActions = {
   },
 }
 const planningPanel = createPlanningPanel(routeActions)
-planningPanel.setSnapState(snapState.on, '', snapProfile)
+planningPanel.setSnapState(snapState.on, '', snapProfile, snapExcludeHwy)
 const libraryPanel = createLibraryPanel({
   onLoad: async (id) => {
     const s = await routeStoreReady
@@ -1615,6 +1653,7 @@ const libraryPanel = createLibraryPanel({
     route = r
     params.routeName = r.name
     ensureRouteLayer()
+    history.reset(route)
     refreshRoute()
     scheduleSnap()
     toast.show(`已加载「${r.name}」`)
@@ -1646,6 +1685,18 @@ const mode = createModeMachine({
   },
 })
 window.addEventListener('keydown', (e) => {
+  const tag = document.activeElement?.tagName
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return // don't hijack form editing
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
+    e.preventDefault()
+    if (history.undo(route)) { refreshRoute(); scheduleSnap(); toast.show('撤销') }
+    return
+  }
+  if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey))) {
+    e.preventDefault()
+    if (history.redo(route)) { refreshRoute(); scheduleSnap(); toast.show('重做') }
+    return
+  }
   if (e.key === 'Escape' && insertIndex != null) {
     insertIndex = null // cancel pending insert before exiting planning
     toast.show('已取消插入')
@@ -1717,6 +1768,8 @@ if (location.hash.startsWith('#r=')) {
     route = createRoute(shared.name)
     params.routeName = shared.name
     for (const w of shared.waypoints) addWaypoint(route, w.lon, w.lat, w.ele, w.name)
+    if (shared.days?.length) route.dayEnds = shared.days.map((i) => route.waypoints[i]?.id).filter(Boolean)
+    history.reset(route)
     params.planning = true
     // no explicit loadRealTerrain() call — the startup line below does it once
   } catch (err) {
@@ -1730,9 +1783,11 @@ window.__exp = { scene, camera, controls, params, terrain, loadRealTerrain, get 
 // real world is the default source — fetch its tiles on startup
 if (params.source === 'real') loadRealTerrain()
 
+history.reset(route) // baseline for undo/redo (after any hash restore above)
+
 // after first build: restore snap toggle UI + re-snap a hash-restored route
 whenTerrainBuilt(1).then(() => {
-  planningPanel.setSnapState(snapState.on, '', snapProfile)
+  planningPanel.setSnapState(snapState.on, '', snapProfile, snapExcludeHwy)
   if (snapState.on && route.waypoints.length >= 2) scheduleSnap()
 })
 
