@@ -63,6 +63,7 @@ const params = {
   demLat: 36.998,
   demLon: -110.0984,
   demZoom: 12,
+  tilesAcross: 3,
   demExaggeration: 1.6,
   planning: false,
   routeName: '未命名线路',
@@ -130,11 +131,11 @@ const params = {
   scanDispHeight: 1.16,
   scanDispFalloff: 1.2,
 
-  // look
+  // look (defaults tuned for the real-terrain use case: less wash-out)
   exposure: 0.96,
-  contrast: 0.07,
-  saturation: -0.35,
-  vignette: 0.6,
+  contrast: 0.14,
+  saturation: -0.22,
+  vignette: 0.42,
   grain: 0.35,
   fogNear: 35.5,
   fogFar: 50,
@@ -699,7 +700,7 @@ async function loadRealTerrain() {
   loadingEl.textContent = 'fetching elevation tiles…'
   loadingEl.classList.remove('hidden')
   try {
-    dem = await loadDem({ lat: params.demLat, lon: params.demLon, zoom: params.demZoom })
+    dem = await loadDem({ lat: params.demLat, lon: params.demLon, zoom: params.demZoom, tilesAcross: params.tilesAcross })
     terrain.setDem(dem)
     geo = makeGeoContext(dem)
     ensureRouteLayer()
@@ -795,7 +796,9 @@ const snapVersion = () => `${route.id}:${route.geometryRevision}`
 // Success-only result cache (WGS-84 geometry); in-flight map dedups concurrent
 // identical requests; failures are never cached (public demo has no SLA).
 const SNAP_LS = 'trip3d.snapOn'
-const routingProvider = createRoutingProvider('osrm')
+const SNAP_PROFILE_LS = 'trip3d.snapProfile'
+let snapProfile = localStorage.getItem(SNAP_PROFILE_LS) || 'foot'
+const getRouter = () => createRoutingProvider('osrm', { profile: snapProfile })
 const snapState = {
   on: localStorage.getItem(SNAP_LS) === '1',
   geometry: null,
@@ -808,8 +811,8 @@ const snapCache = new Map()
 const snapInflight = new Map()
 let snapTimer = null
 
-const currentDemKey = () => (dem ? `${params.demLat.toFixed(4)},${params.demLon.toFixed(4)},${params.demZoom}` : '')
-const snapRouteKey = (wps) => 'osrm:foot:' + wps.map((w) => `${w.lon.toFixed(5)},${w.lat.toFixed(5)}`).join('>')
+const currentDemKey = () => (dem ? `${params.demLat.toFixed(4)},${params.demLon.toFixed(4)},${params.demZoom}x${params.tilesAcross}` : '')
+const snapRouteKey = (wps) => `osrm:${snapProfile}:` + wps.map((w) => `${w.lon.toFixed(5)},${w.lat.toFixed(5)}`).join('>')
 
 function scheduleSnap() {
   if (!snapState.on) return
@@ -857,7 +860,7 @@ function snapFetch(key, wps) {
   if (snapInflight.has(key)) return snapInflight.get(key)
   const p = (async () => {
     try {
-      const r = await routingProvider.route(wps.map(({ lon, lat }) => ({ lon, lat })))
+      const r = await getRouter().route(wps.map(({ lon, lat }) => ({ lon, lat })))
       const out = { geometry: r.geometry, legs: r.legs }
       snapCache.set(key, out)
       return out
@@ -867,7 +870,7 @@ function snapFetch(key, wps) {
       const legs = []
       for (let i = 1; i < wps.length; i++) {
         const a = wps[i - 1], b = wps[i]
-        const segKey = snapCacheKey('osrm', 'foot', a, b)
+        const segKey = snapCacheKey('osrm', snapProfile, a, b)
         if (snapCache.has(segKey)) {
           const c = snapCache.get(segKey)
           segs.push(c.geometry)
@@ -875,7 +878,7 @@ function snapFetch(key, wps) {
           continue
         }
         try {
-          const r = await routingProvider.route([{ lon: a.lon, lat: a.lat }, { lon: b.lon, lat: b.lat }])
+          const r = await getRouter().route([{ lon: a.lon, lat: a.lat }, { lon: b.lon, lat: b.lat }])
           const out = { geometry: r.geometry, legs: r.legs }
           snapCache.set(segKey, out)
           segs.push(r.geometry)
@@ -967,7 +970,7 @@ fSource
 latCtrl.lat = fSource.add(params, 'demLat', -85, 85, 0.0001).name('latitude')
 latCtrl.lon = fSource.add(params, 'demLon', -180, 180, 0.0001).name('longitude')
 fSource
-  .add(params, 'demZoom', [10, 11, 12, 13, 14])
+  .add(params, 'demZoom', [8, 9, 10, 11, 12, 13, 14])
   .name('detail (zoom)')
   .onChange(() => {
     if (params.source === 'real') loadRealTerrain()
@@ -1229,7 +1232,7 @@ function updateRouteUI(route, stats, pts) {
     : null
   const legs = osrmLegs ?? computeLegsFromPts(pts, route.waypoints) ?? (route.waypoints.length >= 2 ? computeLegs(route.waypoints) : null)
   const wxIndex = weatherState.result && weatherState.revision === route.revision ? weatherState.result.index?.overall : null
-  planningPanel.update(route, stats, legs, wxIndex)
+  planningPanel.update(route, stats, legs, wxIndex, snapProfile)
   // weather band only when a fresh result matches this route revision
   const wxDays = weatherState.result && weatherState.revision === route.revision ? weatherState.result.agg : null
   profileCard.update(stats, pts, wxDays)
@@ -1355,6 +1358,44 @@ async function searchAdd(r) {
 }
 
 // ------------------------------------------------------------------ amap link interop
+// pick DEM view (zoom + tile grid) from route span — wide routes get lower
+// zoom AND a wider 5×5 tile grid so the whole route fits the terrain.
+// coverage ≈ spanDeg: z8/5×5≈7.0°, z9/5×5≈3.5°, z10/5×5≈1.76°, z11/3×3≈0.53°, z12/3×3≈0.26°
+function pickViewForSpan(wps) {
+  const lons = wps.map((w) => w.lon)
+  const lats = wps.map((w) => w.lat)
+  const latMid = lats.reduce((a, b) => a + b, 0) / lats.length
+  const spanDeg = Math.max(
+    (Math.max(...lons) - Math.min(...lons)) * Math.cos((latMid * Math.PI) / 180),
+    Math.max(...lats) - Math.min(...lats)
+  )
+  if (spanDeg > 3) return { zoom: 8, tilesAcross: 5 }
+  if (spanDeg > 1.5) return { zoom: 9, tilesAcross: 5 }
+  if (spanDeg > 0.6) return { zoom: 10, tilesAcross: 5 }
+  if (spanDeg > 0.25) return { zoom: 11, tilesAcross: 3 }
+  return { zoom: 12, tilesAcross: 3 }
+}
+
+// fit camera to the in-bounds portion of the route after a DEM (re)load
+function fitCameraToRoute() {
+  const inBounds = route.waypoints
+    .map((w) => {
+      const { x, z } = lonLatToWorld(geo, w.lon, w.lat)
+      const { px, py } = geo.worldToPx(x, z)
+      return { x, z, inB: px >= 0 && px <= dem.size - 1 && py >= 0 && py <= dem.size - 1 }
+    })
+    .filter((p) => p.inB)
+  if (!inBounds.length) return
+  const xs = inBounds.map((p) => p.x)
+  const zs = inBounds.map((p) => p.z)
+  const cx = (Math.min(...xs) + Math.max(...xs)) / 2
+  const cz = (Math.min(...zs) + Math.max(...zs)) / 2
+  const span = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...zs) - Math.min(...zs))
+  const dist = Math.max(10, span * 1.8)
+  const y = terrain.sample(cx, cz)
+  flyTo(new THREE.Vector3(cx + dist * 0.5, y + dist * 0.75, cz + dist * 0.5), new THREE.Vector3(cx, y, cz))
+}
+
 async function importAmapLink(urlStr) {
   const parsed = parseAmapLink(urlStr?.trim() ?? '')
   if (!parsed) { toast.show('无法解析:支持 amap.com 行程分享链接'); return }
@@ -1373,6 +1414,9 @@ async function importAmapLink(urlStr) {
     toast.show('加载目标区域地形…')
     params.demLat = cy
     params.demLon = cx
+    const view = pickViewForSpan(pts) // wide routes get wider tiles + lower zoom
+    params.demZoom = view.zoom
+    params.tilesAcross = view.tilesAcross
     const gen = terrainGen + 1
     loadRealTerrain()
     const built = await whenTerrainBuilt(gen)
@@ -1392,8 +1436,9 @@ async function importAmapLink(urlStr) {
   if (!mode.isPlanning()) mode.enterPlanning()
   refreshRoute()
   scheduleSnap()
+  fitCameraToRoute()
   toast.show(`已从高德链接导入 ${added} 个途经点`)
-  if (anyOutOfView) setTimeout(() => toast.show('部分点位超出当前地形视野(局部 ~50km),统计仍含全程', 3600), 2300)
+  if (anyOutOfView) setTimeout(() => toast.show('部分点位超出当前地形视野,统计仍含全程(更大范围地形金字塔见 followups)', 3600), 2300)
 }
 
 function exportAmapLink() {
@@ -1492,6 +1537,15 @@ const routeActions = {
     toast.show(`点击地形,新途经点将插入到第 ${index + 1} 位(ESC 取消)`)
   },
   resetInsert: () => { insertIndex = null },
+  onSnapProfile: (p) => {
+    snapProfile = p
+    localStorage.setItem(SNAP_PROFILE_LS, p)
+    snapState.version = '' // force re-snap with new profile
+    snapState.geometry = null
+    snapState.legs = null
+    if (snapState.on) scheduleSnap()
+    refreshRoute()
+  },
   onSnapToggle: (on) => {
     snapState.on = on
     localStorage.setItem(SNAP_LS, on ? '1' : '0')
@@ -1546,7 +1600,7 @@ const routeActions = {
   },
 }
 const planningPanel = createPlanningPanel(routeActions)
-planningPanel.setSnapState(snapState.on, '')
+planningPanel.setSnapState(snapState.on, '', snapProfile)
 const libraryPanel = createLibraryPanel({
   onLoad: async (id) => {
     const s = await routeStoreReady
@@ -1653,6 +1707,7 @@ if (location.hash.startsWith('#r=')) {
     params.demLat = shared.dem.lat
     params.demLon = shared.dem.lon
     params.demZoom = shared.dem.zoom
+    if (shared.dem.ta) params.tilesAcross = shared.dem.ta // wide-view grids ride along
     params.demLocation = 'Custom'
     route = createRoute(shared.name)
     params.routeName = shared.name
@@ -1672,7 +1727,7 @@ if (params.source === 'real') loadRealTerrain()
 
 // after first build: restore snap toggle UI + re-snap a hash-restored route
 whenTerrainBuilt(1).then(() => {
-  planningPanel.setSnapState(snapState.on, '')
+  planningPanel.setSnapState(snapState.on, '', snapProfile)
   if (snapState.on && route.waypoints.length >= 2) scheduleSnap()
 })
 

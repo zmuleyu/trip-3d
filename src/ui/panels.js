@@ -1,6 +1,16 @@
 // Context panel contents + profile floating card. DOM only; fed by main.js.
 
 // ---------------------------------------------------------------- planning panel
+// duration formatting: ≥24h shows days (long road trips)
+const fmtDur = (minutes) => {
+  const m = Math.round(minutes)
+  if (m < 60) return `${m}m`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `${h}h${m % 60}m`
+  const d = Math.floor(h / 24)
+  return `${d}天${h % 24}h`
+}
+
 export function createPlanningPanel(actions) {
   const el = document.createElement('div')
 
@@ -25,16 +35,21 @@ export function createPlanningPanel(actions) {
   searchBtn.onclick = doSearch
   searchInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSearch() })
 
-  // ---- snap toggle
+  // ---- snap toggle + profile
   const snapRow = document.createElement('label')
   snapRow.className = 'pp-snap-row'
   const snapCb = document.createElement('input')
   snapCb.type = 'checkbox'
-  snapRow.append(snapCb, ' 路网吸附(步道/道路)')
+  snapRow.append(snapCb, ' 路网吸附')
+  const snapProfile = document.createElement('select')
+  snapProfile.className = 'pp-snap-profile'
+  snapProfile.innerHTML = '<option value="foot">步行</option><option value="car">驾车</option>'
+  snapRow.appendChild(snapProfile)
   const snapStatus = document.createElement('span')
   snapStatus.className = 'pp-snap-status'
   snapRow.appendChild(snapStatus)
   snapCb.onchange = () => actions.onSnapToggle?.(snapCb.checked)
+  snapProfile.onchange = () => actions.onSnapProfile?.(snapProfile.value)
   el.appendChild(snapRow)
 
   // ---- amap link import (below snap row)
@@ -109,11 +124,14 @@ export function createPlanningPanel(actions) {
   return {
     el,
     get nameEl() { return name },
-    // update(route, stats, legs, weatherIndex) — timeline list + summary card + legs
-    update(route, stats, legs = null, weatherIndex = null) {
+    // update(route, stats, legs, weatherIndex, profile) — timeline list + summary card + legs
+    update(route, stats, legs = null, weatherIndex = null, profile = 'foot') {
       if (document.activeElement !== name) name.value = route.name
       wpList.replaceChildren()
       const n = route.waypoints.length
+      // loop route: last point within ~25m of the first → merged start/end marker
+      const wpsArr = route.waypoints
+      const isLoop = n > 1 && Math.hypot(wpsArr[0].lon - wpsArr[n - 1].lon, wpsArr[0].lat - wpsArr[n - 1].lat) < 0.0003
       route.waypoints.forEach((w, i) => {
         const item = document.createElement('div')
         item.className = 'pp-tl-item'
@@ -134,7 +152,7 @@ export function createPlanningPanel(actions) {
         body.className = 'pp-tl-body'
         const nm = document.createElement('span')
         nm.className = 'pp-tl-name'
-        nm.textContent = w.name
+        nm.textContent = isLoop && i === n - 1 ? `${w.name}(环线终点)` : w.name
         nm.title = '双击重命名'
         nm.ondblclick = () => {
           const inp = document.createElement('input')
@@ -208,13 +226,9 @@ export function createPlanningPanel(actions) {
       if (allReal) {
         // real routed duration (OSRM legs) — consistent with the per-leg details
         const totalS = legs.reduce((s, l) => s + l.durationS, 0)
-        const h = Math.floor(totalS / 3600)
-        const m = Math.round((totalS % 3600) / 60)
-        big.textContent = h ? `${h}h${m}m` : `${m}m`
+        big.textContent = fmtDur(totalS / 60)
       } else if (stats) {
-        const h = Math.floor(stats.driveMinutes / 60)
-        const m = stats.driveMinutes % 60
-        big.textContent = h ? `${h}h${m}m` : `${m}m`
+        big.textContent = fmtDur(stats.driveMinutes)
       } else {
         big.textContent = `${km} km`
       }
@@ -225,7 +239,7 @@ export function createPlanningPanel(actions) {
       if (weatherIndex != null) sub.textContent += ` · 天气指数 ${weatherIndex}`
       const d = document.createElement('span')
       d.className = 'disclaimer'
-      d.textContent = allReal ? '(路网时长,非导航)' : '(示意,非导航)'
+      d.textContent = allReal ? `(${profile === 'car' ? '驾车' : '步行'}路网时长,非导航)` : '(示意,非导航)'
       sub.appendChild(d)
       stat.append(big, sub)
 
@@ -237,8 +251,8 @@ export function createPlanningPanel(actions) {
           const r = document.createElement('div')
           r.className = 'pp-leg'
           const dur = l.real
-            ? ` ${Math.floor(l.durationS / 3600)}h${Math.round((l.durationS % 3600) / 60)}m`
-            : ` ~${l.driveMinutes}m`
+            ? ` ${fmtDur(l.durationS / 60)}`
+            : ` ~${fmtDur(l.driveMinutes)}`
           const ele = l.ascentM != null ? ` ↑${l.ascentM}m ↓${l.descentM}m` : ''
           r.textContent = `${i + 1}. ${l.from} → ${l.to} · ${(l.distanceM / 1000).toFixed(1)}km${ele}${dur}${l.real ? ' (路网)' : ''}`
           legsList.appendChild(r)
@@ -285,9 +299,10 @@ export function createPlanningPanel(actions) {
     hideSearchResults() { results.classList.add('hidden') },
 
     // ---- snap API
-    setSnapState(on, statusText) {
+    setSnapState(on, statusText, profile) {
       snapCb.checked = on
       snapStatus.textContent = statusText ?? ''
+      if (profile) snapProfile.value = profile
     },
   }
 }

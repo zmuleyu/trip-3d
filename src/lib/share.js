@@ -1,4 +1,4 @@
-// URL-hash share codec: { v, dem:{lat,lon,zoom}, name, waypoints } ↔ base64url.
+// URL-hash share codec: { v, dem:{lat,lon,zoom,ta?}, name, waypoints } ↔ base64url.
 import { MAX_WAYPOINTS } from './route.js'
 
 const VERSION = 1
@@ -23,7 +23,7 @@ const b64urlDecode = (s) => {
 export function encodeShare(route, ctx) {
   return b64urlEncode({
     v: VERSION,
-    dem: { lat: ctx.dem.lat, lon: ctx.dem.lon, zoom: ctx.dem.zoom },
+    dem: { lat: ctx.dem.lat, lon: ctx.dem.lon, zoom: ctx.dem.zoom, ...(ctx.dem.size > 768 ? { ta: Math.round(ctx.dem.size / 256) } : {}) },
     name: route.name,
     waypoints: route.waypoints.map(({ lon, lat, ele, name }) => [lon, lat, ele, name]),
   })
@@ -36,7 +36,7 @@ export function decodeShare(hash) {
   if (obj.v !== VERSION) throw new Error(`unsupported share version: ${obj.v}`)
   const { dem, waypoints } = obj
   const demOk = dem && finiteNum(dem.lat) && Math.abs(dem.lat) <= 90 && finiteNum(dem.lon) &&
-    Math.abs(dem.lon) <= 180 && Number.isInteger(dem.zoom) && dem.zoom >= 10 && dem.zoom <= 14
+    Math.abs(dem.lon) <= 180 && Number.isInteger(dem.zoom) && dem.zoom >= 8 && dem.zoom <= 14
   // cap must equal the restore path's addWaypoint cap — a larger accepted payload
   // would be silently lossy on restore
   const wpsOk = Array.isArray(waypoints) && waypoints.length <= MAX_WAYPOINTS &&

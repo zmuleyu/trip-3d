@@ -20,12 +20,12 @@ class AmapRoutingStub {
 
 const KINDS = {
   none: () => new StubRoutingProvider('none'),
-  osrm: () => createOsrmProvider(),
+  osrm: (opts) => createOsrmProvider(opts),
   amap: () => new AmapRoutingStub(),
 }
 
-export function createRoutingProvider(kind) {
+export function createRoutingProvider(kind, opts) {
   const make = KINDS[kind]
   if (!make) throw new Error(`unknown routing provider: ${kind}`)
-  return make()
+  return make(opts)
 }
