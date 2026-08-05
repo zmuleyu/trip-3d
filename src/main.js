@@ -23,7 +23,8 @@ import { createLabels, disposeLabels } from './labels.js'
 import { createHud3D, findPois } from './hud3d.js'
 import { createHud2D } from './hud2d.js'
 import { loadDem, sampleDem } from './dem.js'
-import { makeGeoContext, worldToLonLat, lonLatToWorld } from './lib/geo.js'
+import { makeGeoContext, worldToLonLat, lonLatToWorld, TERRAIN_SIZE } from './lib/geo.js'
+import { createOverviewMap } from './ui/overviewMap.js'
 import { createRoute, addWaypoint, insertWaypoint, removeWaypoint, moveWaypoint, reverseWaypoints, closeLoop, toggleDayEnd, normalizeDayEnds, dayNumberAt, routeStats, samplePolyline } from './lib/route.js'
 import { createHistory } from './lib/history.js'
 import { computeLegs, computeLegsFromPts, normalizeOsrmLegs } from './lib/legs.js'
@@ -609,8 +610,19 @@ let markerDrag = null
 let insertIndex = null // pending insert position (timeline ⊕)
 controls.addEventListener('change', () => {
   if (downPos) dragged = true
+  // inset viewport follows camera moves (throttled inside the component)
+  overviewThrottle()
 })
 const ndcOf = (e) => new THREE.Vector2((e.clientX / window.innerWidth) * 2 - 1, -((e.clientY / window.innerHeight) * 2 - 1))
+// inset viewport indicator refresh, throttled (controls 'change' fires per frame during drags)
+let overviewTimer = null
+function overviewThrottle() {
+  if (overviewTimer) return
+  overviewTimer = setTimeout(() => {
+    overviewTimer = null
+    if (typeof overviewMap !== 'undefined') overviewMap.updateViewport(currentViewportRect())
+  }, 400)
+}
 const DRAG_THRESHOLD_PX = 5
 function endMarkerDrag(commit) {
   if (!markerDrag) return
@@ -1259,6 +1271,7 @@ function updateRouteUI(route, stats, pts) {
     }).filter(Boolean)
   }
   profileCard.update(stats, pts, wxDays, dayBounds)
+  overviewMap.update(route, pts, currentViewportRect())
 }
 
 // ------------------------------------------------------------------ weather state
@@ -1633,6 +1646,20 @@ const routeActions = {
 }
 const planningPanel = createPlanningPanel(routeActions)
 planningPanel.setSnapState(snapState.on, '', snapProfile)
+// overview inset map: click → fly the 3D camera to that lon/lat
+const overviewMap = createOverviewMap({
+  onJump: (lon, lat) => { if (geo && dem) flyToLonLat(lon, lat, 10) },
+})
+document.body.appendChild(overviewMap.el)
+
+// 3D terrain world AABB → lon/lat rect for the inset viewport indicator
+function currentViewportRect() {
+  if (!geo || !dem) return null
+  const half = TERRAIN_SIZE / 2
+  const nw = worldToLonLat(geo, -half, -half)
+  const se = worldToLonLat(geo, half, half)
+  return { minLon: Math.min(nw.lon, se.lon), maxLon: Math.max(nw.lon, se.lon), minLat: Math.min(nw.lat, se.lat), maxLat: Math.max(nw.lat, se.lat) }
+}
 const libraryPanel = createLibraryPanel({
   onLoad: async (id) => {
     const s = await routeStoreReady

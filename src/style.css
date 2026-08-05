@@ -517,3 +517,9 @@ body {
 
 /* ------------------------------------------------------------------ day badge (multi-day) */
 .pp-day-badge { display: inline-block; font-size: 8px; font-weight: bold; background: rgba(255,77,0,0.12); color: #ff4d00; border: 1px solid rgba(255,77,0,0.4); border-radius: 3px; padding: 0 3px; margin-right: 4px; vertical-align: 1px; }
+
+/* ------------------------------------------------------------------ overview inset map */
+.ui-overview { position: fixed; right: 10px; bottom: 26px; z-index: 30; border: 1px solid rgba(23,25,27,0.4); background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.18); }
+.ui-overview.hidden { display: none; }
+.ui-overview canvas { display: block; cursor: crosshair; }
+.ui-overview-credit { font: 8px monospace; color: rgba(23,25,27,0.55); text-align: right; padding: 0 3px 1px; }
