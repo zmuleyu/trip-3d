@@ -29,6 +29,7 @@ import { createSharePanel, renderPoster } from './ui/sharePanel.js'
 import { buildPosterData } from './lib/poster.js'
 import { createRoute, addWaypoint, insertWaypoint, removeWaypoint, moveWaypoint, reverseWaypoints, closeLoop, toggleDayEnd, normalizeDayEnds, dayNumberAt, routeStats, samplePolyline } from './lib/route.js'
 import { sunPosition, shadeFraction } from './lib/sun.js'
+import { resamplePath, flyoverDuration, cameraFrame } from './lib/flyover.js'
 import { createHistory } from './lib/history.js'
 import { computeLegs, computeLegsFromPts, normalizeOsrmLegs } from './lib/legs.js'
 import { RouteLayer } from './route/RouteLayer.js'
@@ -1716,8 +1717,72 @@ const sharePanel = createSharePanel({
   onExportGpx: () => routeActions.onExportGpx(),
   onExportAmap: exportAmapLink,
   onDownloadPoster: exportPoster,
+  onFlyover: startFlyover,
 })
 sharePanel.update('规划线路后,这里聚合全部分享出口')
+
+// ------------------------------------------------------------------ flyover video
+// MediaRecorder over canvas.captureStream; camera walks the route path in tick.
+const flyState = { active: false, rec: null, chunks: [], t: 0, dur: 0, path: null, ground: null, discard: false }
+let flyPrevCam = null
+
+const flyOverlay = document.createElement('div')
+flyOverlay.className = 'ui-fly-overlay hidden'
+flyOverlay.innerHTML = '<div class="fly-card"><div class="ttl">🎬 正在录制飞越视频</div><div class="bar"><div class="fill"></div></div><button class="fly-cancel">取消</button></div>'
+document.body.appendChild(flyOverlay)
+flyOverlay.querySelector('.fly-cancel').onclick = () => stopFlyover(false)
+
+function startFlyover() {
+  if (flyState.active) return
+  if (lastRoutePts.length < 2) { toast.show('先规划线路再录制'); return }
+  if (typeof MediaRecorder === 'undefined') { toast.show('当前浏览器不支持视频录制'); return }
+  const totalDist = lastRoutePts[lastRoutePts.length - 1].cumDistM
+  const dur = flyoverDuration(totalDist, { mPerSec: 400, minS: 12, maxS: 60 })
+  const path = resamplePath(lastRoutePts, Math.max(60, Math.round(dur * 12)))
+  const ground = (x, z) => terrain.sample(x, z)
+  const stream = renderer.domElement.captureStream(30)
+  let rec
+  try {
+    rec = new MediaRecorder(stream, {
+      mimeType: MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9' : 'video/webm',
+      videoBitsPerSecond: 6_000_000,
+    })
+  } catch { toast.show('当前浏览器不支持视频录制'); return }
+  flyState.chunks = []
+  rec.ondataavailable = (e) => { if (e.data.size) flyState.chunks.push(e.data) }
+  rec.onstop = () => {
+    if (!flyState.discard && flyState.chunks.length) {
+      const blob = new Blob(flyState.chunks, { type: 'video/webm' })
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(blob)
+      a.download = `${(route.name || 'route').replace(/[\\/:*?"<>|]/g, '_')}-flyover.webm`
+      a.click()
+      setTimeout(() => URL.revokeObjectURL(a.href), 8000)
+      toast.show('飞越视频已下载')
+    }
+  }
+  Object.assign(flyState, { active: true, rec, t: 0, dur, path, ground, discard: false })
+  flyPrevCam = { pos: camera.position.clone(), target: controls.target.clone() }
+  tour.active = false
+  tween.active = false
+  controls.enabled = false
+  flyOverlay.classList.remove('hidden')
+  rec.start(250)
+  toast.show(`录制中(${Math.round(dur)}s),可取消`)
+}
+
+function stopFlyover(finish) {
+  if (!flyState.active) return
+  flyState.discard = !finish
+  flyState.active = false
+  try { flyState.rec.stop() } catch { /* already stopped */ }
+  controls.enabled = true
+  if (flyPrevCam) {
+    camera.position.copy(flyPrevCam.pos)
+    controls.target.copy(flyPrevCam.target)
+  }
+  flyOverlay.classList.add('hidden')
+}
 
 // profile ↔ 3D sync: hover shows crosshair on the route line; click flies camera
 profileCard.setCallbacks({
@@ -1998,7 +2063,19 @@ function tick() {
   const t = clock.elapsedTime
 
   // cinematic tour: arc-length uniform speed + trapezoid profile + damped gimbal
-  if (tour.active) {
+  if (flyState.active) {
+    // flyover recording: camera walks the route path; highest priority
+    flyState.t += dt
+    const frac = Math.min(1, flyState.t / flyState.dur)
+    const idx = Math.min(flyState.path.length - 1, Math.floor(frac * (flyState.path.length - 1)))
+    const f = cameraFrame(flyState.path, idx, flyState.ground, { height: 2.6, lookAhead: 2, targetLift: 0.35 })
+    camera.position.set(f.pos.x, f.pos.y, f.pos.z)
+    camera.up.set(0, 1, 0)
+    camera.lookAt(f.target.x, f.target.y, f.target.z)
+    controls.target.set(f.target.x, f.target.y, f.target.z)
+    flyOverlay.querySelector('.fill').style.width = `${(frac * 100).toFixed(0)}%`
+    if (frac >= 1) stopFlyover(true)
+  } else if (tour.active) {
     tour.t = Math.min(1, tour.t + dt / params.tourDuration)
     const s = trapezoid(tour.t, 0.18)
 

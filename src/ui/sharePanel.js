@@ -38,7 +38,7 @@ export function createSharePanel(actions) {
   mk('高德链接', actions.onExportAmap)
 
   mkRow('⬇ 下载海报卡 PNG', actions.onDownloadPoster, true)
-  mkRow('🎬 飞越视频(下一波)', () => {}, false, true)
+  mkRow('🎬 录制飞越视频 WebM', actions.onFlyover, true)
 
   return {
     el,
