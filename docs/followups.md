@@ -26,3 +26,4 @@
 - [ ] 部署:自定义域名(当前 trip-3d.pages.dev)
 - [ ] 部署:vite manualChunks 拆分 three.js(首屏 ~1.1MB)
 - [ ] 避开高速:需自托管 OSRM 且 profile 加载 exclude 类(FOSSGIS 公共 routed-car 实测返回 InvalidValue "Exclude flag combination is not supported",provider 已支持 exclude 参数+InvalidValue 优雅降级,UI 待自托管后启用)
+- [ ] CF Pages 自动构建:GitHub OAuth 连接需重授权一次(dashboard Settings→Source,连接 has_valid_oauth_token=false;重授权后 push 即自动构建;当前可用 API 触发:POST /pages/projects/trip-3d/deployments {branch:main} 或 wrangler pages deploy)
