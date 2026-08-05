@@ -85,15 +85,25 @@ export function createOverviewMap({ onJump } = {}) {
       ctx.arc(pt.x, pt.y, 3, 0, Math.PI * 2)
       ctx.fill()
     })
-    // 3D viewport rectangle
+    // 3D viewport rectangle (clamped — a viewport larger than the inset would
+    // otherwise stroke entirely off-canvas)
     if (viewportLonLat) {
       const a = projectToView(viewportLonLat.minLon, viewportLonLat.maxLat, view)
       const b = projectToView(viewportLonLat.maxLon, viewportLonLat.minLat, view)
-      ctx.strokeStyle = '#17191b'
-      ctx.lineWidth = 1
-      ctx.setLineDash([4, 3])
-      ctx.strokeRect(a.x, a.y, b.x - a.x, b.y - a.y)
-      ctx.setLineDash([])
+      const rx = Math.max(0, Math.min(a.x, b.x))
+      const ry = Math.max(0, Math.min(a.y, b.y))
+      const rw = Math.min(W, Math.max(a.x, b.x)) - rx
+      const rh = Math.min(H, Math.max(a.y, b.y)) - ry
+      if (rw > 2 && rh > 2) {
+        // inset when the viewport covers (nearly) the whole inset, so the frame
+        // stays distinguishable from the container border
+        const inset = rw >= W - 2 && rh >= H - 2 ? 3 : 0.5
+        ctx.strokeStyle = '#17191b'
+        ctx.lineWidth = 1
+        ctx.setLineDash([4, 3])
+        ctx.strokeRect(rx + inset, ry + inset, rw - inset * 2, rh - inset * 2)
+        ctx.setLineDash([])
+      }
     }
   }
 

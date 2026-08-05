@@ -1,8 +1,11 @@
 {
-  "state": "IN_PROGRESS",
+  "state": "GOAL_CLOSEOUT_COMPLETE",
   "goal": "R6 2D 总览小地图",
   "owner": "hermes-main-session",
-  "head": "31f7eb7",
-  "current_task": "overview 纯函数 TDD",
-  "updated_at": "2026-08-05T09:30:00+08:00"
+  "head": "f61bdc7",
+  "last_green": "143/143 tests + build ✓ + E2E(瓦片/视野框/点击飞达)",
+  "current_task": "done",
+  "next_action": "R7 底图路网叠加核实与开关化",
+  "runbook": "Codex review 阻塞(usage limit 至 08-08);R6 自检通过",
+  "updated_at": "2026-08-05T09:55:00+08:00"
 }
