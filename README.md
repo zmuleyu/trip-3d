@@ -77,3 +77,5 @@ Real-world mode uses the **[Terrain Tiles](https://registry.opendata.aws/terrain
 ## License
 
 [MIT](LICENSE)
+
+<!-- CF Pages git integration enabled 2026-08-05: push to main auto-builds via `npm run build` → dist/ -->
