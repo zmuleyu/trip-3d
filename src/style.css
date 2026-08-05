@@ -523,3 +523,14 @@ body {
 .ui-overview.hidden { display: none; }
 .ui-overview canvas { display: block; cursor: crosshair; }
 .ui-overview-credit { font: 8px monospace; color: rgba(23,25,27,0.55); text-align: right; padding: 0 3px 1px; }
+
+/* ------------------------------------------------------------------ sunlight panel */
+.ui-sun-panel { position: fixed; right: 58px; bottom: 26px; z-index: 32; width: 210px; background: #fff; border: 1px solid rgba(23,25,27,0.4); box-shadow: 0 2px 8px rgba(0,0,0,0.18); padding: 8px 10px; font: 10px monospace; color: #17191b; }
+.ui-sun-panel.hidden { display: none; }
+.ui-sun-panel .ttl { font-weight: bold; margin-bottom: 6px; }
+.ui-sun-panel .sun-row { display: flex; align-items: center; gap: 5px; margin-bottom: 5px; }
+.ui-sun-panel .sun-row input[type=date] { flex: 1; font: 10px monospace; border: 1px solid rgba(23,25,27,0.3); padding: 1px 3px; min-width: 0; }
+.ui-sun-panel .sun-row input[type=range] { flex: 1; min-width: 0; }
+.ui-sun-panel .sun-clock { min-width: 34px; text-align: right; }
+.ui-sun-panel .sun-readout { margin-top: 4px; color: #ff4d00; font-weight: bold; }
+.ui-sun-panel .disclaimer { margin-top: 4px; font-size: 9px; color: rgba(23,25,27,0.5); }

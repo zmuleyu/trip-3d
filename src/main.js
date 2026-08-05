@@ -26,6 +26,7 @@ import { loadDem, sampleDem } from './dem.js'
 import { makeGeoContext, worldToLonLat, lonLatToWorld, TERRAIN_SIZE } from './lib/geo.js'
 import { createOverviewMap } from './ui/overviewMap.js'
 import { createRoute, addWaypoint, insertWaypoint, removeWaypoint, moveWaypoint, reverseWaypoints, closeLoop, toggleDayEnd, normalizeDayEnds, dayNumberAt, routeStats, samplePolyline } from './lib/route.js'
+import { sunPosition, shadeFraction } from './lib/sun.js'
 import { createHistory } from './lib/history.js'
 import { computeLegs, computeLegsFromPts, normalizeOsrmLegs } from './lib/legs.js'
 import { RouteLayer } from './route/RouteLayer.js'
@@ -1284,6 +1285,24 @@ function updateRouteUI(route, stats, pts) {
     ? normalizeOsrmLegs(snapState.legs, route.waypoints)
     : null
   const legs = osrmLegs ?? computeLegsFromPts(pts, route.waypoints) ?? (route.waypoints.length >= 2 ? computeLegs(route.waypoints) : null)
+  // sunlight analysis: per-leg shade fraction via DEM horizon march
+  if (sunState.on && sunState.last && legs?.length && pts?.length >= 2) {
+    const idx = route.waypoints.map((w) => {
+      let best = 0
+      let bd = Infinity
+      for (let i = 0; i < pts.length; i++) {
+        const d = (pts[i].lon - w.lon) ** 2 + (pts[i].lat - w.lat) ** 2
+        if (d < bd) { bd = d; best = i }
+      }
+      return best
+    })
+    legs.forEach((l, li) => {
+      const slice = pts.slice(idx[li], idx[li + 1] + 1)
+      const step = Math.max(1, Math.floor(slice.length / 10))
+      const sample = slice.filter((_, i) => i % step === 0)
+      l.shade = shadeFraction(sample, sunState.last, (p) => sunBlockedAt(p.lon, p.lat, sunState.last))
+    })
+  }
   const wxIndex = weatherState.result && weatherState.revision === route.revision ? weatherState.result.index?.overall : null
   planningPanel.update(route, stats, legs, wxIndex, snapProfile)
   // weather band only when a fresh result matches this route revision
@@ -1308,6 +1327,75 @@ function updateRouteUI(route, stats, pts) {
   profileCard.update(stats, pts, wxDays, dayBounds)
   overviewMap.update(route, pts, currentViewportRect())
 }
+
+// ------------------------------------------------------------------ sunlight analysis
+// Real-sun drive: date+local time → solar az/el (sun.js) → scene light (placeSun)
+// + DEM horizon-march shade fraction per leg (no mesh raycast — too slow at 2M tris).
+const sunState = { on: false, minutes: 600, dateISO: new Date().toISOString().slice(0, 10), last: null }
+
+const sunPanel = document.createElement('div')
+sunPanel.className = 'ui-sun-panel hidden'
+sunPanel.innerHTML = `
+  <div class="ttl">☀ 日照分析</div>
+  <label class="sun-row">日期 <input type="date" class="sun-date"></label>
+  <label class="sun-row">时间 <input type="range" class="sun-time" min="0" max="1439" step="10" value="600"><span class="sun-clock">10:00</span></label>
+  <div class="sun-readout">—</div>
+  <div class="disclaimer">真实太阳方位驱动光影;遮阴按地形地平线估算</div>
+`
+document.body.appendChild(sunPanel)
+const sunDateEl = sunPanel.querySelector('.sun-date')
+const sunTimeEl = sunPanel.querySelector('.sun-time')
+const sunClockEl = sunPanel.querySelector('.sun-clock')
+const sunReadout = sunPanel.querySelector('.sun-readout')
+sunDateEl.value = sunState.dateISO
+
+// DEM horizon march: is the sun at (az,el) blocked by terrain from (lon,lat)?
+function sunBlockedAt(lon, lat, sun) {
+  if (!geo || !dem || sun.elevation <= 0) return sun.elevation <= 0
+  const { px, py } = geo.lonLatToPx(lon, lat)
+  if (px < 0 || py < 0 || px > dem.size - 1 || py > dem.size - 1) return false
+  const h0 = sampleDem(dem, px, py)
+  const az = (sun.azimuth * Math.PI) / 180
+  const dpx = Math.sin(az) // east = +px
+  const dpy = -Math.cos(az) // north = -py (tile row 0 is north)
+  const tanEl = Math.tan((sun.elevation * Math.PI) / 180)
+  const mpp = dem.metersPerPixel
+  for (let step = 6; step <= 600; step = Math.round(step * 1.45)) {
+    const h = sampleDem(dem, px + dpx * step, py + dpy * step)
+    if ((h - h0) / (step * mpp) > tanEl + 0.002) return true // terrain above the sun ray
+  }
+  return false
+}
+
+function applySun() {
+  if (!sunState.on) return
+  const lat = params.demLat
+  const lon = params.demLon
+  const tz = Math.round(lon / 15) // civil-tz approximation (China +8, US -7 …)
+  const utcMs = Date.parse(`${sunState.dateISO}T00:00:00Z`) + (sunState.minutes - tz * 60) * 60000
+  const s = sunPosition(lat, lon, new Date(utcMs))
+  sunState.last = s
+  params.sunAzimuth = ((s.azimuth - 90) + 360) % 360 // scene az 0 = +x(east); solar az 0 = north
+  params.sunElevation = Math.max(s.elevation, 1)
+  placeSun()
+  // night: keep geometry readable with a faint moonlight instead of noon sun
+  sun.intensity = params.sunIntensity * (s.elevation > 0 ? Math.min(1, s.elevation / 25 + 0.25) : 0.05)
+  const hh = String(Math.floor(sunState.minutes / 60)).padStart(2, '0')
+  const mm = String(sunState.minutes % 60).padStart(2, '0')
+  sunClockEl.textContent = `${hh}:${mm}`
+  sunReadout.textContent = s.elevation <= 0
+    ? `夜间(太阳高度 ${s.elevation.toFixed(0)}°)`
+    : `方位 ${s.azimuth.toFixed(0)}° · 高度 ${s.elevation.toFixed(0)}° · 遮阴见逐段`
+  refreshRoute() // legs pick up shade fractions in updateRouteUI
+}
+
+let sunTimer = null
+function scheduleApplySun() {
+  clearTimeout(sunTimer)
+  sunTimer = setTimeout(applySun, 180)
+}
+sunDateEl.addEventListener('change', () => { sunState.dateISO = sunDateEl.value; scheduleApplySun() })
+sunTimeEl.addEventListener('input', () => { sunState.minutes = +sunTimeEl.value; sunClockEl.textContent = `${String(Math.floor(sunState.minutes / 60)).padStart(2, '0')}:${String(sunState.minutes % 60).padStart(2, '0')}`; scheduleApplySun() })
 
 // ------------------------------------------------------------------ weather state
 // Results are bound to a route fingerprint + monotonically increasing requestId:
@@ -1802,6 +1890,7 @@ createLayerButtons({
     { id: 'grid', icon: '⊹', tip: '测量网格', initial: params.gridOpacity > 0, onToggle: (id, on) => gridOpacityCtrl.setValue(on ? 1 : 0) },
     { id: 'labels', icon: '▲', tip: '山峰标签', initial: params.labels, onToggle: (id, on) => labelsCtrl.setValue(on) },
     { id: 'mapov', icon: '🛣', tip: '路网叠加', initial: params.mapOverlay, onToggle: (id, on) => { params.mapOverlay = on; terrain.setOverlayMix(on ? 0.55 : 0) } },
+    { id: 'sun', icon: '☀', tip: '日照分析', initial: false, onToggle: (id, on) => { sunState.on = on; sunPanel.classList.toggle('hidden', !on); if (on) applySun() } },
     { id: 'hud', icon: '◎', tip: 'HUD', initial: params.hud, onToggle: (id, on) => hudCtrl.setValue(on) },
   ],
 })

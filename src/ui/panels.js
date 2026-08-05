@@ -264,7 +264,8 @@ export function createPlanningPanel(actions) {
             ? ` ${fmtDur(l.durationS / 60)}`
             : ` ~${fmtDur(l.driveMinutes)}`
           const ele = l.ascentM != null ? ` ↑${l.ascentM}m ↓${l.descentM}m` : ''
-          r.textContent = `${i + 1}. ${l.from} → ${l.to} · ${(l.distanceM / 1000).toFixed(1)}km${ele}${dur}${l.real ? ' (路网)' : ''}`
+          const shade = l.shade != null ? ` · 遮阴${Math.round(l.shade * 100)}%` : ''
+          r.textContent = `${i + 1}. ${l.from} → ${l.to} · ${(l.distanceM / 1000).toFixed(1)}km${ele}${dur}${l.real ? ' (路网)' : ''}${shade}`
           legsList.appendChild(r)
         })
       } else {
