@@ -84,6 +84,34 @@ describe('osrm provider', () => {
     expect(url).toContain('&exclude=motorway')
   })
 
+  it('exclude InvalidValue (FOSSGIS 不支持) → retries without exclude, flags excludeIgnored', async () => {
+    const urls = []
+    const p = createOsrmProvider({
+      fetchImpl: async (u) => {
+        urls.push(u)
+        if (u.includes('exclude=')) return { ok: true, json: async () => ({ code: 'InvalidValue', message: 'Exclude flag combination is not supported.' }) }
+        return { ok: true, json: async () => OSRM_FIXTURE }
+      },
+      profile: 'car',
+      exclude: 'motorway',
+    })
+    const r = await p.route([{ lon: 102.83, lat: 31.05 }, { lon: 102.9, lat: 31.02 }])
+    expect(urls).toHaveLength(2)
+    expect(urls[0]).toContain('&exclude=motorway')
+    expect(urls[1]).not.toContain('&exclude=')
+    expect(r.excludeIgnored).toBe(true)
+    expect(r.geometry).toHaveLength(4)
+  })
+
+  it('exclude non-InvalidValue errors propagate (no silent retry)', async () => {
+    const p = createOsrmProvider({
+      fetchImpl: async () => ({ ok: true, json: async () => ({ code: 'NoRoute', routes: [] }) }),
+      profile: 'car',
+      exclude: 'motorway',
+    })
+    await expect(p.route([{ lon: 0, lat: 0 }, { lon: 1, lat: 1 }])).rejects.toThrow(/NoRoute/)
+  })
+
   it('throws on <2 points', async () => {
     const p = createOsrmProvider({ fetchImpl: okJson(OSRM_FIXTURE) })
     await expect(p.route([{ lon: 0, lat: 0 }])).rejects.toThrow(/2/)

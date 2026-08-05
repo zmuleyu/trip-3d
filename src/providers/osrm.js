@@ -18,20 +18,34 @@ export function createOsrmProvider({ fetchImpl = fetch, profile = 'foot', exclud
     async route(points) {
       if (!points || points.length < 2) throw new Error('osrm: need >= 2 points')
       const coords = points.map((p) => `${p.lon},${p.lat}`).join(';')
-      let url = `${HOST}/${service}/route/v1/${pathProfile}/${coords}?overview=full&geometries=geojson&steps=false`
-      if (exclude) url += `&exclude=${exclude}` // e.g. motorway (car: 避开高速)
-      const res = await fetchImpl(url)
-      if (!res.ok) throw new Error(`osrm HTTP ${res.status}`)
-      const body = await res.json()
-      if (body.code !== 'Ok') throw new Error(`osrm: ${body.code ?? 'unknown'}`)
-      const r = body.routes?.[0]
-      if (!r?.geometry?.coordinates?.length) throw new Error('osrm: empty route geometry')
-      return {
-        geometry: r.geometry.coordinates,
-        distanceM: r.distance,
-        durationS: r.duration,
-        legs: (r.legs ?? []).map((l) => ({ distanceM: l.distance, durationS: l.duration })),
+      const url = `${HOST}/${service}/route/v1/${pathProfile}/${coords}?overview=full&geometries=geojson&steps=false`
+      const call = async (withExclude) => {
+        const res = await fetchImpl(withExclude ? `${url}&exclude=${exclude}` : url)
+        if (!res.ok) throw new Error(`osrm HTTP ${res.status}`)
+        const body = await res.json()
+        if (body.code !== 'Ok') throw new Error(`osrm: ${body.code ?? 'unknown'}`)
+        const r = body.routes?.[0]
+        if (!r?.geometry?.coordinates?.length) throw new Error('osrm: empty route geometry')
+        return {
+          geometry: r.geometry.coordinates,
+          distanceM: r.distance,
+          durationS: r.duration,
+          legs: (r.legs ?? []).map((l) => ({ distanceM: l.distance, durationS: l.duration })),
+        }
       }
+      // FOSSGIS public profiles lack exclude-class support → degrade gracefully:
+      // retry once without exclude and flag the result so the UI can tell the user.
+      if (exclude) {
+        try {
+          return await call(true)
+        } catch (err) {
+          if (!/InvalidValue/.test(err.message)) throw err
+          const out = await call(false)
+          out.excludeIgnored = true
+          return out
+        }
+      }
+      return call(false)
     },
   }
 }

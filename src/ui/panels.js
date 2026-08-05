@@ -45,15 +45,6 @@ export function createPlanningPanel(actions) {
   snapProfile.className = 'pp-snap-profile'
   snapProfile.innerHTML = '<option value="foot">步行</option><option value="car">驾车</option>'
   snapRow.appendChild(snapProfile)
-  const snapExclude = document.createElement('label')
-  snapExclude.className = 'pp-snap-exclude hidden'
-  const exCb = document.createElement('input')
-  exCb.type = 'checkbox'
-  snapExclude.append(exCb, ' 避开高速')
-  exCb.onchange = () => actions.onSnapExcludeHwy?.(exCb.checked)
-  snapRow.appendChild(snapExclude)
-  const syncExcludeVis = (p) => snapExclude.classList.toggle('hidden', p !== 'car')
-  snapProfile.addEventListener('change', () => syncExcludeVis(snapProfile.value))
   const snapStatus = document.createElement('span')
   snapStatus.className = 'pp-snap-status'
   snapRow.appendChild(snapStatus)
@@ -318,11 +309,10 @@ export function createPlanningPanel(actions) {
     hideSearchResults() { results.classList.add('hidden') },
 
     // ---- snap API
-    setSnapState(on, statusText, profile, excludeHwy) {
+    setSnapState(on, statusText, profile) {
       snapCb.checked = on
       snapStatus.textContent = statusText ?? ''
-      if (profile) { snapProfile.value = profile; syncExcludeVis(profile) }
-      if (excludeHwy !== undefined) exCb.checked = excludeHwy
+      if (profile) snapProfile.value = profile
     },
   }
 }

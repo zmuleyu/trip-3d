@@ -803,10 +803,8 @@ const snapVersion = () => `${route.id}:${route.geometryRevision}`
 // identical requests; failures are never cached (public demo has no SLA).
 const SNAP_LS = 'trip3d.snapOn'
 const SNAP_PROFILE_LS = 'trip3d.snapProfile'
-const SNAP_EXCLUDE_LS = 'trip3d.snapExcludeHwy'
 let snapProfile = localStorage.getItem(SNAP_PROFILE_LS) || 'foot'
-let snapExcludeHwy = localStorage.getItem(SNAP_EXCLUDE_LS) === '1'
-const getRouter = () => createRoutingProvider('osrm', { profile: snapProfile, exclude: snapProfile === 'car' && snapExcludeHwy ? 'motorway' : null })
+const getRouter = () => createRoutingProvider('osrm', { profile: snapProfile })
 const snapState = {
   on: localStorage.getItem(SNAP_LS) === '1',
   geometry: null,
@@ -820,7 +818,7 @@ const snapInflight = new Map()
 let snapTimer = null
 
 const currentDemKey = () => (dem ? `${params.demLat.toFixed(4)},${params.demLon.toFixed(4)},${params.demZoom}x${params.tilesAcross}` : '')
-const snapRouteKey = (wps) => `osrm:${snapProfile}:${snapProfile === 'car' && snapExcludeHwy ? 'xm' : ''}:` + wps.map((w) => `${w.lon.toFixed(5)},${w.lat.toFixed(5)}`).join('>')
+const snapRouteKey = (wps) => `osrm:${snapProfile}:` + wps.map((w) => `${w.lon.toFixed(5)},${w.lat.toFixed(5)}`).join('>')
 
 function scheduleSnap() {
   if (!snapState.on) return
@@ -878,7 +876,7 @@ function snapFetch(key, wps) {
       const legs = []
       for (let i = 1; i < wps.length; i++) {
         const a = wps[i - 1], b = wps[i]
-        const segKey = snapCacheKey('osrm', `${snapProfile}${snapProfile === 'car' && snapExcludeHwy ? 'xm' : ''}`, a, b)
+        const segKey = snapCacheKey('osrm', snapProfile, a, b)
         if (snapCache.has(segKey)) {
           const c = snapCache.get(segKey)
           segs.push(c.geometry)
@@ -1579,15 +1577,6 @@ const routeActions = {
     if (snapState.on) scheduleSnap()
     refreshRoute()
   },
-  onSnapExcludeHwy: (on) => {
-    snapExcludeHwy = on
-    localStorage.setItem(SNAP_EXCLUDE_LS, on ? '1' : '0')
-    snapState.version = ''
-    snapState.geometry = null
-    snapState.legs = null
-    if (snapState.on) scheduleSnap()
-    refreshRoute()
-  },
   onSnapToggle: (on) => {
     snapState.on = on
     localStorage.setItem(SNAP_LS, on ? '1' : '0')
@@ -1643,7 +1632,7 @@ const routeActions = {
   },
 }
 const planningPanel = createPlanningPanel(routeActions)
-planningPanel.setSnapState(snapState.on, '', snapProfile, snapExcludeHwy)
+planningPanel.setSnapState(snapState.on, '', snapProfile)
 const libraryPanel = createLibraryPanel({
   onLoad: async (id) => {
     const s = await routeStoreReady
@@ -1787,7 +1776,7 @@ history.reset(route) // baseline for undo/redo (after any hash restore above)
 
 // after first build: restore snap toggle UI + re-snap a hash-restored route
 whenTerrainBuilt(1).then(() => {
-  planningPanel.setSnapState(snapState.on, '', snapProfile, snapExcludeHwy)
+  planningPanel.setSnapState(snapState.on, '', snapProfile)
   if (snapState.on && route.waypoints.length >= 2) scheduleSnap()
 })
 
