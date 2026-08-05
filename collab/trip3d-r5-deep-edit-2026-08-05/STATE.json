@@ -1,8 +1,10 @@
 {
-  "state": "IN_PROGRESS",
+  "state": "GOAL_CLOSEOUT_COMPLETE",
   "goal": "R5 规划深度编辑四件套",
   "owner": "hermes-main-session",
-  "head": "4dfaf6d",
-  "current_task": "history/reverse/closeLoop/dayEnds TDD",
-  "updated_at": "2026-08-05T03:50:00+08:00"
+  "head": "pending-final-commit",
+  "last_green": "137/137 tests + build ✓ + E2E 全通过(避高速按实测撤 UI)",
+  "current_task": "done",
+  "next_action": "分享闭环(海报卡/飞越视频);侧线 CF git 集成",
+  "updated_at": "2026-08-05T04:40:00+08:00"
 }
