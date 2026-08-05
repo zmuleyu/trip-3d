@@ -25,6 +25,8 @@ import { createHud2D } from './hud2d.js'
 import { loadDem, sampleDem } from './dem.js'
 import { makeGeoContext, worldToLonLat, lonLatToWorld, TERRAIN_SIZE } from './lib/geo.js'
 import { createOverviewMap } from './ui/overviewMap.js'
+import { createSharePanel, renderPoster } from './ui/sharePanel.js'
+import { buildPosterData } from './lib/poster.js'
 import { createRoute, addWaypoint, insertWaypoint, removeWaypoint, moveWaypoint, reverseWaypoints, closeLoop, toggleDayEnd, normalizeDayEnds, dayNumberAt, routeStats, samplePolyline } from './lib/route.js'
 import { sunPosition, shadeFraction } from './lib/sun.js'
 import { createHistory } from './lib/history.js'
@@ -1279,12 +1281,16 @@ const toast = createToast()
 const panelHost = createPanelHost()
 const profileCard = createProfileCard(params.hudAccent)
 
-function updateRouteUI(route, stats, pts) {
-  // legs: real OSRM segments when snap result matches this revision; computed otherwise
+function currentLegs(pts) {
   const osrmLegs = snapState.on && snapState.legs && snapState.version === snapVersion() && snapState.demKey === currentDemKey()
     ? normalizeOsrmLegs(snapState.legs, route.waypoints)
     : null
-  const legs = osrmLegs ?? computeLegsFromPts(pts, route.waypoints) ?? (route.waypoints.length >= 2 ? computeLegs(route.waypoints) : null)
+  return osrmLegs ?? computeLegsFromPts(pts, route.waypoints) ?? (route.waypoints.length >= 2 ? computeLegs(route.waypoints) : null)
+}
+
+function updateRouteUI(route, stats, pts) {
+  // legs: real OSRM segments when snap result matches this revision; computed otherwise
+  const legs = currentLegs(pts)
   // sunlight analysis: per-leg shade fraction via DEM horizon march
   if (sunState.on && sunState.last && legs?.length && pts?.length >= 2) {
     const idx = route.waypoints.map((w) => {
@@ -1305,6 +1311,13 @@ function updateRouteUI(route, stats, pts) {
   }
   const wxIndex = weatherState.result && weatherState.revision === route.revision ? weatherState.result.index?.overall : null
   planningPanel.update(route, stats, legs, wxIndex, snapProfile)
+  // share tab summary mirrors the same data block
+  const pd = buildPosterData({
+    route, stats, legs,
+    weather: weatherState.result && weatherState.revision === route.revision ? weatherState.result : null,
+    profile: snapProfile,
+  })
+  sharePanel.update(`${pd.durationText}(${pd.profileLabel}) · ${pd.distanceText} · ${pd.eleText} · ${pd.waypointText}${pd.weatherIndexText != null ? ` · 天气 ${pd.weatherIndexText}` : ''}`)
   // weather band only when a fresh result matches this route revision
   const wxDays = weatherState.result && weatherState.revision === route.revision ? weatherState.result.agg : null
   // day boundary positions on the profile axis (multi-day segmentation)
@@ -1603,16 +1616,15 @@ async function importAmapLink(urlStr) {
   if (anyOutOfView) setTimeout(() => toast.show('部分点位超出当前地形视野,统计仍含全程(更大范围地形金字塔见 followups)', 3600), 2300)
 }
 
-function exportAmapLink() {
-  const url = buildAmapLink(route)
-  if (!url) { toast.show('至少 2 个途经点才能生成高德链接'); return }
+// QR overlay (shared by amap export + share panel): title + QR + copy + close
+function showQrOverlay(url, title, copyToast = '链接已复制') {
   const ov = document.createElement('div')
   ov.className = 'ui-qr-overlay'
   const card = document.createElement('div')
   card.className = 'ui-qr-card'
   const ttl = document.createElement('div')
   ttl.className = 'ttl'
-  ttl.textContent = '高德 App 扫码打开此行程'
+  ttl.textContent = title
   const cv = document.createElement('canvas')
   // error-correction fallback for long URLs: M → L; overflow → error toast
   let qr = null
@@ -1627,7 +1639,6 @@ function exportAmapLink() {
   }
   if (!qr) {
     toast.show('链接过长,无法生成二维码(请用复制链接)')
-    ov.remove()
     navigator.clipboard?.writeText(url).catch(() => {})
     return
   }
@@ -1651,7 +1662,7 @@ function exportAmapLink() {
   copy.textContent = '复制链接'
   copy.onclick = async () => {
     try { await navigator.clipboard.writeText(url) } catch { /* clipboard optional */ }
-    toast.show('高德链接已复制')
+    toast.show(copyToast)
   }
   const close = document.createElement('button')
   close.textContent = '关闭'
@@ -1661,6 +1672,52 @@ function exportAmapLink() {
   ov.appendChild(card)
   document.body.appendChild(ov)
 }
+
+function exportAmapLink() {
+  const url = buildAmapLink(route)
+  if (!url) { toast.show('至少 2 个途经点才能生成高德链接'); return }
+  showQrOverlay(url, '高德 App 扫码打开此行程', '高德链接已复制')
+}
+
+// ------------------------------------------------------------------ poster card
+function buildShareUrl() {
+  return `${location.origin}${location.pathname}#r=${encodeShare(route, { dem })}`
+}
+
+async function exportPoster() {
+  if (route.waypoints.length < 2) { toast.show('先规划线路再生成海报'); return }
+  toast.show('正在生成海报…')
+  // same-task render → toDataURL works without preserveDrawingBuffer
+  composer.render()
+  const img = new Image()
+  img.src = renderer.domElement.toDataURL('image/png')
+  await img.decode()
+  const stats = lastRoutePts.length ? routeStats(lastRoutePts) : null
+  const wx = weatherState.result && weatherState.revision === route.revision ? weatherState.result : null
+  const data = buildPosterData({ route, stats, legs: currentLegs(lastRoutePts), weather: wx, profile: snapProfile })
+  const canvas = renderPoster({ screenshot: img, data, shareUrl: buildShareUrl() })
+  canvas.toBlob((blob) => {
+    if (!blob) { toast.show('海报生成失败'); return }
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = `${(route.name || 'route').replace(/[\\/:*?"<>|]/g, '_')}-poster.png`
+    a.click()
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000)
+    toast.show('海报已下载')
+  }, 'image/png')
+}
+
+const sharePanel = createSharePanel({
+  onCopyLink: () => routeActions.onShare(),
+  onQr: () => {
+    if (route.waypoints.length < 2) { toast.show('先规划线路'); return }
+    showQrOverlay(buildShareUrl(), '扫码打开此行程', '分享链接已复制')
+  },
+  onExportGpx: () => routeActions.onExportGpx(),
+  onExportAmap: exportAmapLink,
+  onDownloadPoster: exportPoster,
+})
+sharePanel.update('规划线路后,这里聚合全部分享出口')
 
 // profile ↔ 3D sync: hover shows crosshair on the route line; click flies camera
 profileCard.setCallbacks({
@@ -1851,6 +1908,7 @@ function showTab(id) {
   rail.setActive(id)
   if (id === 'library') panelHost.show('library', '线路库', null, libraryPanel.el)
   if (id === 'weather') panelHost.show('weather', '天气推演', null, weatherPanel.el)
+  if (id === 'share') panelHost.show('share', '分享', null, sharePanel.el)
 }
 
 const rail = createRail({
@@ -1858,7 +1916,7 @@ const rail = createRail({
     { id: 'planning', icon: '🗺', label: '规划', onSelect: () => mode.togglePlanning() },
     { id: 'library', icon: '📁', label: '线路库', onSelect: () => showTab('library') },
     { id: 'weather', icon: '🌦', label: '天气', badge: null, disabled: false, onSelect: () => showTab('weather') },
-    { id: 'share', icon: '↗', label: '分享', badge: 'P3', disabled: true, onSelect: () => {} },
+    { id: 'share', icon: '↗', label: '分享', badge: null, disabled: false, onSelect: () => showTab('share') },
   ],
   settingsItem: { id: 'settings', icon: '⚙', label: '设置', onSelect: () => toggleSettings() },
 })
