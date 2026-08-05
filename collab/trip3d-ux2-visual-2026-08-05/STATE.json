@@ -1,8 +1,10 @@
 {
-  "state": "IN_PROGRESS",
+  "state": "GOAL_CLOSEOUT_COMPLETE",
   "goal": "UX2 面板分节+视觉统一+P3 反馈",
   "owner": "hermes-main-session",
-  "head": "f8b637a",
-  "current_task": "面板分节+视觉统一",
-  "updated_at": "2026-08-05T15:00:00+08:00"
+  "head": "pending-final-commit",
+  "last_green": "159/159 + build ✓ + CDP 复拍全项",
+  "current_task": "done",
+  "next_action": "部署;后续:CF 授权(用户登录)/codex 追审",
+  "updated_at": "2026-08-05T15:40:00+08:00"
 }
