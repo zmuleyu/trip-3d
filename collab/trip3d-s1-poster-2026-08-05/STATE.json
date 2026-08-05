@@ -1,8 +1,10 @@
 {
-  "state": "IN_PROGRESS",
+  "state": "GOAL_CLOSEOUT_COMPLETE",
   "goal": "S1 海报卡+分享面板",
   "owner": "hermes-main-session",
-  "head": "0d23ba7",
-  "current_task": "poster 装配纯函数 TDD",
-  "updated_at": "2026-08-05T12:10:00+08:00"
+  "head": "pending-final-commit",
+  "last_green": "154/154 tests + build ✓ + E2E 面板/PNG 字节/视觉",
+  "current_task": "done",
+  "next_action": "S2 飞越视频",
+  "updated_at": "2026-08-05T12:50:00+08:00"
 }
