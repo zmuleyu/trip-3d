@@ -1,8 +1,10 @@
 {
-  "state": "IN_PROGRESS",
+  "state": "GOAL_CLOSEOUT_COMPLETE",
   "goal": "S2 飞越视频",
   "owner": "hermes-main-session",
-  "head": "pending",
-  "current_task": "flyover 纯函数 TDD",
-  "updated_at": "2026-08-05T13:00:00+08:00"
+  "head": "pending-final-commit",
+  "last_green": "159/159 tests + build ✓ + CDP E2E(webm 8.16MB EBML ✓)",
+  "current_task": "done",
+  "next_action": "分享闭环完成;候选:CF 授权(用户登录后)/codex 追审 08-08 后",
+  "updated_at": "2026-08-05T13:40:00+08:00"
 }
