@@ -137,6 +137,7 @@ const params = {
   exposure: 0.96,
   contrast: 0.14,
   saturation: -0.22,
+  mapOverlay: false, // OSM street tiles draped on the terrain (quick toggle)
   vignette: 0.42,
   grain: 0.35,
   fogNear: 35.5,
@@ -719,6 +720,7 @@ async function loadRealTerrain() {
     terrain.setDem(dem)
     geo = makeGeoContext(dem)
     ensureRouteLayer()
+    buildMapOverlay(dem, terrainGen) // fire-and-forget, generation-guarded
     // NO refreshRoute() here: terrain.rebuild() hasn't run yet — refresh happens
     // in regenerateTerrain()'s completion callback below
     params.source = 'real'
@@ -740,6 +742,39 @@ async function loadRealTerrain() {
 }
 
 let rebuildPending = false
+
+// OSM street-tile overlay for the terrain (same slippy grid as the DEM).
+// Per-tile failure leaves a blank cell; stale results are dropped by generation.
+async function buildMapOverlay(demSnap, gen) {
+  const { zoom, tileX0, tileY0, tilesAcross } = demSnap
+  const size = tilesAcross * 256
+  const canvas = document.createElement('canvas')
+  canvas.width = canvas.height = size
+  const ctx = canvas.getContext('2d')
+  const jobs = []
+  for (let i = 0; i < tilesAcross; i++) {
+    for (let j = 0; j < tilesAcross; j++) {
+      const tx = tileX0 + i
+      const ty = tileY0 + j
+      jobs.push((async () => {
+        try {
+          const r = await fetch(`https://tile.openstreetmap.org/${zoom}/${tx}/${ty}.png`)
+          if (!r.ok) return
+          const img = await createImageBitmap(await r.blob())
+          ctx.drawImage(img, i * 256, j * 256)
+          img.close()
+        } catch { /* tile missing → blank cell */ }
+      })())
+    }
+  }
+  await Promise.all(jobs)
+  if (gen !== terrainGen) return
+  const tex = new THREE.CanvasTexture(canvas)
+  tex.colorSpace = THREE.SRGBColorSpace
+  terrain.setOverlayTexture(tex)
+  if (params.mapOverlay) terrain.setOverlayMix(0.55)
+}
+
 function regenerateTerrain() {
   if (rebuildPending) return
   rebuildPending = true
@@ -1766,6 +1801,7 @@ createLayerButtons({
     { id: 'contour', icon: '〰', tip: '等高线', initial: params.contourOpacity > 0, onToggle: (id, on) => contourOpacityCtrl.setValue(on ? 1 : 0) },
     { id: 'grid', icon: '⊹', tip: '测量网格', initial: params.gridOpacity > 0, onToggle: (id, on) => gridOpacityCtrl.setValue(on ? 1 : 0) },
     { id: 'labels', icon: '▲', tip: '山峰标签', initial: params.labels, onToggle: (id, on) => labelsCtrl.setValue(on) },
+    { id: 'mapov', icon: '🛣', tip: '路网叠加', initial: params.mapOverlay, onToggle: (id, on) => { params.mapOverlay = on; terrain.setOverlayMix(on ? 0.55 : 0) } },
     { id: 'hud', icon: '◎', tip: 'HUD', initial: params.hud, onToggle: (id, on) => hudCtrl.setValue(on) },
   ],
 })

@@ -39,6 +39,8 @@ export class Terrain {
       uScanBlur: { value: params.scanBlur },
       uScanDispH: { value: params.scanDispHeight },
       uScanDispW: { value: params.scanDispFalloff },
+      uOverlayTex: { value: null }, // OSM street tiles draped over the relief
+      uOverlayMix: { value: 0 },
     }
     this.rebuildRamp(params)
     this.material.onBeforeCompile = (shader) => {
@@ -83,7 +85,9 @@ uniform vec3 uContourColor;
 uniform float uScanT;
 uniform vec3 uScanColor;
 uniform float uScanWidth;
-uniform float uScanBlur;`
+uniform float uScanBlur;
+uniform sampler2D uOverlayTex;
+uniform float uOverlayMix;`
         )
         .replace(
           '#include <color_fragment>',
@@ -100,6 +104,13 @@ uniform float uScanBlur;`
   // keep the lighting/AO shading from the base surface but let the gradient own the color
   float luma = dot(diffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722));
   diffuseColor.rgb = mix(diffuseColor.rgb, ramp * clamp(luma * 2.4, 0.2, 1.4), uTint);
+
+  // --- road/street map overlay (OSM tiles) draped under contours/grid
+  if (uOverlayMix > 0.001) {
+    vec2 ovUv = vec2(vWorldPos.x / 56.0 + 0.5, 0.5 - vWorldPos.z / 56.0); // TERRAIN_SIZE; north = v 1 (canvas row 0, flipY)
+    vec4 ov = texture2D(uOverlayTex, ovUv);
+    diffuseColor.rgb = mix(diffuseColor.rgb, ov.rgb, uOverlayMix * ov.a);
+  }
 
   // --- contour lines: minor every interval, heavy line every 5th
   float ch = vWorldPos.y / uContourInterval;
@@ -299,7 +310,6 @@ if (uScanT >= 0.0) {
     geo.setAttribute('color', new THREE.BufferAttribute(colors, 3))
 
     this.mapUniforms.uHeightRange.value.set(minH, maxH)
-
     this.mesh.geometry.dispose()
     this.mesh.geometry = geo
   }
@@ -323,6 +333,16 @@ if (uScanT >= 0.0) {
     tex.needsUpdate = true
     this.mapUniforms.uRampTex.value?.dispose()
     this.mapUniforms.uRampTex.value = tex
+  }
+
+  // OSM street-tile overlay texture (canvas → sampler); mix via uOverlayMix
+  setOverlayTexture(tex) {
+    this.mapUniforms.uOverlayTex.value?.dispose()
+    this.mapUniforms.uOverlayTex.value = tex
+  }
+
+  setOverlayMix(v) {
+    this.mapUniforms.uOverlayMix.value = v
   }
 
   // Noise-driven roughness map (green channel is what three.js reads) + bump map

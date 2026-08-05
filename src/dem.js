@@ -71,6 +71,9 @@ export async function loadDem({ lat, lon, zoom, tilesAcross = 3 }) {
     lat,
     lon,
     zoom,
+    tileX0: cx - half, // top-left tile index — reused by the OSM overlay fetch
+    tileY0: cy - half,
+    tilesAcross,
   }
 }
 
