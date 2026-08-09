@@ -847,14 +847,14 @@ function refreshRoute() {
   })
   lastRoutePts = pts
   normalizeDayEnds(route) // id-based markers: drop refs to deleted waypoints
-  history.record(route) // safe: dedup no-ops on non-route refreshes
+  routeHistory.record(route) // safe: dedup no-ops on non-route refreshes
   updateRouteUI(route, pts.length ? routeStats(pts) : null, pts)
   // route edited → any in-flight weather query for the old revision is void
   if (weatherState.result && weatherState.revision !== route.revision) weatherState.requestId++
 }
 
 let lastRoutePts = []
-const history = createHistory() // undo/redo snapshots; record() dedups unchanged states
+const routeHistory = createHistory() // undo/redo snapshots; record() dedups unchanged states
 
 // snap binds to route IDENTITY + geometryRevision — a rename (revision-only)
 // keeps snapped display stable; loading a different route with a colliding
@@ -934,30 +934,35 @@ function snapFetch(key, wps) {
       snapCache.set(key, out)
       return out
     } catch (err) {
-      if (!/NoRoute/.test(err.message)) throw err
-      const segs = []
-      const legs = []
-      for (let i = 1; i < wps.length; i++) {
+      // NoRoute / TooBig(413/414/400) → per-segment mode, 4-way parallel
+      if (!/NoRoute|HTTP 4(?:00|13|14)/.test(err.message)) throw err
+      const segs = new Array(wps.length - 1)
+      const legs = new Array(wps.length - 1)
+      const fetchSeg = async (i) => {
         const a = wps[i - 1], b = wps[i]
         const segKey = snapCacheKey('osrm', snapProfile, a, b)
         if (snapCache.has(segKey)) {
           const c = snapCache.get(segKey)
-          segs.push(c.geometry)
-          legs.push(...c.legs)
-          continue
+          segs[i - 1] = c.geometry
+          legs[i - 1] = c.legs
+          return
         }
         try {
           const r = await getRouter().route([{ lon: a.lon, lat: a.lat }, { lon: b.lon, lat: b.lat }])
           const out = { geometry: r.geometry, legs: r.legs }
           snapCache.set(segKey, out)
-          segs.push(r.geometry)
-          legs.push(...r.legs)
+          segs[i - 1] = r.geometry
+          legs[i - 1] = r.legs
         } catch {
-          segs.push([[a.lon, a.lat], [b.lon, b.lat]])
-          legs.push(computeLegs([a, b])[0]) // straight fallback, real:false, never cached
+          segs[i - 1] = [[a.lon, a.lat], [b.lon, b.lat]]
+          legs[i - 1] = [computeLegs([a, b])[0]] // straight fallback, real:false, never cached
         }
       }
-      return { geometry: joinGeometries(segs), legs }
+      const BATCH = 4
+      for (let i = 1; i < wps.length; i += BATCH) {
+        await Promise.all(Array.from({ length: Math.min(BATCH, wps.length - i) }, (_, k) => fetchSeg(i + k)))
+      }
+      return { geometry: joinGeometries(segs), legs: legs.flat() }
     } finally {
       snapInflight.delete(key)
     }
@@ -1853,8 +1858,8 @@ async function refreshLibrary() {
 
 const routeActions = {
   onNameChange: (v) => { route.name = v; params.routeName = v },
-  onUndo: () => { if (history.undo(route)) { refreshRoute(); scheduleSnap() } },
-  onRedo: () => { if (history.redo(route)) { refreshRoute(); scheduleSnap() } },
+  onUndo: () => { if (routeHistory.undo(route)) { refreshRoute(); scheduleSnap() } },
+  onRedo: () => { if (routeHistory.redo(route)) { refreshRoute(); scheduleSnap() } },
   onClear: () => { route.waypoints = []; route.dayEnds = []; route.revision++; route.geometryRevision++; refreshRoute(); scheduleSnap() },
   onReverse: () => { if (reverseWaypoints(route)) { refreshRoute(); scheduleSnap(); toast.show('已反向') } },
   onCloseLoop: () => { if (closeLoop(route)) { refreshRoute(); scheduleSnap(); toast.show('已闭环') } else toast.show('已是环线或点位不足') },
@@ -1907,7 +1912,7 @@ const routeActions = {
     const hash = encodeShare(route, { dem })
     const url = `${location.origin}${location.pathname}#r=${hash}`
     try { await navigator.clipboard.writeText(url) } catch { /* clipboard may be unavailable */ }
-    history.replaceState(null, '', `#r=${hash}`)
+    window.history.replaceState(null, '', `#r=${hash}`)
     toast.show('分享链接已复制')
   },
   onExportGpx: () => {
@@ -1928,7 +1933,7 @@ const routeActions = {
         route = gpxToRoute(await inp.files[0].text())
         params.routeName = route.name
         ensureRouteLayer()
-        history.reset(route)
+        routeHistory.reset(route)
         refreshRoute()
         scheduleSnap()
         toast.show(route.downsampled ? `GPX 已导入(抽稀 ${route.originalPointCount}→${route.waypoints.length} 点)` : 'GPX 已导入')
@@ -1962,7 +1967,7 @@ const libraryPanel = createLibraryPanel({
     route = r
     params.routeName = r.name
     ensureRouteLayer()
-    history.reset(route)
+    routeHistory.reset(route)
     refreshRoute()
     scheduleSnap()
     toast.show(`已加载「${r.name}」`)
@@ -1998,12 +2003,12 @@ window.addEventListener('keydown', (e) => {
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return // don't hijack form editing
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
     e.preventDefault()
-    if (history.undo(route)) { refreshRoute(); scheduleSnap(); toast.show('撤销') }
+    if (routeHistory.undo(route)) { refreshRoute(); scheduleSnap(); toast.show('撤销') }
     return
   }
   if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey))) {
     e.preventDefault()
-    if (history.redo(route)) { refreshRoute(); scheduleSnap(); toast.show('重做') }
+    if (routeHistory.redo(route)) { refreshRoute(); scheduleSnap(); toast.show('重做') }
     return
   }
   if (e.key === 'Escape' && insertIndex != null) {
@@ -2103,7 +2108,7 @@ if (location.hash.startsWith('#r=')) {
     params.routeName = shared.name
     for (const w of shared.waypoints) addWaypoint(route, w.lon, w.lat, w.ele, w.name)
     if (shared.days?.length) route.dayEnds = shared.days.map((i) => route.waypoints[i]?.id).filter(Boolean)
-    history.reset(route)
+    routeHistory.reset(route)
     params.planning = true
     // no explicit loadRealTerrain() call — the startup line below does it once
   } catch (err) {
@@ -2117,7 +2122,7 @@ window.__exp = { scene, camera, controls, params, terrain, loadRealTerrain, get 
 // real world is the default source — fetch its tiles on startup
 if (params.source === 'real') loadRealTerrain()
 
-history.reset(route) // baseline for undo/redo (after any hash restore above)
+routeHistory.reset(route) // baseline for undo/redo (after any hash restore above)
 
 // after first build: restore snap toggle UI + re-snap a hash-restored route
 whenTerrainBuilt(1).then(() => {

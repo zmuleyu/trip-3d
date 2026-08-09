@@ -1,0 +1,10 @@
+{
+  "state": "GOAL_CLOSEOUT_COMPLETE",
+  "goal": "W2 工程稳健三件套",
+  "owner": "hermes-main-session",
+  "head": "pending-final-commit",
+  "last_green": "167/167 + build ✓ + E2E 压缩全链路+回归修复",
+  "current_task": "done",
+  "next_action": "CF 授权(用户)/codex 追审/天气粒子等候选",
+  "updated_at": "2026-08-05T17:50:00+08:00"
+}

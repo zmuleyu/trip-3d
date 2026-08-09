@@ -1,4 +1,8 @@
-// URL-hash share codec: { v, dem:{lat,lon,zoom,ta?}, name, waypoints } ↔ base64url.
+// URL-hash share codec: { v, dem:{lat,lon,zoom,ta?}, name, waypoints } ↔ string.
+// v2 wire format: 'z:' + lz-string compressToEncodedURIComponent (long routes
+// blow past comfortable URL length in raw base64url). Legacy bare base64url
+// hashes still decode.
+import LZString from 'lz-string'
 import { MAX_WAYPOINTS } from './route.js'
 
 const VERSION = 1
@@ -21,20 +25,28 @@ const b64urlDecode = (s) => {
 }
 
 export function encodeShare(route, ctx) {
-  return b64urlEncode({
+  const payload = {
     v: VERSION,
     dem: { lat: ctx.dem.lat, lon: ctx.dem.lon, zoom: ctx.dem.zoom, ...(ctx.dem.size > 768 ? { ta: Math.round(ctx.dem.size / 256) } : {}) },
     name: route.name,
     waypoints: route.waypoints.map(({ lon, lat, ele, name }) => [lon, lat, ele, name]),
     // dayEnds as waypoint INDICES (ids don't survive the hash round-trip)
     ...(route.dayEnds?.length ? { days: route.dayEnds.map((id) => route.waypoints.findIndex((w) => w.id === id)).filter((i) => i >= 0) } : {}),
-  })
+  }
+  return 'z:' + LZString.compressToEncodedURIComponent(JSON.stringify(payload))
 }
 
 const finiteNum = (x) => typeof x === 'number' && Number.isFinite(x)
 
 export function decodeShare(hash) {
-  const obj = b64urlDecode(hash)
+  let obj
+  if (hash.startsWith('z:')) {
+    const json = LZString.decompressFromEncodedURIComponent(hash.slice(2))
+    if (!json) throw new Error('lz decompress failed')
+    obj = JSON.parse(json)
+  } else {
+    obj = b64urlDecode(hash) // legacy uncompressed hashes
+  }
   if (obj.v !== VERSION) throw new Error(`unsupported share version: ${obj.v}`)
   const { dem, waypoints } = obj
   // ta is an optional whitelist ({3,5}) — a crafted hash must not trigger huge

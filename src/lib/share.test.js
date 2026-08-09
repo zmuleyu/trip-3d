@@ -17,17 +17,43 @@ describe('share codec', () => {
     expect(back.waypoints[1]).toMatchObject({ lon: 102.9, lat: 31.02, ele: 4100, name: '垭口' })
   })
 
-  it('produces URL-safe base64url without padding', () => {
+  it('produces URL-safe hash (lz-string charset, z: prefix)', () => {
     const r = createRoute('x')
     addWaypoint(r, 1, 2, 3)
     const hash = encodeShare(r, ctx)
-    expect(hash).toMatch(/^[A-Za-z0-9_-]+$/)
+    expect(hash.startsWith('z:')).toBe(true)
+    expect(hash.slice(2)).toMatch(/^[A-Za-z0-9'()+*\-_~$.!]+$/) // lz-string ECU charset is URL-safe
   })
 
   it('rejects malformed payloads', () => {
     expect(() => decodeShare('!!!')).toThrow()
     expect(() => decodeShare(btoa('{"v":99}')).toThrow(/version/))
     expect(() => decodeShare(btoa('{"v":1}')).toThrow(/dem|waypoints|malformed/i))
+  })
+
+  it('lz-string v2 format: round-trip + materially shorter on long routes', () => {
+    const r = createRoute('长线路压缩测试线路名字')
+    for (let i = 0; i < 32; i++) addWaypoint(r, 116.3 + i * 0.01, 39.7 + i * 0.008, 900 + i, `途经点编号${i}号`)
+    const ctx = { dem: { lat: 39.9, lon: 116.3, zoom: 10, size: 1280 } }
+    const hash = encodeShare(r, ctx)
+    expect(hash.startsWith('z:')).toBe(true)
+    const dec = decodeShare(hash)
+    expect(dec.waypoints).toHaveLength(32)
+    expect(dec.waypoints[5].name).toBe('途经点编号5号')
+    expect(dec.dem.ta).toBe(5)
+    // compression actually pays off vs raw JSON base64url estimate
+    const rawLen = JSON.stringify({ v: 1, dem: { lat: 39.9, lon: 116.3, zoom: 10, ta: 5 }, name: r.name, waypoints: r.waypoints.map(({ lon, lat, ele, name }) => [lon, lat, ele, name]) }).length
+    expect(hash.length).toBeLessThan(rawLen * 0.6)
+  })
+
+  it('legacy uncompressed hashes still decode (backward compat)', () => {
+    // hand-rolled legacy payload through the old path
+    const legacy = btoa(unescape(encodeURIComponent(JSON.stringify({
+      v: 1, dem: { lat: 36.9, lon: -110.1, zoom: 12 }, name: 'old', waypoints: [[-110.1, 37, 900, 'A'], [-110.0, 37.01, 950, 'B']],
+    })))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+    const dec = decodeShare(legacy)
+    expect(dec.name).toBe('old')
+    expect(dec.waypoints).toHaveLength(2)
   })
 
   it('ta whitelist: accepts 3/5, rejects crafted values, missing → decodes fine', () => {
