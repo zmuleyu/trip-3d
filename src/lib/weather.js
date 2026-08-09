@@ -93,3 +93,27 @@ export function wmoIcon(code) {
   if (code >= 95) return '⛈'
   return '·'
 }
+
+// Forecast horizon guard: Open-Meteo forecast covers ~5 days back and ~14-16 out.
+// Beyond that, use the ERA5 archive shifted to the SAME trip dates last year.
+export function archiveWindow(fromISO, toISO, todayISO) {
+  const MS = 86400000
+  const from = Date.parse(`${fromISO}T00:00:00Z`)
+  const today = Date.parse(`${todayISO}T00:00:00Z`)
+  if (from >= today - 5 * MS && from <= today + 14 * MS) return null
+  const yf = new Date(from)
+  yf.setUTCFullYear(yf.getUTCFullYear() - 1)
+  const yt = new Date(Date.parse(`${toISO}T00:00:00Z`))
+  yt.setUTCFullYear(yt.getUTCFullYear() - 1)
+  return { from: yf.toISOString().slice(0, 10), to: yt.toISOString().slice(0, 10) }
+}
+
+// Profile weather band columns: without dayBounds, equal columns per trip day;
+// with dayBounds (route-fraction day ends), each day occupies its route segment.
+export function bandColumns(dayBounds, dayCount) {
+  if (!dayBounds?.length) {
+    return Array.from({ length: dayCount }, (_, i) => ({ x0: i / dayCount, x1: (i + 1) / dayCount, dayIndex: i }))
+  }
+  const cuts = [0, ...dayBounds.map((b) => b.frac), 1]
+  return cuts.slice(0, -1).map((f, i) => ({ x0: f, x1: cuts[i + 1], dayIndex: i }))
+}

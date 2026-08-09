@@ -16,16 +16,18 @@ export function createWeatherPanel({ onQuery }) {
   const saved = JSON.parse(localStorage.getItem(LS_KEY) ?? '{}')
   const today = todayLocal()
   const maxStart = plusDays(today, MAX_TRIP_DAYS - 1)
+  const minStart = plusDays(today, -395) // archive: up to ~last year + a margin
+  const maxFar = plusDays(today, 395) // far-future dates also go to the archive window
 
   el.innerHTML = `
     <div class="wx-controls">
-      <label>出发日期 <input type="date" class="wx-date" min="${today}" max="${maxStart}" value="${saved.start ?? today}"></label>
+      <label>出发日期 <input type="date" class="wx-date" min="${minStart}" max="${maxFar}" value="${saved.start ?? today}"></label>
       <label>天数 <input type="number" class="wx-days" min="1" max="${MAX_TRIP_DAYS}" value="${saved.days ?? 3}"></label>
       <label class="wx-allpts"><input type="checkbox" class="wx-allpts-cb"${saved.allPoints ? ' checked' : ''}> 全部途经点</label>
       <button class="wx-go primary">查询天气</button>
     </div>
     <div class="wx-index hidden"></div>
-    <div class="wx-status">选择日期后查询 — 取线路首/末/最高点天气(≤16 天预报窗口)</div>
+    <div class="wx-status">选择日期后查询 — ≤16 天为预报;超窗自动回填去年历史同期(ERA5)</div>
     <div class="wx-cards"></div>
     <div class="wx-attr">Weather data by <a href="https://open-meteo.com/" target="_blank" rel="noreferrer">Open-Meteo.com</a>(非商用,CC-BY 4.0)</div>`
 
@@ -45,8 +47,8 @@ export function createWeatherPanel({ onQuery }) {
   goBtn.onclick = () => {
     const start = dateEl.value
     const days = Math.min(Math.max(1, +daysEl.value || 1), MAX_TRIP_DAYS)
-    if (!start || start < today || start > maxStart) {
-      setStatus(`出发日期须在预报窗口内(${today} ~ ${maxStart})`, 'error')
+    if (!start || start < minStart || start > maxFar) {
+      setStatus(`出发日期须在 ${minStart} ~ ${maxFar} 之间(超窗自动用历史同期)`, 'error')
       return
     }
     const dates = tripDates(start, days)
@@ -77,9 +79,10 @@ export function createWeatherPanel({ onQuery }) {
       setStatus('先在规划 tab 打点成线(至少 1 个途经点)', 'error')
     },
     // agg: aggregateTripDays result; rep: points queried; index: tripIndex result; repLabel: 代表点|途经点
-    setResult({ agg, rep, index, repLabel = '代表点' }) {
+    setResult({ agg, rep, index, repLabel = '代表点', source = 'forecast' }) {
       goBtn.disabled = false
-      setStatus(`${agg[0].date} ~ ${agg.at(-1).date} · ${rep.length} 个${repLabel} · 数据为预报,出行前请复核`)
+      const srcNote = source === 'archive' ? '历史同期(去年 ERA5 参考)' : '数据为预报,出行前请复核'
+      setStatus(`${agg[0].date} ~ ${agg.at(-1).date} · ${rep.length} 个${repLabel} · ${srcNote}`)
       if (index) {
         indexEl.classList.remove('hidden')
         indexEl.innerHTML = `出行指数 <b>${index.overall}</b> <span>${indexLabel(index.overall)}</span>` +
@@ -106,6 +109,12 @@ export function createWeatherPanel({ onQuery }) {
         card.appendChild(sub)
         cardsEl.appendChild(card)
       }
+    },
+    // trip-day count sync (multi-day segmentation): keep the days input aligned
+    // with the itinerary; user edits still win after the sync.
+    setTripDays(n) {
+      daysEl.value = String(Math.min(Math.max(1, n), MAX_TRIP_DAYS))
+      persist()
     },
   }
 }

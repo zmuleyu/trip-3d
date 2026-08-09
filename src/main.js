@@ -27,7 +27,7 @@ import { makeGeoContext, worldToLonLat, lonLatToWorld, TERRAIN_SIZE } from './li
 import { createOverviewMap } from './ui/overviewMap.js'
 import { createSharePanel, renderPoster } from './ui/sharePanel.js'
 import { buildPosterData } from './lib/poster.js'
-import { createRoute, addWaypoint, insertWaypoint, removeWaypoint, moveWaypoint, reverseWaypoints, closeLoop, toggleDayEnd, normalizeDayEnds, dayNumberAt, routeStats, samplePolyline } from './lib/route.js'
+import { createRoute, addWaypoint, insertWaypoint, removeWaypoint, moveWaypoint, reverseWaypoints, closeLoop, toggleDayEnd, normalizeDayEnds, dayNumberAt, routeStats, routeFingerprint, samplePolyline } from './lib/route.js'
 import { sunPosition, shadeFraction } from './lib/sun.js'
 import { resamplePath, flyoverDuration, cameraFrame } from './lib/flyover.js'
 import { createHistory } from './lib/history.js'
@@ -40,13 +40,13 @@ import { createModeMachine, MODES } from './ui/mode.js'
 import { createRail, createPanelHost, createLayerButtons, createToast } from './ui/chrome.js'
 import { createPlanningPanel, createLibraryPanel, createProfileCard } from './ui/panels.js'
 import { createWeatherPanel } from './ui/weatherPanel.js'
-import { createOpenMeteoProvider } from './providers/openmeteo.js'
+import { createOpenMeteoProvider, createOpenMeteoArchiveProvider } from './providers/openmeteo.js'
 import { createGeocodeProvider } from './providers/geocode.js'
 import { createRoutingProvider } from './providers/routing.js'
 import { joinGeometries, snapCacheKey } from './lib/snap.js'
 import { parseAmapLink, buildAmapLink } from './lib/amapLink.js'
 import qrcode from 'qrcode-generator'
-import { pickRepresentativePoints, aggregateTripDays } from './lib/weather.js'
+import { pickRepresentativePoints, aggregateTripDays, archiveWindow } from './lib/weather.js'
 import { tripIndex } from './lib/tripIndex.js'
 
 // ------------------------------------------------------------------ params
@@ -1294,6 +1294,8 @@ const toast = createToast()
 const panelHost = createPanelHost()
 const profileCard = createProfileCard(params.hudAccent)
 
+let lastSyncedTripDays = 0 // itinerary→weather days sync guard
+
 function currentLegs(pts) {
   const osrmLegs = snapState.on && snapState.legs && snapState.version === snapVersion() && snapState.demKey === currentDemKey()
     ? normalizeOsrmLegs(snapState.legs, route.waypoints)
@@ -1331,6 +1333,13 @@ function updateRouteUI(route, stats, pts) {
     profile: snapProfile,
   })
   sharePanel.update(`${pd.durationText}(${pd.profileLabel}) · ${pd.distanceText} · ${pd.eleText} · ${pd.waypointText}${pd.weatherIndexText != null ? ` · 天气 ${pd.weatherIndexText}` : ''}`)
+  // weather panel days track the itinerary length — only when the count CHANGES
+  // (user-picked days must survive unrelated route edits)
+  const tripDays = (route.dayEnds?.length ?? 0) + 1
+  if (tripDays !== lastSyncedTripDays) {
+    lastSyncedTripDays = tripDays
+    weatherPanel.setTripDays?.(tripDays)
+  }
   // weather band only when a fresh result matches this route revision
   const wxDays = weatherState.result && weatherState.revision === route.revision ? weatherState.result.agg : null
   // day boundary positions on the profile axis (multi-day segmentation)
@@ -1427,6 +1436,7 @@ sunTimeEl.addEventListener('input', () => { sunState.minutes = +sunTimeEl.value;
 // Results are bound to a route fingerprint + monotonically increasing requestId:
 // route edits invalidate the band; slow responses can never overwrite newer state.
 const weatherProvider = createOpenMeteoProvider()
+const weatherArchiveProvider = createOpenMeteoArchiveProvider()
 const weatherState = { revision: -1, requestId: 0, result: null }
 
 async function runWeatherQuery({ dates, allPoints }) {
@@ -1440,17 +1450,43 @@ async function runWeatherQuery({ dates, allPoints }) {
   try {
     const from = dates[0]
     const to = dates[dates.length - 1]
-    const all = []
-    for (const p of rep) all.push(...await weatherProvider.daily(p, from, to))
+    // beyond the forecast window → ERA5 archive, same trip dates last year
+    const today = new Date().toISOString().slice(0, 10)
+    const aw = archiveWindow(from, to, today)
+    const source = aw ? 'archive' : 'forecast'
+    const provider = aw ? weatherArchiveProvider : weatherProvider
+    const qFrom = aw?.from ?? from
+    const qTo = aw?.to ?? to
+    // same-day cache: fingerprint+dates+source → skip the network entirely
+    const cacheKey = `trip3d.wx.${routeFingerprint(route)}.${from}.${to}.${allPoints ? 'all' : 'rep'}.${source}`
+    let all = null
+    try {
+      const hit = localStorage.getItem(cacheKey)
+      if (hit) all = JSON.parse(hit)
+    } catch { /* cache optional */ }
+    if (!all) {
+      all = []
+      for (const p of rep) {
+        const days = await provider.daily(p, qFrom, qTo)
+        days.forEach((d, i) => { d.date = dates[i] ?? d.date }) // archive dates → requested trip dates
+        all.push(...days)
+      }
+      try {
+        localStorage.setItem(cacheKey, JSON.stringify(all))
+        // prune: keep at most 20 weather cache entries
+        const keys = Object.keys(localStorage).filter((k) => k.startsWith('trip3d.wx.'))
+        if (keys.length > 20) for (const k of keys.slice(0, keys.length - 20)) localStorage.removeItem(k)
+      } catch { /* storage full etc. — cache optional */ }
+    }
     if (reqId !== weatherState.requestId) return // a newer query superseded this one
     const agg = aggregateTripDays(all)
     weatherState.revision = rev
-    weatherState.result = { agg, rep, index: tripIndex(all) }
-    weatherPanel.setResult({ agg, rep, index: tripIndex(all), repLabel: allPoints ? '途经点' : '代表点' })
+    weatherState.result = { agg, rep, index: tripIndex(all), source }
+    weatherPanel.setResult({ agg, rep, index: tripIndex(all), repLabel: allPoints ? '途经点' : '代表点', source })
     refreshRoute() // re-render profile card with the band bound to this fingerprint
   } catch (err) {
     console.warn('weather query failed', err)
-    weatherPanel.setError(`天气查询失败:${err.message}(网络不可用或超出预报窗口)`)
+    weatherPanel.setError(`天气查询失败:${err.message}(网络不可用或数据窗口不支持)`)
   }
 }
 

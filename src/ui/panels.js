@@ -1,4 +1,5 @@
 // Context panel contents + profile floating card. DOM only; fed by main.js.
+import { bandColumns } from '../lib/weather.js'
 
 // ---------------------------------------------------------------- planning panel
 // duration formatting: ≥24h shows days (long road trips)
@@ -437,19 +438,22 @@ export function createProfileCard(accent = '#ff4d00') {
       const hasBand = Array.isArray(weatherDays) && weatherDays.length > 0
       const bandTop = 2
       const profileTop = hasBand ? bandTop + BAND_H + 6 : bandTop
-      // trip-day band (itinerary axis, NOT spatial): one column per trip day
+      // trip-day band: segmented by route-day fractions when dayEnds exist
       if (hasBand) {
-        const colW = (W - 20) / weatherDays.length
-        weatherDays.forEach((d, i) => {
-          ctx.fillStyle = d.isRain ? 'rgba(74,144,217,0.55)' : 'rgba(240,234,214,0.7)'
-          ctx.fillRect(10 + i * colW, bandTop, Math.max(colW - 1, 1), BAND_H)
-          if (weatherDays.length <= 8 || i === 0 || i === weatherDays.length - 1) {
+        const cols = bandColumns(dayBounds, weatherDays.length)
+        for (const c of cols) {
+          const d = weatherDays[c.dayIndex]
+          const x = 10 + c.x0 * (W - 20)
+          const w = Math.max((c.x1 - c.x0) * (W - 20) - 1, 1)
+          ctx.fillStyle = !d ? 'rgba(23,25,27,0.12)' : d.isRain ? 'rgba(74,144,217,0.55)' : 'rgba(240,234,214,0.7)'
+          ctx.fillRect(x, bandTop, w, BAND_H)
+          if (d && (weatherDays.length <= 8 || c.dayIndex === 0 || c.dayIndex === weatherDays.length - 1)) {
             ctx.fillStyle = '#17191b'
             ctx.font = '8px monospace'
             ctx.textAlign = 'center'
-            ctx.fillText(d.date.slice(5), 10 + i * colW + colW / 2, bandTop + 9)
+            ctx.fillText(d.date.slice(5), x + w / 2, bandTop + 9)
           }
-        })
+        }
         ctx.textAlign = 'left'
       }
       // elevation profile
