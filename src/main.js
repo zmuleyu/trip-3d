@@ -25,6 +25,8 @@ import { createHud2D } from './hud2d.js'
 import { loadDem, sampleDem } from './dem.js'
 import { makeGeoContext, worldToLonLat, lonLatToWorld, TERRAIN_SIZE } from './lib/geo.js'
 import { createOverviewMap } from './ui/overviewMap.js'
+import { createAdminLayer } from './ui/adminLayer.js'
+import { provinceAdcode, extractRings, filterRingsToBbox } from './lib/adminBoundaries.js'
 import { createSharePanel, renderPoster } from './ui/sharePanel.js'
 import { buildPosterData } from './lib/poster.js'
 import { createRoute, addWaypoint, insertWaypoint, removeWaypoint, moveWaypoint, reverseWaypoints, closeLoop, toggleDayEnd, normalizeDayEnds, dayNumberAt, routeStats, routeFingerprint, samplePolyline } from './lib/route.js'
@@ -789,6 +791,51 @@ async function buildMapOverlay(demSnap, gen) {
   tex.colorSpace = THREE.SRGBColorSpace
   terrain.setOverlayTexture(tex)
   if (params.mapOverlay) terrain.setOverlayMix(0.55)
+}
+
+// ------------------------------------------------------------------ admin boundaries (L1)
+// DataV aliyun GeoJSON (CN) draped on terrain; province adcode via Nominatim
+// reverse at the DEM center. Reloads on demKey change like snap/weather.
+const DATAV = 'https://geo.datav.aliyun.com/areas_v3/bound'
+const adminState = { on: false, demKey: null, loading: false }
+let adminLayer = null
+
+async function loadAdminBoundaries() {
+  if (!dem || !geo) return
+  const key = currentDemKey()
+  if (adminState.demKey === key && adminLayer) { adminLayer.setVisible(true); return }
+  adminState.loading = true
+  toast.show('区划边界加载中…')
+  try {
+    // province adcode from the DEM center (one reverse call, explicit toggle)
+    const rev = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${dem.lat}&lon=${dem.lon}&format=json&zoom=5&accept-language=zh`).then((r) => r.json())
+    const adcode = provinceAdcode(rev?.address)
+    if (!adcode) { toast.show('境外区域暂未接入区划边界(仅中国)'); adminState.on = false; layerBtns.get('admin')?.set(false); return }
+    const [outline, full] = await Promise.all([
+      fetch(`${DATAV}/${adcode}.json`).then((r) => r.json()),
+      fetch(`${DATAV}/${adcode}_full.json`).then((r) => r.json()),
+    ])
+    if (key !== currentDemKey()) return // terrain switched mid-load
+    // viewport bbox from world corners
+    const c1 = worldToLonLat(geo, -TERRAIN_SIZE / 2, -TERRAIN_SIZE / 2)
+    const c2 = worldToLonLat(geo, TERRAIN_SIZE / 2, TERRAIN_SIZE / 2)
+    const bbox = { minLon: Math.min(c1.lon, c2.lon), maxLon: Math.max(c1.lon, c2.lon), minLat: Math.min(c1.lat, c2.lat), maxLat: Math.max(c1.lat, c2.lat) }
+    const outlineRings = extractRings(outline).map((r) => ({ ...r, level: 'province' }))
+    const rings = filterRingsToBbox([...outlineRings, ...extractRings(full)], bbox)
+    if (!adminLayer) {
+      adminLayer = createAdminLayer({ toWorld: (lon, lat) => lonLatToWorld(geo, lon, lat), heightAt: (x, z) => terrain.sample(x, z) })
+      scene.add(adminLayer.group)
+    }
+    adminLayer.setRings(rings)
+    adminLayer.setVisible(adminState.on)
+    adminState.demKey = key
+    toast.show(`区划边界已加载(${rings.length} 段)`)
+  } catch (err) {
+    console.warn('admin boundaries failed', err)
+    toast.show('区划边界加载失败')
+  } finally {
+    adminState.loading = false
+  }
 }
 
 function regenerateTerrain() {
@@ -2086,12 +2133,13 @@ function toggleSettings() {
 }
 
 // high-frequency layer toggles (reuse lil-gui controllers so onChange chains fire)
-createLayerButtons({
+const layerBtns = createLayerButtons({
   buttons: [
     { id: 'contour', icon: '〰', tip: '等高线', initial: params.contourOpacity > 0, onToggle: (id, on) => contourOpacityCtrl.setValue(on ? 1 : 0) },
     { id: 'grid', icon: '⊹', tip: '测量网格', initial: params.gridOpacity > 0, onToggle: (id, on) => gridOpacityCtrl.setValue(on ? 1 : 0) },
     { id: 'labels', icon: '▲', tip: '山峰标签', initial: params.labels, onToggle: (id, on) => labelsCtrl.setValue(on) },
     { id: 'mapov', icon: '🛣', tip: '路网叠加', initial: params.mapOverlay, onToggle: (id, on) => { params.mapOverlay = on; terrain.setOverlayMix(on ? 0.55 : 0) } },
+    { id: 'admin', icon: '🏛', tip: '区划边界', initial: false, onToggle: (id, on) => { adminState.on = on; if (on) loadAdminBoundaries(); else adminLayer?.setVisible(false) } },
     { id: 'sun', icon: '☀', tip: '日照分析', initial: false, onToggle: (id, on) => { sunState.on = on; sunPanel.classList.toggle('hidden', !on); document.body.classList.toggle('sun-open', on); if (on) applySun() } },
     { id: 'hud', icon: '◎', tip: 'HUD', initial: params.hud, onToggle: (id, on) => hudCtrl.setValue(on) },
   ],
