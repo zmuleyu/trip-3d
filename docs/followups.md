@@ -1,7 +1,6 @@
 # trip-3d followups (v1.1+)
 
 - [ ] P3 晴雨档案:行程=线路+日期区间;Open-Meteo archive(ERA5)回填 source=archive 固化;WeatherDay 持久化到 IndexedDB
-- [ ] P3 分享/行程 tab 启用(轨道已有 ↗ 占位):海报卡 / 飞越视频(MediaRecorder,复用 tour 巡航)
 - [ ] 天气:同日查询 localStorage 缓存(节流 Open-Meteo 请求)
 - [ ] 天气:色带空间分段(需行程日程模型:途经点按天分组的 itinerary)
 - [ ] 天气:场景天气粒子(雨/雪氛围,shader 级,美学增强)
@@ -9,9 +8,6 @@
 - [ ] 设置抽屉内 lil-gui 逐件原生化(本期整体搬迁未重写)
 - [ ] 图层钮与设置抽屉联动(抽屉里改值后圆钮状态同步)
 - [ ] 移动端布局:轨道沉底变 bottom tab(仅预留,未实现)
-- [ ] 途经点拖拽改线(raycast 命中 marker 后拖动,实时重采样)
-- [ ] 途经点重命名/编辑 UI(现为 P1..Pn 自动命名;GPX/分享可带入名字)
-- [ ] undo/redo 栈(现仅撤销末点)
 - [ ] 多线路同屏对比(不同颜色)
 - [ ] P4 路网吸附:openrouteservice / 高德(GCJ-02 边界转换,provider 骨架已就位)
 - [ ] 分享 URL 压缩(lz-string)应对长线路 hash 过长(当前 3 点 hash ≈ 230 字符)
@@ -22,7 +18,6 @@
 - [ ] 吸附:TooBig 防御(当前整线路单请求 ≤32 坐标;超出时缺逐段队列)
 - [ ] 搜索:Photon 使用政策核对(当前作 fallback;主用需确认其条款)
 - [ ] 搜索:结果分类图标(town/peak/river 等 type 可视化)
-- [ ] 部署:CF Pages git 集成自动构建(本期 wrangler 手动部署;连接仓库后 push 即发布)
 - [ ] 部署:自定义域名(当前 trip-3d.pages.dev)
 - [ ] 部署:vite manualChunks 拆分 three.js(首屏 ~1.1MB)
 - [ ] 避开高速:需自托管 OSRM 且 profile 加载 exclude 类(FOSSGIS 公共 routed-car 实测返回 InvalidValue "Exclude flag combination is not supported",provider 已支持 exclude 参数+InvalidValue 优雅降级,UI 待自托管后启用)
