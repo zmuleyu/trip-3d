@@ -55,24 +55,43 @@ export function createPanelHost() {
   el.className = 'ui-panel hidden'
   document.body.appendChild(el)
   let currentId = null
+  let collapsed = false
+  const h = document.createElement('h2')
+  const summary = document.createElement('span')
+  summary.className = 'ui-panel-summary'
+  const chev = document.createElement('button')
+  chev.className = 'ui-panel-chev'
+  chev.textContent = '▾'
+  chev.title = '收起/展开面板'
+  const body = document.createElement('div')
+  body.className = 'ui-panel-body'
+  const apply = () => {
+    el.classList.toggle('collapsed', collapsed)
+    chev.textContent = collapsed ? '▸' : '▾'
+  }
+  chev.onclick = () => { collapsed = !collapsed; apply() }
   return {
     el,
     get currentId() { return currentId },
+    get collapsed() { return collapsed },
     show(id, title, hint, contentEl) {
       currentId = id
-      el.replaceChildren()
-      const h = document.createElement('h2')
-      h.textContent = title
+      h.replaceChildren()
+      h.append(document.createTextNode(title), summary, chev)
       if (hint) {
         const s = document.createElement('span')
         s.className = 'ui-panel-hint'
         s.textContent = hint
-        h.appendChild(s)
+        h.insertBefore(s, summary)
       }
-      el.appendChild(h)
-      el.appendChild(contentEl)
+      body.replaceChildren(contentEl)
+      el.replaceChildren(h, body)
       el.classList.remove('hidden')
+      apply()
     },
+    setCollapsed(v) { collapsed = v; apply() },
+    // one-line state shown in the header even when collapsed
+    setSummary(text) { summary.textContent = text ?? '' },
     hide() {
       currentId = null
       el.classList.add('hidden')

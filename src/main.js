@@ -1345,6 +1345,9 @@ function updateRouteUI(route, stats, pts) {
     lastSyncedTripDays = tripDays
     weatherPanel.setTripDays?.(tripDays)
   }
+  // collapsed panel header still shows live route state; POI tags dim under a route
+  panelHost.setSummary(route.waypoints.length ? `${route.name} · ${((stats?.distanceM ?? 0) / 1000).toFixed(1)}km · ${route.waypoints.length}点` : '')
+  hud2.root.classList.toggle('has-route', route.waypoints.length > 0)
   // weather band only when a fresh result matches this route revision
   const wxDays = weatherState.result && weatherState.revision === route.revision ? weatherState.result.agg : null
   // day boundary positions on the profile axis (multi-day segmentation)
@@ -1986,6 +1989,7 @@ const mode = createModeMachine({
   onChange: (m) => {
     const planning = m === MODES.PLANNING
     params.planning = planning
+    hud2.setTelemetryVisible(planning) // telemetry is dev info: planning tab only
     if (planning) {
       if (!dem) loadRealTerrain()
       ensureRouteLayer()
@@ -2020,9 +2024,9 @@ window.addEventListener('keydown', (e) => {
 })
 
 function showTab(id) {
-  if (id === 'planning') { mode.enterPlanning(); return }
+  if (id === 'planning') { panelHost.setCollapsed(false); mode.enterPlanning(); return }
   if (panelHost.currentId === id) { panelHost.hide(); rail.clearActive(); return }
-  if (mode.isPlanning()) mode.exitPlanning()
+  if (mode.isPlanning()) { mode.exitPlanning(); panelHost.setCollapsed(true) } // leaving planning: panel folds to its header
   rail.setActive(id)
   if (id === 'library') panelHost.show('library', '线路库', null, libraryPanel.el)
   if (id === 'weather') panelHost.show('weather', '天气推演', null, weatherPanel.el)
@@ -2138,6 +2142,8 @@ function tick() {
   const t = clock.elapsedTime
 
   // cinematic tour: arc-length uniform speed + trapezoid profile + damped gimbal
+  // focus mode: tours & recordings hide all UI floats (single toggle per frame)
+  document.body.classList.toggle('focus-mode', tour.active || flyState.active)
   if (flyState.active) {
     // flyover recording: camera walks the route path; highest priority
     flyState.t += dt

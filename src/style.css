@@ -596,3 +596,21 @@ body.sun-open .ui-overview { bottom: 196px; }
 .ui-help-card .row b { color: #ff4d00; margin-right: 6px; }
 .ui-help-card .close { margin-top: 6px; width: 100%; padding: 6px 0; background: transparent; border: 1px solid rgba(23,25,27,0.35); font: 10px monospace; cursor: pointer; color: #17191b; }
 .ui-help-card .close:hover { border-color: #ff4d00; color: #ff4d00; }
+
+/* ------------------------------------------------------------------ UX3 declutter */
+/* collapsible panel: header stays, body folds away */
+.ui-panel-chev { margin-left: auto; background: transparent; border: 1px solid rgba(23,25,27,0.3); color: rgba(23,25,27,0.7); font-size: 10px; padding: 1px 7px; cursor: pointer; font-family: monospace; }
+.ui-panel-chev:hover { border-color: #ff4d00; color: #ff4d00; }
+.ui-panel h2 { display: flex; align-items: center; gap: 8px; }
+.ui-panel-summary { font: 9px monospace; color: rgba(23,25,27,0.55); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 170px; }
+.ui-panel.collapsed .ui-panel-body { display: none; }
+.ui-panel.collapsed { padding-bottom: 4px; }
+/* focus mode (tour / flyover recording): every float steps back */
+body.focus-mode .ui-panel, body.focus-mode .ui-overview, body.focus-mode .hud-brt,
+body.focus-mode .ui-sun-panel, body.focus-mode .ui-layers, body.focus-mode .ui-attrib,
+body.focus-mode .ui-profile { opacity: 0 !important; pointer-events: none !important; transition: opacity 0.4s; }
+.ui-panel, .ui-overview, .hud-brt, .ui-sun-panel, .ui-layers, .ui-attrib, .ui-profile { transition: opacity 0.4s; }
+/* POI tags dim when a route is on screen — the route is the protagonist */
+.hud.has-route .hud-poi .tag { opacity: 0.45; }
+/* profile card: never overflow short viewports */
+.ui-profile { max-height: calc(100vh - 140px); overflow: auto; }

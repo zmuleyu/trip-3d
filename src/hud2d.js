@@ -76,6 +76,7 @@ export function createHud2D({ onSelectPoi, onDeselect, onScan }) {
   let poiEls = []
   let selected = -1
   const v = new THREE.Vector3()
+  const POI_HIDE_DIST = 34 // beyond this camera distance, POI tags declutter
 
   function setPois(pois) {
     poiEls.forEach((p) => p.remove())
@@ -137,13 +138,14 @@ export function createHud2D({ onSelectPoi, onDeselect, onScan }) {
         reticle.style.opacity = pos.visible ? 1 : 0
       }
 
-      // anchored: POI markers
+      // anchored: POI markers — gated by camera distance (wide views stay clean)
       data.pois.forEach((p, i) => {
         const m = poiEls[i]
         if (!m) return
         project(camera, w, h, p.top, pos)
+        const far = camera.position.length() > POI_HIDE_DIST
         m.style.transform = `translate(${pos.x.toFixed(1)}px, ${pos.y.toFixed(1)}px)`
-        m.style.opacity = pos.visible ? 1 : 0
+        m.style.opacity = pos.visible && !far ? 1 : 0
       })
 
       // anchored: selection panel follows its marker, just below the tag
@@ -170,6 +172,10 @@ export function createHud2D({ onSelectPoi, onDeselect, onScan }) {
     },
     setVisible(vis) {
       root.style.display = vis ? 'block' : 'none'
+    },
+    // telemetry block is dev-oriented; hidden unless the planning tab is active
+    setTelemetryVisible(vis) {
+      telem.style.display = vis ? '' : 'none'
     },
     setReticleVisible(vis) {
       reticleOn = vis
