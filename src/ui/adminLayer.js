@@ -25,14 +25,14 @@ function makeLabelSprite(text, accent = '#17191b') {
   return sp
 }
 
-// rings: [{ name, level, ring:[[lon,lat],...], centroid:[lon,lat] }] (already bbox-filtered)
-// toWorld(lon, lat) → { x, z }; heightAt(x, z) → world Y
-export function createAdminLayer({ toWorld, heightAt }) {
+// rings: [{ name, level, ring:[[lon,lat],...] }] (already bbox-filtered)
+// toWorld(lon, lat) → { x, z }; heightAt(x, z) → world Y; inView(lon, lat) → bool
+export function createAdminLayer({ toWorld, heightAt, inView = () => true }) {
   const group = new THREE.Group()
   group.visible = false
 
-  const provinceMat = new THREE.LineBasicMaterial({ color: 0xff4d00, transparent: true, opacity: 0.85 })
-  const districtMat = new THREE.LineDashedMaterial({ color: 0x17191b, dashSize: 0.35, gapSize: 0.22, transparent: true, opacity: 0.5 })
+  const provinceMat = new THREE.LineBasicMaterial({ color: 0xff4d00, transparent: true, opacity: 1, depthTest: false })
+  const districtMat = new THREE.LineDashedMaterial({ color: 0xffffff, dashSize: 0.5, gapSize: 0.25, transparent: true, opacity: 0.95, depthTest: false })
 
   return {
     group,
@@ -50,15 +50,21 @@ export function createAdminLayer({ toWorld, heightAt }) {
         const geo = new THREE.BufferGeometry().setFromPoints(pts)
         const isProvince = r.level === 'province'
         const line = new THREE.Line(geo, isProvince ? provinceMat : districtMat)
+        line.renderOrder = 5 // draw above the terrain surface
         if (!isProvince) line.computeLineDistances()
         group.add(line)
-        // name label at centroid (district level only; province label from its own ring)
-        if (r.name && r.centroid) {
-          const cw = toWorld(r.centroid[0], r.centroid[1])
-          if (cw && Number.isFinite(cw.x)) {
-            const sp = makeLabelSprite(r.name, isProvince ? '#ff4d00' : '#17191b')
-            sp.position.set(cw.x, heightAt(cw.x, cw.z) + (isProvince ? 0.9 : 0.55), cw.z)
-            group.add(sp)
+        // name label at the midpoint of the clipped (in-viewport) ring —
+        // raw centroids of huge polygons sit far outside the viewport
+        if (r.name) {
+          const anchor = r.ring[Math.floor(r.ring.length / 2)]
+          if (anchor) {
+            const cw = toWorld(anchor[0], anchor[1])
+            if (cw && Number.isFinite(cw.x)) {
+              const sp = makeLabelSprite(r.name, isProvince ? '#ff4d00' : '#17191b')
+              sp.scale.multiplyScalar(1.7)
+              sp.position.set(cw.x, heightAt(cw.x, cw.z) + (isProvince ? 1.4 : 0.9), cw.z)
+              group.add(sp)
+            }
           }
         }
       }

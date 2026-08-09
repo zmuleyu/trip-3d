@@ -21,3 +21,5 @@
 - [ ] 部署:自定义域名(当前 trip-3d.pages.dev)
 - [ ] 部署:vite manualChunks 拆分 three.js(首屏 ~1.1MB)
 - [ ] 避开高速:需自托管 OSRM 且 profile 加载 exclude 类(FOSSGIS 公共 routed-car 实测返回 InvalidValue "Exclude flag combination is not supported",provider 已支持 exclude 参数+InvalidValue 优雅降级,UI 待自托管后启用)
+- [ ] 行政区划境外覆盖:Natural Earth admin_1(全球省级),L1 当前仅中国(DataV)
+- [ ] 区划边界 IDB 缓存(当前会话内存缓存;低频访问,YAGNI 待观察)

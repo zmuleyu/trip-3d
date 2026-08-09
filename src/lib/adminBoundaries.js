@@ -55,3 +55,61 @@ export function filterRingsToBbox(rings, bbox) {
     return maxLon >= bbox.minLon && minLon <= bbox.maxLon && maxLat >= bbox.minLat && minLat <= bbox.maxLat
   })
 }
+
+// ray-cast point-in-polygon (ring of [lon, lat])
+export function pointInRing(lon, lat, ring) {
+  let inside = false
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i]
+    const [xj, yj] = ring[j]
+    if ((yi > lat) !== (yj > lat) && lon < ((xj - xi) * (lat - yi)) / (yj - yi || 1e-12) + xi) inside = !inside
+  }
+  return inside
+}
+
+// Sutherland–Hodgman rectangle clip: keeps only the in-bbox portion of a ring
+// (province outlines span 10+ degrees — drawing them whole buries the viewport
+// segment under thousands of off-screen vertices). Returns null when disjoint,
+// AND null when the ring fully CONTAINS the bbox (S-H would degenerate to the
+// rect itself — no boundary actually crosses the view).
+export function clipRingToBbox(ring, bbox) {
+  const anyInside = ring.some(([lon, lat]) => lon >= bbox.minLon && lon <= bbox.maxLon && lat >= bbox.minLat && lat <= bbox.maxLat)
+  if (!anyInside) {
+    const cx = (bbox.minLon + bbox.maxLon) / 2
+    const cy = (bbox.minLat + bbox.maxLat) / 2
+    if (pointInRing(cx, cy, ring)) return null // bbox inside polygon → no boundary in view
+  }
+  let pts = ring
+  const edges = [
+    { inside: ([lon]) => lon >= bbox.minLon, intersect: (a, b) => crossX(a, b, bbox.minLon) },
+    { inside: ([lon]) => lon <= bbox.maxLon, intersect: (a, b) => crossX(a, b, bbox.maxLon) },
+    { inside: ([, lat]) => lat >= bbox.minLat, intersect: (a, b) => crossY(a, b, bbox.minLat) },
+    { inside: ([, lat]) => lat <= bbox.maxLat, intersect: (a, b) => crossY(a, b, bbox.maxLat) },
+  ]
+  for (const e of edges) {
+    const out = []
+    for (let i = 0; i < pts.length; i++) {
+      const cur = pts[i]
+      const prev = pts[(i + pts.length - 1) % pts.length]
+      const curIn = e.inside(cur)
+      const prevIn = e.inside(prev)
+      if (curIn) {
+        if (!prevIn) out.push(e.intersect(prev, cur))
+        out.push(cur)
+      } else if (prevIn) {
+        out.push(e.intersect(prev, cur))
+      }
+    }
+    pts = out
+    if (!pts.length) return null
+  }
+  return pts.length >= 2 ? pts : null
+}
+function crossX([x1, y1], [x2, y2], x) {
+  const t = (x - x1) / (x2 - x1 || 1e-12)
+  return [x, y1 + t * (y2 - y1)]
+}
+function crossY([x1, y1], [x2, y2], y) {
+  const t = (y - y1) / (y2 - y1 || 1e-12)
+  return [x1 + t * (x2 - x1), y]
+}

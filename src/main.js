@@ -26,7 +26,7 @@ import { loadDem, sampleDem } from './dem.js'
 import { makeGeoContext, worldToLonLat, lonLatToWorld, TERRAIN_SIZE } from './lib/geo.js'
 import { createOverviewMap } from './ui/overviewMap.js'
 import { createAdminLayer } from './ui/adminLayer.js'
-import { provinceAdcode, extractRings, filterRingsToBbox } from './lib/adminBoundaries.js'
+import { provinceAdcode, extractRings, clipRingToBbox, pointInRing } from './lib/adminBoundaries.js'
 import { createSharePanel, renderPoster } from './ui/sharePanel.js'
 import { buildPosterData } from './lib/poster.js'
 import { createRoute, addWaypoint, insertWaypoint, removeWaypoint, moveWaypoint, reverseWaypoints, closeLoop, toggleDayEnd, normalizeDayEnds, dayNumberAt, routeStats, routeFingerprint, samplePolyline } from './lib/route.js'
@@ -821,9 +821,32 @@ async function loadAdminBoundaries() {
     const c2 = worldToLonLat(geo, TERRAIN_SIZE / 2, TERRAIN_SIZE / 2)
     const bbox = { minLon: Math.min(c1.lon, c2.lon), maxLon: Math.max(c1.lon, c2.lon), minLat: Math.min(c1.lat, c2.lat), maxLat: Math.max(c1.lat, c2.lat) }
     const outlineRings = extractRings(outline).map((r) => ({ ...r, level: 'province' }))
-    const rings = filterRingsToBbox([...outlineRings, ...extractRings(full)], bbox)
+    const cityRings = extractRings(full)
+    // drill one level deeper: the prefecture-city containing the DEM center has
+    // district-level features in its own _full file (province_full is city-level
+    // only — at z12+ a whole city usually CONTAINS the viewport, no boundary crosses)
+    let districtRings = []
+    const containing = cityRings.find((r) => r.adcode && r.adcode !== adcode && pointInRing(dem.lon, dem.lat, r.ring))
+    if (containing) {
+      try {
+        const cityFull = await fetch(`${DATAV}/${containing.adcode}_full.json`).then((r) => r.json())
+        if (key !== currentDemKey()) return
+        districtRings = extractRings(cityFull)
+      } catch { /* district layer optional — province/city still render */ }
+    }
+    // clip every ring to the viewport bbox — whole province outlines span 10+
+    // degrees and bury the visible segment under thousands of off-screen vertices
+    const rings = []
+    for (const r of [...outlineRings, ...cityRings, ...districtRings]) {
+      const clipped = clipRingToBbox(r.ring, bbox)
+      if (clipped) rings.push({ ...r, ring: clipped })
+    }
     if (!adminLayer) {
-      adminLayer = createAdminLayer({ toWorld: (lon, lat) => lonLatToWorld(geo, lon, lat), heightAt: (x, z) => terrain.sample(x, z) })
+      adminLayer = createAdminLayer({
+        toWorld: (lon, lat) => lonLatToWorld(geo, lon, lat),
+        heightAt: (x, z) => terrain.sample(x, z),
+        inView: (lon, lat) => lon >= bbox.minLon && lon <= bbox.maxLon && lat >= bbox.minLat && lat <= bbox.maxLat,
+      })
       scene.add(adminLayer.group)
     }
     adminLayer.setRings(rings)
