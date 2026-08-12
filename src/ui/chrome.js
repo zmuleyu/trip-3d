@@ -1,4 +1,5 @@
 // UI chrome: left icon rail, flyout panel, layer buttons, toast.
+import { nextLayerButtonAction } from './chromeState.js'
 // Framework-free DOM components matching the mockup (dist/ui-mockup.html).
 // Style lives in src/style.css (.ui-*).
 
@@ -116,12 +117,28 @@ export function createLayerButtons({ buttons }) {
     btn.appendChild(tip)
     let on = !!b.initial
     btn.classList.toggle('on', on)
+    let panelOpen = false
+    btn.setAttribute('aria-label', b.tip)
+    btn.setAttribute('aria-pressed', String(on))
+    if (b.repeatOpensPanel) btn.setAttribute('aria-expanded', 'false')
     btn.onclick = () => {
-      on = !on
+      const next = nextLayerButtonAction({ on, panelOpen, repeatOpensPanel: !!b.repeatOpensPanel })
+      on = next.on
+      panelOpen = next.panelOpen
       btn.classList.toggle('on', on)
-      b.onToggle(b.id, on)
+      btn.classList.toggle('panel-open', panelOpen)
+      btn.setAttribute('aria-pressed', String(on))
+      if (b.repeatOpensPanel) btn.setAttribute('aria-expanded', String(panelOpen))
+      if (next.toggled) b.onToggle(b.id, on)
+      else b.onPanelToggle?.(b.id, panelOpen)
     }
-    map.set(b.id, { btn, isOn: () => on, set(v) { on = v; btn.classList.toggle('on', v) } })
+    map.set(b.id, {
+      btn,
+      isOn: () => on,
+      isPanelOpen: () => panelOpen,
+      set(v) { on = v; if (!v) panelOpen = false; btn.classList.toggle('on', v); btn.classList.toggle('panel-open', panelOpen); btn.setAttribute('aria-pressed', String(v)); if (b.repeatOpensPanel) btn.setAttribute('aria-expanded', String(panelOpen)) },
+      setPanelOpen(v) { panelOpen = !!v; btn.classList.toggle('panel-open', panelOpen); if (b.repeatOpensPanel) btn.setAttribute('aria-expanded', String(panelOpen)) },
+    })
     el.appendChild(btn)
   }
   document.body.appendChild(el)

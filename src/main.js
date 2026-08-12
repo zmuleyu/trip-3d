@@ -28,6 +28,8 @@ import { createOverviewMap } from './ui/overviewMap.js'
 import { createAdminLayer } from './ui/adminLayer.js'
 import { provinceAdcode, extractRings, clipRingToBbox, pointInRing } from './lib/adminBoundaries.js'
 import { createAdminBoundaryCache } from './lib/adminBoundaryCache.js'
+import { filterAdminRings, adminBreadcrumb, adminEmptyMessage, adminNeedsReload, findDeepestAdminRegion, createAdminInteractionState } from './lib/adminInteraction.js'
+import { createAdminBoundaryUI } from './ui/adminPanel.js'
 import { createSharePanel, renderPoster } from './ui/sharePanel.js'
 import { buildPosterData } from './lib/poster.js'
 import { createRoute, addWaypoint, insertWaypoint, removeWaypoint, moveWaypoint, reverseWaypoints, closeLoop, toggleDayEnd, normalizeDayEnds, dayNumberAt, routeStats, routeFingerprint, samplePolyline } from './lib/route.js'
@@ -649,7 +651,7 @@ renderer.domElement.addEventListener('pointerdown', (e) => {
   if (e.button !== 0) return
   downPos = { x: e.clientX, y: e.clientY }
   dragged = false
-  if (params.planning && routeLayer && geo && dem) {
+  if (!adminInteraction.inspecting && params.planning && routeLayer && geo && dem) {
     raycaster.setFromCamera(ndcOf(e), camera)
     const hit = routeLayer.hitWaypoint(raycaster)
     if (hit >= 0) {
@@ -659,6 +661,21 @@ renderer.domElement.addEventListener('pointerdown', (e) => {
   }
 }, { capture: true })
 renderer.domElement.addEventListener('pointermove', (e) => {
+  if (adminInteraction.inspecting && !markerDrag) {
+    const now = performance.now()
+    if (now - hoverTimer >= 90 && geo && dem) {
+      hoverTimer = now
+      raycaster.setFromCamera(ndcOf(e), camera)
+      const hit = raycaster.intersectObject(terrain.mesh, false)[0]
+      if (hit) {
+        const { lon, lat } = worldToLonLat(geo, hit.point.x, hit.point.z)
+        const region = findDeepestAdminRegion(adminState.regions, lon, lat)
+        adminLayer?.setHovered(region)
+        renderer.domElement.style.cursor = region ? 'pointer' : ''
+      }
+    }
+    return
+  }
   if (!markerDrag || e.pointerId !== markerDrag.pointerId) { hoverCursor(e); return }
   if (!markerDrag.moved && Math.hypot(e.clientX - markerDrag.startX, e.clientY - markerDrag.startY) < DRAG_THRESHOLD_PX) return
   markerDrag.moved = true
@@ -693,6 +710,19 @@ window.addEventListener('pointercancel', (e) => {
 })
 window.addEventListener('blur', () => endMarkerDrag(false))
 renderer.domElement.addEventListener('pointerup', (e) => {
+  if (adminInteraction.inspecting && downPos && geo && dem && e.button === 0) {
+    const moved = Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y) > 6
+    const wasDrag = dragged
+    downPos = null
+    if (moved || wasDrag) return
+    raycaster.setFromCamera(ndcOf(e), camera)
+    const hit = raycaster.intersectObject(terrain.mesh, false)[0]
+    if (!hit) return
+    const { lon, lat } = worldToLonLat(geo, hit.point.x, hit.point.z)
+    const region = findDeepestAdminRegion(adminState.regions, lon, lat)
+    if (region) adminInteraction.select({ ...region, selectedAt: [lon, lat] })
+    return // inspect mode owns this click; never drop a planning waypoint
+  }
   if (!params.planning || !downPos || !geo || !dem || e.button !== 0) return
   const moved = Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y) > 6
   const wasDrag = dragged
@@ -799,20 +829,87 @@ async function buildMapOverlay(demSnap, gen) {
 // reverse at the DEM center. Reloads on demKey change like snap/weather.
 const DATAV = 'https://geo.datav.aliyun.com/areas_v3/bound'
 const adminBoundaryCache = createAdminBoundaryCache()
-const adminState = { on: false, demKey: null, loading: false }
+const adminState = { on: false, demKey: null, loading: false, panelOpen: false, rings: [], regions: [], breadcrumb: [], cacheStatus: '缓存状态未知' }
 let adminLayer = null
+let adminUI = null
+const adminInteraction = createAdminInteractionState({ onChange: () => refreshAdminUI() })
+
+function refreshAdminUI() {
+  if (!adminUI) return
+  const visibleRings = filterAdminRings(adminState.rings, adminInteraction.level)
+  adminLayer?.setLevel(adminInteraction.level)
+  adminLayer?.setSelected(adminInteraction.selected)
+  adminUI.update({
+    enabled: adminState.on,
+    panelOpen: adminState.panelOpen,
+    breadcrumb: adminState.breadcrumb,
+    level: adminInteraction.level,
+    segmentCount: visibleRings.length,
+    cacheStatus: adminState.cacheStatus,
+    inspecting: adminInteraction.inspecting,
+    selected: adminInteraction.selected ? {
+      ...adminInteraction.selected,
+      parents: adminState.breadcrumb.filter((name) => name !== adminInteraction.selected.name),
+    } : null,
+    emptyMessage: visibleRings.length || adminState.loading || adminState.demKey !== currentDemKey()
+      ? ''
+      : adminEmptyMessage(adminState.breadcrumb),
+  })
+  document.body.classList.toggle('admin-inspecting', adminInteraction.inspecting)
+}
+
+function setAdminEnabled(enabled) {
+  adminState.on = enabled
+  adminInteraction.setEnabled(enabled)
+  layerBtns?.get('admin')?.set(enabled)
+  if (enabled) loadAdminBoundaries()
+  else {
+    adminState.panelOpen = false
+    adminLayer?.setVisible(false)
+    adminUI?.setPanelOpen(false)
+  }
+}
+
+function setAdminPanelOpen(open) {
+  adminState.panelOpen = !!open
+  layerBtns?.get('admin')?.setPanelOpen(open)
+  refreshAdminUI()
+}
+
+function toggleAdminInspect() {
+  if (adminInteraction.inspecting) adminInteraction.exitInspect()
+  else adminInteraction.enterInspect()
+}
+
+function focusSelectedAdminRegion() {
+  const region = adminInteraction.selected
+  if (!region?.ring?.length || !geo) return
+  const center = region.selectedAt ?? region.centroid ?? region.ring[Math.floor(region.ring.length / 2)]
+  const world = center && lonLatToWorld(geo, center[0], center[1])
+  if (!world || !Number.isFinite(world.x)) return
+  controls.target.set(world.x, terrain.sample(world.x, world.z), world.z)
+  controls.update()
+}
+
+adminUI = createAdminBoundaryUI({
+  onEnabled: setAdminEnabled,
+  onLevel: (level) => { adminInteraction.setLevel(level); refreshAdminUI() },
+  onInspect: toggleAdminInspect,
+  onCloseSelection: () => adminInteraction.select(null),
+  onFocus: focusSelectedAdminRegion,
+})
 
 async function loadAdminBoundaries() {
   if (!dem || !geo) return
   const key = currentDemKey()
-  if (adminState.demKey === key && adminLayer) { adminLayer.setVisible(true); return }
+  if (adminState.demKey === key && adminLayer) { adminLayer.setVisible(true); refreshAdminUI(); return }
   adminState.loading = true
   toast.show('区划边界加载中…')
   try {
     // province adcode from the DEM center (one reverse call, explicit toggle)
     const rev = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${dem.lat}&lon=${dem.lon}&format=json&zoom=5&accept-language=zh`).then((r) => r.json())
     const adcode = provinceAdcode(rev?.address)
-    if (!adcode) { toast.show('境外区域暂未接入区划边界(仅中国)'); adminState.on = false; layerBtns.get('admin')?.set(false); return }
+    if (!adcode) { toast.show('境外区域暂未接入区划边界(仅中国)'); setAdminEnabled(false); return }
     const [outline, full] = await Promise.all([
       adminBoundaryCache.fetchJson(`${DATAV}/${adcode}.json`),
       adminBoundaryCache.fetchJson(`${DATAV}/${adcode}_full.json`),
@@ -823,7 +920,7 @@ async function loadAdminBoundaries() {
     const c2 = worldToLonLat(geo, TERRAIN_SIZE / 2, TERRAIN_SIZE / 2)
     const bbox = { minLon: Math.min(c1.lon, c2.lon), maxLon: Math.max(c1.lon, c2.lon), minLat: Math.min(c1.lat, c2.lat), maxLat: Math.max(c1.lat, c2.lat) }
     const outlineRings = extractRings(outline).map((r) => ({ ...r, level: 'province' }))
-    const cityRings = extractRings(full)
+    const cityRings = extractRings(full).map((r) => ({ ...r, level: 'city' }))
     // drill one level deeper: the prefecture-city containing the DEM center has
     // district-level features in its own _full file (province_full is city-level
     // only — at z12+ a whole city usually CONTAINS the viewport, no boundary crosses)
@@ -833,13 +930,14 @@ async function loadAdminBoundaries() {
       try {
         const cityFull = await adminBoundaryCache.fetchJson(`${DATAV}/${containing.adcode}_full.json`)
         if (key !== currentDemKey()) return
-        districtRings = extractRings(cityFull)
+        districtRings = extractRings(cityFull).map((r) => ({ ...r, level: 'district' }))
       } catch { /* district layer optional — province/city still render */ }
     }
     // clip every ring to the viewport bbox — whole province outlines span 10+
     // degrees and bury the visible segment under thousands of off-screen vertices
+    const regions = [...outlineRings, ...cityRings, ...districtRings]
     const rings = []
-    for (const r of [...outlineRings, ...cityRings, ...districtRings]) {
+    for (const r of regions) {
       const clipped = clipRingToBbox(r.ring, bbox)
       if (clipped) rings.push({ ...r, ring: clipped })
     }
@@ -854,12 +952,23 @@ async function loadAdminBoundaries() {
     adminLayer.setRings(rings)
     adminLayer.setVisible(adminState.on)
     adminState.demKey = key
+    adminState.rings = rings
+    adminState.regions = regions
+    const deepest = findDeepestAdminRegion(regions, dem.lon, dem.lat)
+    adminState.breadcrumb = adminBreadcrumb({
+      province: rev?.address?.state ?? rev?.address?.province ?? outlineRings[0]?.name,
+      city: containing?.name ?? rev?.address?.city,
+      district: deepest?.level === 'district' ? deepest.name : rev?.address?.county,
+    })
+    adminState.cacheStatus = '● 已缓存'
+    refreshAdminUI()
     toast.show(`区划边界已加载(${rings.length} 段)`)
   } catch (err) {
     console.warn('admin boundaries failed', err)
     toast.show('区划边界加载失败')
   } finally {
     adminState.loading = false
+    refreshAdminUI()
   }
 }
 
@@ -875,6 +984,7 @@ function regenerateTerrain() {
       regenerateLabels()
       regenerateHud()
       refreshRoute() // drape route onto the NEW sampler after every rebuild
+      if (adminNeedsReload({ enabled: adminState.on, loadedKey: adminState.demKey, currentKey: currentDemKey() })) loadAdminBoundaries()
       if (params.shadowMode === 'static') renderer.shadowMap.needsUpdate = true
       rebuildPending = false
       loadingEl.classList.add('hidden')
@@ -2092,6 +2202,11 @@ window.addEventListener('keydown', (e) => {
     toast.show('已取消插入')
     return
   }
+  if (adminInteraction.handleKey(e.key)) {
+    renderer.domElement.style.cursor = ''
+    adminLayer?.setHovered(null)
+    return
+  }
   mode.handleKey(e.key)
 })
 
@@ -2164,7 +2279,7 @@ const layerBtns = createLayerButtons({
     { id: 'grid', icon: '⊹', tip: '测量网格', initial: params.gridOpacity > 0, onToggle: (id, on) => gridOpacityCtrl.setValue(on ? 1 : 0) },
     { id: 'labels', icon: '▲', tip: '山峰标签', initial: params.labels, onToggle: (id, on) => labelsCtrl.setValue(on) },
     { id: 'mapov', icon: '🛣', tip: '路网叠加', initial: params.mapOverlay, onToggle: (id, on) => { params.mapOverlay = on; terrain.setOverlayMix(on ? 0.55 : 0) } },
-    { id: 'admin', icon: '🏛', tip: '区划边界', initial: false, onToggle: (id, on) => { adminState.on = on; if (on) loadAdminBoundaries(); else adminLayer?.setVisible(false) } },
+    { id: 'admin', icon: '🏛', tip: '行政区划', initial: false, repeatOpensPanel: true, onToggle: (id, on) => setAdminEnabled(on), onPanelToggle: (id, open) => setAdminPanelOpen(open) },
     { id: 'sun', icon: '☀', tip: '日照分析', initial: false, onToggle: (id, on) => { sunState.on = on; sunPanel.classList.toggle('hidden', !on); document.body.classList.toggle('sun-open', on); if (on) applySun() } },
     { id: 'hud', icon: '◎', tip: 'HUD', initial: params.hud, onToggle: (id, on) => hudCtrl.setValue(on) },
   ],
@@ -2194,7 +2309,7 @@ if (location.hash.startsWith('#r=')) {
 }
 
 // console access for debugging/scripting
-window.__exp = { scene, camera, controls, params, terrain, loadRealTerrain, get labels() { return labels }, get route() { return route }, get geo() { return geo }, get dem() { return dem } }
+window.__exp = { scene, camera, controls, params, terrain, loadRealTerrain, loadAdminBoundaries, get adminState() { return adminState }, get adminInteraction() { return adminInteraction }, get adminLayer() { return adminLayer }, get labels() { return labels }, get route() { return route }, get geo() { return geo }, get dem() { return dem } }
 
 // real world is the default source — fetch its tiles on startup
 if (params.source === 'real') loadRealTerrain()

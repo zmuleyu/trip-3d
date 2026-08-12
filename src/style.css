@@ -614,3 +614,60 @@ body.focus-mode .ui-profile { opacity: 0 !important; pointer-events: none !impor
 .hud.has-route .hud-poi .tag { opacity: 0.45; }
 /* profile card: never overflow short viewports */
 .ui-profile { max-height: calc(100vh - 140px); overflow: auto; }
+
+/* ------------------------------------------------------------------ L2 admin boundary interaction */
+:root { --admin-accent: #278ed8; --admin-soft: #89c9ef; --admin-ink: #173f54; }
+.ui-layer-btn[data-id='admin'].panel-open { outline: 3px solid rgba(39,142,216,0.22); }
+.admin-panel { position: fixed; right: 62px; top: 14px; z-index: 34; width: 354px; background: rgba(255,255,255,0.96); border: 1px solid rgba(23,25,27,0.34); box-shadow: 0 10px 30px rgba(16,20,24,0.18); backdrop-filter: blur(8px); color: #17191b; font: 10px 'Courier New', ui-monospace, monospace; }
+.admin-panel.hidden, .admin-modebar.hidden, .admin-empty.hidden, .admin-detail.hidden { display: none; }
+.admin-head { min-height: 50px; display: flex; align-items: center; padding: 0 14px; border-bottom: 1px solid rgba(23,25,27,0.18); }
+.admin-head h2 { margin: 0; font-size: 12px; letter-spacing: 1.6px; }
+.admin-sq { width: 8px; height: 8px; background: var(--admin-accent); margin-right: 9px; }
+.admin-switch { margin-left: auto; width: 36px; height: 22px; border: 0; border-radius: 14px; background: var(--admin-accent); position: relative; cursor: pointer; }
+.admin-switch::after { content: ''; position: absolute; width: 16px; height: 16px; right: 3px; top: 3px; border-radius: 50%; background: #fff; }
+.admin-body { padding: 13px 15px 12px; }
+.admin-eyebrow { margin: 2px 0 6px; color: rgba(23,25,27,0.5); font-size: 9px; letter-spacing: 1.3px; }
+.admin-crumb { min-height: 34px; font-size: 12px; line-height: 1.55; font-weight: bold; overflow-wrap: anywhere; }
+.admin-levels { display: grid; grid-template-columns: repeat(4, 1fr); margin: 3px 0 10px; border: 1px solid rgba(23,25,27,0.25); }
+.admin-levels button { min-height: 32px; border: 0; border-right: 1px solid rgba(23,25,27,0.2); background: transparent; font: inherit; cursor: pointer; }
+.admin-levels button:last-child { border-right: 0; }
+.admin-levels button.active { background: #17191b; color: #fff; }
+.admin-row { min-height: 35px; display: flex; align-items: center; border-top: 1px dotted rgba(23,25,27,0.2); }
+.admin-row b { margin-left: auto; }
+.admin-legend { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin: 10px 0 13px; }
+.admin-legend span { display: flex; align-items: center; gap: 6px; font-size: 9px; }
+.admin-legend i { display: block; width: 24px; height: 0; border-top: 2px solid var(--admin-accent); }
+.admin-legend i.city { border-top-width: 1.5px; border-color: var(--admin-soft); }
+.admin-legend i.district { border-top: 1px dashed #6d8795; }
+.admin-inspect { width: 100%; min-height: 36px; border: 1px solid var(--admin-accent); background: var(--admin-accent); color: #fff; font: inherit; font-weight: bold; cursor: pointer; }
+.admin-inspect.active { background: #142f3e; border-color: #142f3e; }
+.admin-source { display: flex; justify-content: space-between; margin-top: 10px; color: rgba(23,25,27,0.55); font-size: 8.5px; }
+.admin-modebar { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); z-index: 36; display: flex; align-items: center; gap: 9px; background: #142f3e; color: #fff; border: 1px solid rgba(255,255,255,0.28); box-shadow: 0 6px 18px rgba(0,0,0,0.2); padding: 8px 11px; font: 10px monospace; }
+.admin-modebar kbd { border: 1px solid rgba(255,255,255,0.35); padding: 2px 5px; font: inherit; }
+.admin-pulse { width: 7px; height: 7px; border-radius: 50%; background: var(--admin-soft); box-shadow: 0 0 0 4px rgba(137,201,239,0.16); }
+.admin-empty { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 34; max-width: min(520px, calc(100vw - 120px)); background: rgba(255,255,255,0.96); border: 1px solid rgba(23,25,27,0.3); box-shadow: 0 8px 24px rgba(0,0,0,0.16); padding: 10px 14px; color: var(--admin-ink); font: 10px/1.5 monospace; }
+.admin-detail { position: fixed; left: 39%; top: 56%; z-index: 35; width: 270px; background: rgba(255,255,255,0.97); border: 1px solid var(--admin-accent); box-shadow: 0 10px 28px rgba(0,0,0,0.2); padding: 13px 14px; color: #17191b; font: 10px/1.5 monospace; }
+.admin-detail h3 { margin: 0 0 4px; font-size: 13px; }
+.admin-detail p { margin: 0 0 10px; color: rgba(23,25,27,0.62); }
+.admin-detail dl { display: grid; grid-template-columns: 68px 1fr; gap: 5px; margin: 0; }
+.admin-detail dt { color: rgba(23,25,27,0.55); }
+.admin-detail dd { margin: 0; }
+.admin-actions { display: flex; gap: 6px; margin-top: 11px; }
+.admin-actions button { min-height: 32px; flex: 1; border: 1px solid rgba(23,25,27,0.28); background: #fff; font: inherit; cursor: pointer; }
+.admin-actions button:first-child { background: #17191b; color: #fff; }
+.admin-panel button:focus-visible, .admin-detail button:focus-visible { outline: 2px solid var(--admin-accent); outline-offset: 2px; }
+body.admin-inspecting canvas { cursor: crosshair; }
+body.focus-mode .admin-panel, body.focus-mode .admin-modebar, body.focus-mode .admin-empty, body.focus-mode .admin-detail { opacity: 0; pointer-events: none; }
+
+@media (max-width: 720px) {
+  .admin-panel { top: auto; left: 52px; right: 0; bottom: 0; z-index: 45; width: auto; max-height: min(68vh, 470px); overflow-y: auto; border-radius: 18px 0 0 0; border-width: 1px 0 0 1px; padding-top: 10px; }
+  .admin-panel::before { content: ''; display: block; width: 38px; height: 4px; border-radius: 3px; background: #b9bdbe; margin: 0 auto 5px; }
+  .admin-head { min-height: 44px; }
+  .admin-levels button, .admin-inspect, .admin-actions button { min-height: 44px; }
+  .admin-switch { width: 44px; height: 44px; }
+  .admin-switch::after { top: 14px; }
+  .admin-detail { left: 64px; right: 12px; top: auto; bottom: 18px; z-index: 46; width: auto; }
+  .admin-modebar { top: 10px; z-index: 46; width: max-content; max-width: calc(100vw - 72px); white-space: nowrap; }
+  .admin-modebar span:not(.admin-pulse) { display: none; }
+  .admin-empty { left: calc(50% + 26px); bottom: 18px; z-index: 45; max-width: calc(100vw - 76px); width: max-content; }
+}
