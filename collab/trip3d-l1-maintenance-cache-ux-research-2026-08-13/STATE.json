@@ -1,0 +1,16 @@
+{
+  "state": "READY_FOR_GIT_CLOSEOUT",
+  "goal": "L1 maintenance + cache + UX research",
+  "owner": "hermes-main-session",
+  "authority": "single-writer",
+  "repo": {
+    "branch": "main",
+    "head": "3c90f4c5762205946db330fdc8c837b55dc1e2fd",
+    "dirty": true
+  },
+  "phase": "CLOSEOUT",
+  "last_green": "181/181 + build + cache E2E",
+  "next_action": "commit, push, production verify",
+  "watchers": {},
+  "updated_at": "2026-08-13T01:00:00+08:00"
+}

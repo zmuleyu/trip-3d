@@ -27,6 +27,7 @@ import { makeGeoContext, worldToLonLat, lonLatToWorld, TERRAIN_SIZE } from './li
 import { createOverviewMap } from './ui/overviewMap.js'
 import { createAdminLayer } from './ui/adminLayer.js'
 import { provinceAdcode, extractRings, clipRingToBbox, pointInRing } from './lib/adminBoundaries.js'
+import { createAdminBoundaryCache } from './lib/adminBoundaryCache.js'
 import { createSharePanel, renderPoster } from './ui/sharePanel.js'
 import { buildPosterData } from './lib/poster.js'
 import { createRoute, addWaypoint, insertWaypoint, removeWaypoint, moveWaypoint, reverseWaypoints, closeLoop, toggleDayEnd, normalizeDayEnds, dayNumberAt, routeStats, routeFingerprint, samplePolyline } from './lib/route.js'
@@ -797,6 +798,7 @@ async function buildMapOverlay(demSnap, gen) {
 // DataV aliyun GeoJSON (CN) draped on terrain; province adcode via Nominatim
 // reverse at the DEM center. Reloads on demKey change like snap/weather.
 const DATAV = 'https://geo.datav.aliyun.com/areas_v3/bound'
+const adminBoundaryCache = createAdminBoundaryCache()
 const adminState = { on: false, demKey: null, loading: false }
 let adminLayer = null
 
@@ -812,8 +814,8 @@ async function loadAdminBoundaries() {
     const adcode = provinceAdcode(rev?.address)
     if (!adcode) { toast.show('境外区域暂未接入区划边界(仅中国)'); adminState.on = false; layerBtns.get('admin')?.set(false); return }
     const [outline, full] = await Promise.all([
-      fetch(`${DATAV}/${adcode}.json`).then((r) => r.json()),
-      fetch(`${DATAV}/${adcode}_full.json`).then((r) => r.json()),
+      adminBoundaryCache.fetchJson(`${DATAV}/${adcode}.json`),
+      adminBoundaryCache.fetchJson(`${DATAV}/${adcode}_full.json`),
     ])
     if (key !== currentDemKey()) return // terrain switched mid-load
     // viewport bbox from world corners
@@ -829,7 +831,7 @@ async function loadAdminBoundaries() {
     const containing = cityRings.find((r) => r.adcode && r.adcode !== adcode && pointInRing(dem.lon, dem.lat, r.ring))
     if (containing) {
       try {
-        const cityFull = await fetch(`${DATAV}/${containing.adcode}_full.json`).then((r) => r.json())
+        const cityFull = await adminBoundaryCache.fetchJson(`${DATAV}/${containing.adcode}_full.json`)
         if (key !== currentDemKey()) return
         districtRings = extractRings(cityFull)
       } catch { /* district layer optional — province/city still render */ }

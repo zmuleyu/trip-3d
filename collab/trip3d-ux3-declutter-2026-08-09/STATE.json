@@ -2,9 +2,9 @@
   "state": "GOAL_CLOSEOUT_COMPLETE",
   "goal": "UX3 视觉降噪",
   "owner": "hermes-main-session",
-  "head": "pending-final-commit",
+  "head": "bf81c4010d3f5d45c9ad2acdfc1eefb2714e2b49",
   "last_green": "167/167 + build ✓ + E2E 折叠/焦点模式",
   "current_task": "done",
-  "next_action": "L1 行政区划图层(数据源调研+边界 draping)",
-  "updated_at": "2026-08-09T17:10:00+08:00"
+  "next_action": "none — archived delivery evidence",
+  "updated_at": "2026-08-13T00:50:00+08:00"
 }

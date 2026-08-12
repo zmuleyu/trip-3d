@@ -2,9 +2,9 @@
   "state": "GOAL_CLOSEOUT_COMPLETE",
   "goal": "L1 行政区划图层",
   "owner": "hermes-main-session",
-  "head": "pending-final-commit",
-  "last_green": "176/176 + build ✓ + E2E 境外降级/z12零段/z10七段",
+  "head": "3c90f4c5762205946db330fdc8c837b55dc1e2fd",
+  "last_green": "176/176 + build ✓ + E2E 境外降级/z12零段/z10七段 + production success",
   "current_task": "done",
-  "next_action": "部署验证(push 自动构建)",
-  "updated_at": "2026-08-09T18:30:00+08:00"
+  "next_action": "none — maintenance moved to trip3d-l1-maintenance-cache-ux-research-2026-08-13",
+  "updated_at": "2026-08-13T00:50:00+08:00"
 }
