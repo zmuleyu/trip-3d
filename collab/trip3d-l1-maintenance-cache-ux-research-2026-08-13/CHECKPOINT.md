@@ -1,7 +1,6 @@
 # CHECKPOINT
 
-- Phase 1：UX3/L1 控制面漂移校正完成。
-- Phase 2：followups 已交付项清理完成。
-- Phase 3：DataV IndexedDB 缓存完成；181/181 + build；E2E 证实重载零 DataV 网络请求。
-- Phase 4：热门同类产品官方文档研究完成，讨论稿已归档；未实施 UI。
-- 当前：READY_FOR_GIT_CLOSEOUT。
+- Goal 已完成：控制面校正、followups 清理、DataV IndexedDB 缓存、竞品研究讨论稿。
+- 绿色门禁：181/181、build、缓存 E2E（IDB 3 URL；重载 DataV 网络请求 0）。
+- 实现提交：`6ce1d67`；GitHub push 已完成；生产 bundle `index-CtSgvoBk.js` 与本地一致。
+- UI 未改动；推荐方案等待用户选择 A/B/C 后另开 UI Goal。
