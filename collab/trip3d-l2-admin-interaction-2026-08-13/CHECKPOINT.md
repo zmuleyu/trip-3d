@@ -1,7 +1,7 @@
 # CHECKPOINT
 
-- 方案 A 已实现：图层卡、冷蓝边界/halo 标签、层级过滤、查看模式、选区详情、零段解释、移动 bottom sheet。
-- TDD：15 个新增行为测试；全量 196/196。
-- build：`index-Cw42urgO.js` + `index-BBxIwW4C.css`。
-- E2E：桌面四态 + 规划点击隔离 + Esc + z12 空态；移动 390×844 无溢出、44px 触控。
-- 当前：READY_FOR_GIT_CLOSEOUT。
+- Goal 完成：方案 A 已实现、验证、push 并上线。
+- 实现提交：`ec30076`。
+- 绿色门禁：31 files / 196 tests；build；桌面和移动 CDP E2E。
+- 生产资产与本地一致：`index-Cw42urgO.js`、`index-BBxIwW4C.css`；功能标记已核验。
+- 工作树 clean；无后续动作。
