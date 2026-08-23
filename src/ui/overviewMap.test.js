@@ -17,6 +17,8 @@ const maplibre = vi.hoisted(() => {
       options.container.appendChild(this.canvas)
       this.resizeCalls = 0
       this.fitCalls = []
+      this.pitch = 0
+      this.bearing = 0
       instances.push(this)
     }
 
@@ -45,6 +47,10 @@ const maplibre = vi.hoisted(() => {
     }
     getCenter() { return this.center }
     getZoom() { return this.zoom }
+    getPitch() { return this.pitch }
+    getBearing() { return this.bearing }
+    dragRotate = { disable: vi.fn(), enable: vi.fn() }
+    touchPitch = { disable: vi.fn(), enable: vi.fn() }
     getStyle() {
       return {
         layers: [
@@ -66,6 +72,8 @@ const maplibre = vi.hoisted(() => {
     }
     getSource(id) { return this.sources.get(id) }
     addLayer(layer) { this.layers.push(layer) }
+    getLayer(id) { return this.layers.find((layer) => layer.id === id) }
+    setStyle() { this.sources.clear(); this.layers = []; this.emit('style.load') }
     resize() { this.resizeCalls++ }
     fitBounds(bounds, options) {
       this.fitCalls.push({ bounds, options })
@@ -74,11 +82,15 @@ const maplibre = vi.hoisted(() => {
         lat: (bounds[0][1] + bounds[1][1]) / 2,
       }
       this.zoom = 11
+      this.pitch = options.pitch ?? this.pitch
+      this.bearing = options.bearing ?? this.bearing
       this.emit('zoom')
     }
-    jumpTo({ center, zoom }) {
-      this.center = { lng: center[0], lat: center[1] }
-      this.zoom = zoom
+    jumpTo({ center, zoom, pitch, bearing }) {
+      if (center) this.center = { lng: center[0], lat: center[1] }
+      if (zoom != null) this.zoom = zoom
+      if (pitch != null) this.pitch = pitch
+      if (bearing != null) this.bearing = bearing
       this.emit('zoom')
     }
     zoomIn() { this.zoom = Math.min(this.options.maxZoom, this.zoom + 1); this.emit('zoom') }
@@ -127,8 +139,65 @@ describe('overview MapLibre planner map', () => {
     expect(instance.options.style).toBe('https://tiles.openfreemap.org/styles/positron')
     expect(instance.options.dragRotate).toBe(false)
     expect(instance.options.touchPitch).toBe(false)
+    expect(instance.options.canvasContextAttributes).toEqual({ antialias: true })
     expect(instance.controls[0].control.options.compact).toBe(false)
     expect(instance.canvas.getAttribute('aria-label')).toBe('二维路线地图')
+  })
+
+  it('uses the same map and canvas for immediate 2D/3D planner views', () => {
+    const terrainLayer = {
+      id: 'trip-three-terrain',
+      type: 'custom',
+      failed: null,
+      setFailureHandler: vi.fn(),
+      setEnabled: vi.fn(() => true),
+      getStats: vi.fn(() => ({ frames: 4, averageMs: 2, maxMs: 3 })),
+    }
+    const { overview, instance } = setup({ terrainLayer })
+    overview.setPlannerMode(true)
+    overview.update({ waypoints: [{ id: 'a', lon: 113, lat: 41.2 }, { id: 'b', lon: 113.2, lat: 41.4 }] }, null, VIEWPORT)
+    instance.jumpTo({ center: [113.12, 41.31], zoom: 12.4 })
+    const canvas = instance.getCanvas()
+    const center = { ...instance.getCenter() }
+    const zoom = instance.getZoom()
+
+    expect(overview.setPlannerView('3d')).toBe(true)
+    expect(maplibre.instances).toHaveLength(1)
+    expect(instance.getCanvas()).toBe(canvas)
+    expect(instance.getPitch()).toBe(55)
+    expect(instance.getBearing()).toBe(-28)
+    expect(terrainLayer.setEnabled).toHaveBeenLastCalledWith(true)
+
+    expect(overview.setPlannerView('2d')).toBe(true)
+    expect(instance.getPitch()).toBe(0)
+    expect(instance.getBearing()).toBe(0)
+    expect(instance.getCenter()).toEqual(center)
+    expect(instance.getZoom()).toBe(zoom)
+    expect(terrainLayer.setEnabled).toHaveBeenLastCalledWith(false)
+  })
+
+  it('returns to an operable 2D route map when the terrain layer fails', () => {
+    let fail
+    const onTerrainUnavailable = vi.fn()
+    const terrainLayer = {
+      id: 'trip-three-terrain',
+      type: 'custom',
+      failed: null,
+      setFailureHandler: vi.fn((handler) => { fail = handler }),
+      setEnabled: vi.fn(() => true),
+    }
+    const { overview, instance } = setup({ terrainLayer, onTerrainUnavailable })
+    overview.setPlannerMode(true)
+    overview.setPlannerView('3d')
+    const error = new Error('shared context failed')
+    terrainLayer.failed = error
+    fail(error)
+
+    expect(overview.plannerView).toBe('2d')
+    expect(instance.getPitch()).toBe(0)
+    expect(instance.getBearing()).toBe(0)
+    expect(overview.el.querySelector('.ui-map-error').classList.contains('hidden')).toBe(false)
+    expect(onTerrainUnavailable).toHaveBeenCalledWith(error)
   })
 
   it('keeps the empty planner visible and sends map clicks to waypoint planning', () => {

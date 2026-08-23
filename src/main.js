@@ -26,6 +26,7 @@ import { loadDem, sampleDem } from './dem.js'
 import { makeGeoContext, worldToLonLat, lonLatToWorld, TERRAIN_SIZE } from './lib/geo.js'
 import { createOverviewMap } from './ui/overviewMap.js'
 import { createPlannerWorkspace } from './ui/plannerWorkspace.js'
+import { createTerrainCustomLayer } from './map/terrainCustomLayer.js'
 import { setDrawerOpen } from './ui/drawer.js'
 import { createAdminLayer } from './ui/adminLayer.js'
 import { provinceAdcode, extractRings, clipRingToBbox, pointInRing } from './lib/adminBoundaries.js'
@@ -2315,7 +2316,29 @@ const routeActions = {
 const planningPanel = createPlanningPanel(routeActions)
 planningPanel.setRouteMode(route.mode, snapState.on ? '等待路网吸附' : '仅测距；不估算时长')
 // overview inset map: click → fly the 3D camera to that lon/lat
+const plannerTerrainLayer = createTerrainCustomLayer({
+  getTerrainContext: () => {
+    if (!geo || !dem || rebuildPending || demBusy) return null
+    return {
+      terrain,
+      geo,
+      dem,
+      demExaggeration: params.demExaggeration,
+      baseAltitude: params.source === 'real' ? dem.meanM : 0,
+    }
+  },
+})
+
+let plannerWorkspace
 const overviewMap = createOverviewMap({
+  terrainLayer: plannerTerrainLayer,
+  onTerrainUnavailable: (error) => {
+    plannerWorkspace?.setView('2d')
+    if (params.planning) applyPlannerView('2d')
+    toast.show(error?.message === 'WebGL context lost'
+      ? '3D 图形上下文已中断；已返回 2D 路线规划'
+      : '3D 地形暂时不可用；已返回 2D 路线规划')
+  },
   onJump: (lon, lat) => { if (geo && dem) flyToLonLat(lon, lat, 10) },
   onWaypointSelect: setSelectedWaypoint,
   onWaypointMoveStart: beginWaypointMove,
@@ -2357,14 +2380,20 @@ function expandTerrainToRoute() {
   loadRealTerrain()
 }
 
-const plannerWorkspace = createPlannerWorkspace({
-  onView: (view) => {
-    const planner2d = params.planning && view === '2d'
-    document.body.classList.toggle('planner-2d', planner2d)
-    overviewMap.setPlannerMode(planner2d)
-    overviewMap.update(route, lastRoutePts, currentViewportRect())
-    if (planner2d) overviewMap.resize()
-  },
+function applyPlannerView(view) {
+  const requested = view === '3d' ? '3d' : '2d'
+  const accepted = overviewMap.setPlannerView(requested)
+  const actual = accepted ? requested : '2d'
+  plannerWorkspace?.setView(actual)
+  const planning = params.planning
+  document.body.classList.toggle('planner-2d', planning && actual === '2d')
+  document.body.classList.toggle('planner-3d', planning && actual === '3d')
+  overviewMap.update(route, lastRoutePts, currentViewportRect())
+  if (planning) overviewMap.resize({ fit: false })
+}
+
+plannerWorkspace = createPlannerWorkspace({
+  onView: applyPlannerView,
   onExpand: expandTerrainToRoute,
 })
 document.body.appendChild(plannerWorkspace.el)
@@ -2411,11 +2440,10 @@ const mode = createModeMachine({
     params.planning = planning
     hud2.setTelemetryVisible(false) // telemetry is developer-only; never compete with planning
     plannerWorkspace.setVisible(planning)
-    const planner2d = planning && plannerWorkspace.view === '2d'
     document.body.classList.toggle('planner-operate', planning)
-    document.body.classList.toggle('planner-2d', planner2d)
-    overviewMap.setPlannerMode(planner2d)
+    overviewMap.setPlannerMode(planning)
     if (planning) {
+      applyPlannerView(plannerWorkspace.view)
       if (!dem) loadRealTerrain()
       ensureRouteLayer()
       refreshRoute()
@@ -2423,6 +2451,7 @@ const mode = createModeMachine({
       panelHost.show('planning', '线路规划', 'ESC 退出', planningPanel.el)
       requestAnimationFrame(() => { overviewMap.resize(); overviewMap.update(route, lastRoutePts, currentViewportRect()) })
     } else {
+      document.body.classList.remove('planner-2d', 'planner-3d')
       rail.clearActive()
       panelHost.hide()
       overviewMap.update(route, lastRoutePts, currentViewportRect())
@@ -2687,7 +2716,7 @@ if (location.hash.startsWith('#r=')) {
 }
 
 // console access for debugging/scripting
-window.__exp = { scene, camera, controls, params, terrain, loadRealTerrain, loadAdminBoundaries, expandTerrainToRoute, plannerWorkspace, overviewMap, get routeCoverage() { return lastRouteCoverage }, get terrainState() { return { demBusy, demRequestId, rebuildPending, rebuildQueued, terrainGen } }, get routingState() { return { on: snapState.on, profile: snapProfile, version: snapState.version, demKey: snapState.demKey } }, get adminState() { return adminState }, get adminInteraction() { return adminInteraction }, get adminLayer() { return adminLayer }, get labels() { return labels }, get route() { return route }, get geo() { return geo }, get dem() { return dem } }
+window.__exp = { scene, camera, controls, params, terrain, loadRealTerrain, loadAdminBoundaries, expandTerrainToRoute, plannerWorkspace, overviewMap, plannerTerrainLayer, get renderStats() { return { legacyFps: fps, plannerTerrain: overviewMap.terrainStats } }, get routeCoverage() { return lastRouteCoverage }, get terrainState() { return { demBusy, demRequestId, rebuildPending, rebuildQueued, terrainGen } }, get routingState() { return { on: snapState.on, profile: snapProfile, version: snapState.version, demKey: snapState.demKey } }, get adminState() { return adminState }, get adminInteraction() { return adminInteraction }, get adminLayer() { return adminLayer }, get labels() { return labels }, get route() { return route }, get geo() { return geo }, get dem() { return dem } }
 
 // real world is the default source — fetch its tiles on startup
 if (params.source === 'real') loadRealTerrain()
@@ -2807,8 +2836,7 @@ function tick() {
     })
   }
 
-  composer.render(dt)
-  if (params.planning && plannerWorkspace.view === '2d') plannerWorkspace.drawPreview(renderer.domElement, performance.now())
+  if (!params.planning) composer.render(dt)
 }
 tick()
 

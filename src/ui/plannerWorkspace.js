@@ -18,11 +18,8 @@ export function createPlannerWorkspace({ onView, onExpand } = {}) {
       <div><b>路线超出当前地形数据范围</b><span data-field="coverage-detail"></span></div>
       <button type="button">扩展地形范围</button>
     </div>
-    <canvas class="ui-3d-preview-canvas" width="640" height="400" aria-label="实时 3D 地形预览"></canvas>
-    <div class="ui-3d-preview-label">3D 地形预览</div>
   `
   let view = '2d'
-  let lastPreviewAt = -Infinity
   const buttons = [...el.querySelectorAll('[data-view]')]
   const layerToggle = el.querySelector('.ui-planner-layer-toggle')
   const setLayersOpen = (open) => {
@@ -50,12 +47,6 @@ export function createPlannerWorkspace({ onView, onExpand } = {}) {
     setVisible(on) { el.classList.toggle('hidden', !on); if (!on) setLayersOpen(false) },
     setLayersOpen,
     setView(next) { applyView(next) },
-    drawPreview(sourceCanvas, now = performance.now()) {
-      if (!sourceCanvas || now - lastPreviewAt < 200) return
-      lastPreviewAt = now
-      const preview = el.querySelector('.ui-3d-preview-canvas')
-      preview.getContext('2d')?.drawImage(sourceCanvas, 0, 0, preview.width, preview.height)
-    },
     setCoverage(coverage) {
       const alert = el.querySelector('.ui-route-coverage')
       const blocked = coverage && !coverage.covered

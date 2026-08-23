@@ -7,6 +7,11 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import { iconSvg } from './icons.js'
 
 const OPENFREEMAP_STYLE = 'https://tiles.openfreemap.org/styles/positron'
+const FALLBACK_STYLE = {
+  version: 8,
+  sources: {},
+  layers: [{ id: 'planner-fallback-background', type: 'background', paint: { 'background-color': '#f4f0e6' } }],
+}
 const ACCENT = '#ff4d00'
 const SOURCE_IDS = {
   coverage: 'trip-terrain-coverage',
@@ -199,7 +204,7 @@ function addPlannerLayers(map) {
   })
 }
 
-export function createOverviewMap({ onJump, onPlanAdd, onWaypointSelect, onWaypointMoveStart, onWaypointMove, onWaypointMoveEnd, onWaypointMoveCancel } = {}) {
+export function createOverviewMap({ terrainLayer, onTerrainUnavailable, onJump, onPlanAdd, onWaypointSelect, onWaypointMoveStart, onWaypointMove, onWaypointMoveEnd, onWaypointMoveCancel } = {}) {
   const el = document.createElement('div')
   el.className = 'ui-overview hidden'
 
@@ -256,6 +261,7 @@ export function createOverviewMap({ onJump, onPlanAdd, onWaypointSelect, onWaypo
     dragRotate: false,
     pitchWithRotate: false,
     touchPitch: false,
+    canvasContextAttributes: { antialias: true },
   })
   // OpenFreeMap's TileJSON supplies OpenFreeMap, OpenMapTiles, and
   // OpenStreetMap attribution; the native control keeps it in sync.
@@ -266,7 +272,10 @@ export function createOverviewMap({ onJump, onPlanAdd, onWaypointSelect, onWaypo
   let lastPoints = null
   let viewportLonLat = null
   let plannerMode = false
+  let plannerView = '2d'
   let styleReady = false
+  let fallback2d = false
+  let fallbackRequested = false
   let hasCamera = false
   let lastFitKey = ''
   let attributionControlContainer = null
@@ -275,6 +284,34 @@ export function createOverviewMap({ onJump, onPlanAdd, onWaypointSelect, onWaypo
   let waypointDrag = null
   let suppressNextMapClick = false
   let suppressMapClickTimer = null
+
+  function setTerrainError(message) {
+    mapError.textContent = message
+    mapError.classList.remove('hidden')
+  }
+
+  function setInteractionForView() {
+    const terrain3d = plannerMode && plannerView === '3d'
+    if (terrain3d) {
+      map.dragRotate?.enable?.()
+      map.touchPitch?.enable?.()
+    } else {
+      map.dragRotate?.disable?.()
+      map.touchPitch?.disable?.()
+    }
+    terrainLayer?.setEnabled(terrain3d)
+    map.jumpTo({ pitch: terrain3d ? 55 : 0, bearing: terrain3d ? -28 : 0 })
+  }
+
+  function degradeTo2d(error, message = '3D 地形暂时不可用；已保留 2D 路线规划') {
+    plannerView = '2d'
+    setInteractionForView()
+    setTerrainError(message)
+    updateChrome()
+    onTerrainUnavailable?.(error instanceof Error ? error : new Error(message))
+  }
+
+  terrainLayer?.setFailureHandler?.((error) => degradeTo2d(error))
 
   function syncAttributionHost() {
     const control = attributionControlContainer ?? mapSurface.querySelector('.maplibregl-ctrl-bottom-left')
@@ -298,12 +335,14 @@ export function createOverviewMap({ onJump, onPlanAdd, onWaypointSelect, onWaypo
 
   function updateChrome() {
     const count = lastRoute?.waypoints?.length ?? 0
+    const terrain3d = plannerMode && plannerView === '3d'
+    mapContextTitle.textContent = terrain3d ? '3D 地形预览' : '2D 路线地图'
     mapContextHint.textContent = count === 0
       ? '在虚线范围内设置起点'
       : count === 1
         ? '继续点击，添加终点'
         : `${count} 个途经点 · 点击继续添加`
-    emptyHint.classList.toggle('hidden', !plannerMode || count > 0)
+    emptyHint.classList.toggle('hidden', !plannerMode || terrain3d || count > 0)
     const hasRoute = count >= 2
     fit.querySelector('span').textContent = hasRoute ? '完整路线' : '地形范围'
     fit.setAttribute('aria-label', hasRoute ? '显示完整路线' : '显示地形范围')
@@ -330,42 +369,66 @@ export function createOverviewMap({ onJump, onPlanAdd, onWaypointSelect, onWaypo
     const bounds = boundsForCoordinates(coordinates)
     if (!bounds) return
     const [[minLon, minLat], [maxLon, maxLat]] = bounds
+    const camera = plannerMode && plannerView === '3d'
+      ? { pitch: 55, bearing: -28 }
+      : { pitch: 0, bearing: 0 }
     if (minLon === maxLon && minLat === maxLat) {
-      map.jumpTo({ center: [minLon, minLat], zoom: Math.min(13, Math.max(10, map.getZoom())) })
+      map.jumpTo({ center: [minLon, minLat], zoom: Math.min(13, Math.max(10, map.getZoom())), ...camera })
     } else {
-      map.fitBounds(bounds, { padding: fitPadding(), maxZoom: 13, duration: 0 })
+      map.fitBounds(bounds, { padding: fitPadding(), maxZoom: 13, duration: 0, ...camera })
     }
     hasCamera = true
     updateChrome()
   }
 
-  function resize() {
+  function resize({ fit = true } = {}) {
     syncAttributionHost()
     const rect = el.getBoundingClientRect()
     if (rect.width <= 0 || rect.height <= 0) return
     map.resize()
-    if (plannerMode) fitCurrent()
+    if (plannerMode && fit) fitCurrent()
   }
 
   function decorateCanvas() {
     const canvas = map.getCanvas()
     canvas.tabIndex = 0
-    canvas.setAttribute('aria-label', '二维路线地图')
+    canvas.setAttribute('aria-label', plannerView === '3d' ? '三维地形预览地图' : '二维路线地图')
     canvas.setAttribute('aria-describedby', 'ui-map-instructions')
   }
 
-  map.on('load', () => {
+  function installPlannerStyle() {
+    if (map.getSource(SOURCE_IDS.coverage)) return
     styleReady = true
-    mapError.classList.add('hidden')
+    if (!fallback2d) mapError.classList.add('hidden')
     tuneBaseStyle(map)
+    if (terrainLayer && !fallback2d) {
+      try {
+        map.addLayer(terrainLayer)
+      } catch (error) {
+        degradeTo2d(error)
+      }
+      if (terrainLayer.failed) degradeTo2d(terrainLayer.failed)
+    }
     addPlannerLayers(map)
     syncPlannerData()
     decorateCanvas()
     resize()
     if (!hasCamera) fitCurrent()
-  })
-  map.on('error', () => {
-    if (!styleReady) mapError.classList.remove('hidden')
+  }
+
+  map.on('style.load', installPlannerStyle)
+  map.on('load', installPlannerStyle)
+  map.on('error', (event) => {
+    if (styleReady || fallbackRequested) return
+    fallbackRequested = true
+    fallback2d = true
+    degradeTo2d(event?.error, '底图暂时不可用；已切换为 2D 路线规划')
+    try {
+      map.setStyle(FALLBACK_STYLE)
+    } catch {
+      // The canvas and route state remain interactive even if style recovery
+      // itself fails; the visible error is the truthful terminal state.
+    }
   })
   map.on('zoom', updateChrome)
   function waypointFeature(event) {
@@ -481,9 +544,27 @@ export function createOverviewMap({ onJump, onPlanAdd, onWaypointSelect, onWaypo
       plannerMode = !!on
       el.classList.toggle('planner', plannerMode)
       if (plannerMode) el.classList.remove('hidden')
+      if (!plannerMode) plannerView = '2d'
+      setInteractionForView()
       updateChrome()
+      decorateCanvas()
       requestAnimationFrame(resize)
     },
+    setPlannerView(next) {
+      const requested = next === '3d' ? '3d' : '2d'
+      if (requested === '3d' && (!terrainLayer || terrainLayer.failed || fallback2d)) {
+        degradeTo2d(terrainLayer?.failed)
+        return false
+      }
+      plannerView = requested
+      setInteractionForView()
+      updateChrome()
+      decorateCanvas()
+      requestAnimationFrame(() => resize({ fit: false }))
+      return true
+    },
+    get plannerView() { return plannerView },
+    get terrainStats() { return terrainLayer?.getStats?.() ?? null },
     resize,
     fit: fitCurrent,
     focusPlanner() { map.getCanvas().focus() },

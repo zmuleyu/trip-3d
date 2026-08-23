@@ -11,6 +11,7 @@ describe('planner workspace chrome', () => {
     expect(workspace.view).toBe('3d')
     expect(onView).toHaveBeenCalledWith('3d')
     expect(workspace.el.querySelector('[data-view="3d"]').getAttribute('aria-pressed')).toBe('true')
+    expect(workspace.el.querySelector('canvas')).toBeNull()
   })
 
   it('shows a persistent coverage alert with a recovery action', () => {
@@ -24,19 +25,6 @@ describe('planner workspace chrome', () => {
     expect(onExpand).toHaveBeenCalledOnce()
     workspace.setCoverage({ covered: true, outsideCount: 0, total: 240 })
     expect(alert.classList.contains('hidden')).toBe(true)
-  })
-
-  it('throttles live 3D preview copies from the renderer canvas', () => {
-    const drawImage = vi.fn()
-    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage })
-    const workspace = createPlannerWorkspace()
-    const source = document.createElement('canvas')
-    source.width = 1440
-    source.height = 900
-    workspace.drawPreview(source, 1000)
-    workspace.drawPreview(source, 1100)
-    workspace.drawPreview(source, 1300)
-    expect(drawImage).toHaveBeenCalledTimes(2)
   })
 
   it('opens planner layer tools on demand and closes them with the workspace', () => {

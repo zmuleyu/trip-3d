@@ -350,7 +350,7 @@ body {
   transform: translateX(100%); transition: transform 0.24s cubic-bezier(.22,.8,.3,1);
 }
 .ui-settings.open { transform: translateX(0); }
-body.planner-operate .ui-settings { top: 58px; width: min(360px, var(--planner-preview)); }
+body.planner-operate .ui-settings { top: 58px; width: min(360px, calc(100vw - 24px)); }
 .ui-settings .lil-gui {
   position: static !important; width: 100% !important; z-index: 1 !important;
   --background-color: #f4f1ea;
@@ -788,15 +788,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
 .ui-view-switch button { min-width: 92px; min-height: 38px; border: 0; border-right: 1px solid rgba(23,25,27,.28); background: #fff; font-size: 12px; }
 .ui-view-switch button:last-child { border-right: 0; }
 .ui-view-switch button.active { background: #17191b; color: #fff; }
-.ui-3d-preview-label {
-  position: fixed; right: 15px; top: 72px; z-index: 34; padding: 7px 10px;
-  background: rgba(248,247,244,.94); border: 1px solid rgba(23,25,27,.3);
-  color: #17191b; font: 700 10px "Segoe UI", sans-serif; pointer-events: none;
-}
-.ui-3d-preview-canvas { position: fixed; right: 0; top: 58px; width: 26%; height: calc(100vh - 58px); object-fit: cover; object-position: center; background: #ddd; border-left: 1px solid rgba(23,25,27,.28); pointer-events: none; }
-.ui-planner-workspace.view-3d .ui-3d-preview-label, .ui-planner-workspace.view-3d .ui-3d-preview-canvas { display: none; }
 .ui-route-coverage {
-  position: fixed; left: 378px; right: calc(26% + 16px); top: 70px; z-index: 48;
+  position: fixed; left: 378px; right: 16px; top: 70px; z-index: 48;
   min-height: 64px; display: flex; align-items: center; gap: 10px; padding: 10px 12px;
   background: #fff4e8; border: 1px solid #c77842; box-shadow: 0 8px 24px rgba(72,35,12,.16);
   color: #71350f; pointer-events: auto;
@@ -811,9 +804,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
 body.planner-operate {
   --planner-rail: 52px;
   --planner-panel: 324px;
-  --planner-preview: clamp(320px, 26vw, 420px);
   --planner-left: calc(var(--planner-rail) + var(--planner-panel));
 }
+body.planner-operate #app { display: none; }
 body.planner-operate .ui-panel {
   left: var(--planner-rail); top: 58px; bottom: 0; width: var(--planner-panel); max-height: none;
   border-width: 0 1px 0 0; padding: 20px 16px 24px; font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
@@ -829,17 +822,16 @@ body.planner-operate .hud-brt { display: none !important; }
 .pp-route-mode button.active { background: #17191b; color: #fff; }
 .pp-snap-status { min-height: 14px; font: 10px "Cascadia Mono", monospace; color: rgba(23,25,27,.62); }
 
-body.planner-2d .ui-overview.planner {
-  display: block; left: var(--planner-left); right: var(--planner-preview); top: 58px; bottom: 0; width: auto; height: auto;
+body.planner-operate .ui-overview.planner {
+  display: block; left: var(--planner-left); right: 0; top: 58px; bottom: 0; width: auto; height: auto;
   min-width: 0; max-width: none; overflow: hidden;
-  border-width: 0 1px 0 0; box-shadow: none; z-index: 29; background: #f4f0e6;
+  border: 0; box-shadow: none; z-index: 29; background: #f4f0e6;
 }
 .ui-overview.planner .ui-overview-map { width: 100%; max-width: 100%; min-width: 0; height: 100%; }
-body.planner-2d .ui-profile { left: calc(var(--planner-left) + 18px); right: calc(var(--planner-preview) + 18px); bottom: 16px; width: auto; max-width: none; transform: none; z-index: 31; }
-body.planner-2d .ui-attrib { right: calc(var(--planner-preview) + 12px); }
-body.planner-2d .ui-admin-panel { right: var(--planner-preview); }
-body.planner-operate .ui-3d-preview-canvas { width: var(--planner-preview); }
-body.planner-operate .ui-route-coverage { left: calc(var(--planner-left) + 16px); right: calc(var(--planner-preview) + 16px); }
+body.planner-operate .ui-profile { left: calc(var(--planner-left) + 18px); right: 18px; bottom: 16px; width: auto; max-width: none; transform: none; z-index: 31; }
+body.planner-operate .ui-attrib { right: 12px; }
+body.planner-operate .ui-admin-panel { right: 0; }
+body.planner-operate .ui-route-coverage { left: calc(var(--planner-left) + 16px); right: 16px; }
 body.planner-operate .ui-layers { display: none; }
 body.planner-operate.planner-layers-open .ui-layers {
   display: grid; grid-template-columns: repeat(4, 40px); gap: 8px; top: 66px; right: 14px; z-index: 50; padding: 10px;
@@ -853,11 +845,8 @@ body.planner-operate.planner-layers-open .ui-layer-tip { display: none; }
   .ui-view-switch { flex: 1; }
   .ui-view-switch button { flex: 1; min-width: 0; min-height: 44px; }
   .ui-planner-status { display: none; }
-  .ui-3d-preview-label { display: none; }
   .ui-planner-layer-toggle { min-width: 44px; width: 44px; min-height: 44px; padding: 0; }
   .ui-planner-layer-toggle span { display: none; }
-  .ui-3d-preview-label { right: 10px; top: 64px; }
-  .ui-3d-preview-canvas { display: none; }
   .ui-route-coverage { left: 8px; right: 8px; top: 64px; min-height: 72px; padding: 8px 9px; }
   .ui-route-coverage [data-field="coverage-detail"] { max-width: 210px; }
   .ui-route-coverage button { min-height: 44px; padding: 0 9px; }
@@ -888,7 +877,7 @@ body.planner-operate.planner-layers-open .ui-layer-tip { display: none; }
   body.planner-operate .ui-panel:not(.collapsed) h2 .ui-panel-summary { display: block; margin-left: auto; max-width: 150px; color: rgba(23,25,27,.68); font: 10.5px/1.25 "Segoe UI", "Microsoft YaHei", sans-serif; }
   body.planner-operate .ui-panel-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-bottom: 8px; }
   body.planner-operate .ui-panel[data-sheet-state="peek"] .ui-panel-body { display: none; }
-  body.planner-2d .ui-overview.planner { left: 0; right: 0; top: 56px; bottom: 58px; border: 0; }
+  body.planner-operate .ui-overview.planner { left: 0; right: 0; top: 56px; bottom: 58px; border: 0; }
   .ui-overview.planner .ui-map-context { left: 8px; top: 8px; padding: 7px 9px; }
   .ui-map-context b { font-size: 10.5px; }
   .ui-map-context span { max-width: 142px; font-size: 8.5px; }
@@ -904,11 +893,11 @@ body.planner-operate.planner-layers-open .ui-layer-tip { display: none; }
   .ui-overview .maplibregl-ctrl-attrib { font-size: 7px; }
   .maplibregl-ctrl-bottom-left.ui-map-attribution-floating { position: fixed; left: 8px; bottom: 66px; z-index: 46; max-width: calc(100vw - 16px); }
   .maplibregl-ctrl-bottom-left.ui-map-attribution-floating .maplibregl-ctrl-attrib { max-width: calc(100vw - 16px); padding: 3px 6px; border: 1px solid rgba(23,25,27,.28); background: rgba(255,255,255,.96); box-shadow: 0 2px 8px rgba(16,20,24,.12); color: #17191b; font-size: 8px; }
-  body.planner-2d:has(.ui-panel[data-sheet-state="peek"]) .maplibregl-ctrl-bottom-left.ui-map-attribution-floating { bottom: 162px; }
-  body.planner-2d:has(.ui-panel[data-sheet-state="half"]) .maplibregl-ctrl-bottom-left.ui-map-attribution-floating { bottom: calc(66px + min(47dvh, 470px)); }
-  body.planner-2d:has(.ui-panel[data-sheet-state="full"]) .maplibregl-ctrl-bottom-left.ui-map-attribution-floating { top: 64px; bottom: auto; }
-  body.planner-2d:has(.ui-panel.dragging) .maplibregl-ctrl-bottom-left.ui-map-attribution-floating { top: auto; bottom: 66px; }
-  body.planner-2d .ui-profile, body.planner-operate .hud-block, body.planner-operate .ui-attrib { display: none !important; }
+  body.planner-operate:has(.ui-panel[data-sheet-state="peek"]) .maplibregl-ctrl-bottom-left.ui-map-attribution-floating { bottom: 162px; }
+  body.planner-operate:has(.ui-panel[data-sheet-state="half"]) .maplibregl-ctrl-bottom-left.ui-map-attribution-floating { bottom: calc(66px + min(47dvh, 470px)); }
+  body.planner-operate:has(.ui-panel[data-sheet-state="full"]) .maplibregl-ctrl-bottom-left.ui-map-attribution-floating { top: 64px; bottom: auto; }
+  body.planner-operate:has(.ui-panel.dragging) .maplibregl-ctrl-bottom-left.ui-map-attribution-floating { top: auto; bottom: 66px; }
+  body.planner-operate .ui-profile, body.planner-operate .hud-block, body.planner-operate .ui-attrib { display: none !important; }
   body.planner-operate.planner-layers-open .ui-layers { grid-template-columns: repeat(4, 44px); top: 64px; right: 8px; gap: 6px; padding: 8px; }
   body.planner-operate .ui-layer-btn { width: 44px; height: 44px; }
   .pp-mobile-primary { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); gap: 6px; margin: 4px 0 10px; }
