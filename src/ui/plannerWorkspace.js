@@ -10,7 +10,7 @@ export function createPlannerWorkspace({ onView, onExpand } = {}) {
         <button type="button" data-view="2d">2D 规划</button>
         <button type="button" data-view="3d">3D 预览</button>
       </div>
-      <span class="ui-planner-status">地图与地形同步</span>
+      <span class="ui-planner-status">2D 地图选点 · 3D 预览地形</span>
       <button type="button" class="ui-planner-layer-toggle" aria-controls="ui-layer-tools" aria-expanded="false" aria-label="打开图层工具">${iconSvg('layers')}<span>图层</span></button>
     </header>
     <div class="ui-route-coverage hidden" role="alert">

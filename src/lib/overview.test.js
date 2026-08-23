@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { lonLatToTileXY, tileXYToLonLat, pickOverviewView, projectToView, viewFromPoints } from './overview.js'
+import { TILE_SIZE, lonLatToTileXY, metersPerPixel, panView, pickOverviewView, projectToView, tileXYToLonLat, unprojectFromView, viewFromPoints, zoomView } from './overview.js'
 
 describe('slippy tile math', () => {
   it('lonLatToTileXY: known values (Beijing z12)', () => {
@@ -45,5 +45,25 @@ describe('viewFromPoints + projectToView', () => {
     expect(a.x).toBeLessThanOrEqual(200)
     expect(b.x).toBeGreaterThan(a.x)
     expect(b.y).toBeLessThan(a.y) // north is up (smaller y)
+  })
+
+  it('keeps native Web Mercator tile scale instead of stretching tiles to the canvas', () => {
+    const view = viewFromPoints([{ lon: -110.2, lat: 36.9 }, { lon: -110.0, lat: 37.1 }], 900, 600)
+    const nw = tileXYToLonLat(view.x0, view.y0, view.z)
+    const ne = tileXYToLonLat(view.x0 + 1, view.y0, view.z)
+    const a = projectToView(nw.lon, nw.lat, view)
+    const b = projectToView(ne.lon, ne.lat, view)
+    expect(b.x - a.x).toBeCloseTo(TILE_SIZE, 5)
+  })
+
+  it('round-trips pointer coordinates after pan and anchored zoom', () => {
+    const initial = viewFromPoints([{ lon: 113.1, lat: 41.4 }, { lon: 113.3, lat: 41.6 }], 820, 560)
+    const moved = panView(zoomView(initial, initial.z + 1, 220, 180), 36, -24)
+    const point = { lon: 113.2, lat: 41.5 }
+    const pixel = projectToView(point.lon, point.lat, moved)
+    const restored = unprojectFromView(pixel.x, pixel.y, moved)
+    expect(restored.lon).toBeCloseTo(point.lon, 6)
+    expect(restored.lat).toBeCloseTo(point.lat, 6)
+    expect(metersPerPixel(moved)).toBeGreaterThan(0)
   })
 })
