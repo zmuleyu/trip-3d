@@ -1,4 +1,6 @@
 // Route persistence: IndexedDB CRUD + (de)serialization.
+import { normalizeRouteMode } from './routePlanning.js'
+
 const DB_VERSION = 1
 const STORE = 'routes'
 
@@ -6,6 +8,7 @@ export function serializeRoute(route) {
   return {
     id: route.id,
     name: route.name,
+    mode: normalizeRouteMode(route.mode),
     createdAt: route.createdAt,
     updatedAt: Date.now(),
     revision: route.revision ?? 0,
@@ -18,6 +21,7 @@ export function hydrateRoute(rec) {
   return {
     id: rec.id,
     name: rec.name,
+    mode: normalizeRouteMode(rec.mode),
     createdAt: rec.createdAt,
     revision: rec.revision ?? 0,
     geometryRevision: rec.geometryRevision ?? 0,

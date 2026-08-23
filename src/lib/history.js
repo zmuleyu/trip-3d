@@ -6,11 +6,13 @@ export function createHistory(limit = 50) {
   let lastSnap = null
 
   const snap = (route) => JSON.parse(JSON.stringify({
+    mode: route.mode ?? 'straight',
     waypoints: route.waypoints,
     dayEnds: route.dayEnds ?? [],
   }))
 
   const apply = (route, s) => {
+    route.mode = s.mode ?? 'straight'
     route.waypoints = JSON.parse(JSON.stringify(s.waypoints))
     route.dayEnds = [...s.dayEnds]
     // invalidate async consumers bound to the pre-undo state

@@ -7,7 +7,7 @@ import { viewFromPoints, projectToView, unprojectFromView, tileXYToLonLat } from
 const TILE_URL = (z, x, y) => `https://tile.openstreetmap.org/${z}/${x}/${y}.png`
 const ACCENT = '#ff4d00'
 
-export function createOverviewMap({ onJump } = {}) {
+export function createOverviewMap({ onJump, onPlanAdd } = {}) {
   const el = document.createElement('div')
   el.className = 'ui-overview hidden'
   const canvas = document.createElement('canvas')
@@ -23,6 +23,7 @@ export function createOverviewMap({ onJump } = {}) {
   let lastRoute = null
   let lastPts = null
   let viewportLonLat = null // {minLon,minLat,maxLon,maxLat}
+  let plannerMode = false
   const tileCache = new Map() // key → ImageBitmap | 'pending' | 'error'
   let redrawTimer = null
 
@@ -112,27 +113,53 @@ export function createOverviewMap({ onJump } = {}) {
     redrawTimer = setTimeout(() => { redrawTimer = null; draw() }, 120)
   }
 
+  function resize() {
+    const rect = el.getBoundingClientRect()
+    if (rect.width > 0 && rect.height > 0) {
+      canvas.width = Math.max(200, Math.round(rect.width))
+      canvas.height = Math.max(150, Math.round(rect.height - credit.offsetHeight))
+    }
+    if (view) draw()
+  }
+
   canvas.addEventListener('click', (e) => {
-    if (!view || !onJump) return
+    if (!view) return
     const r = canvas.getBoundingClientRect()
     const { lon, lat } = unprojectFromView(e.clientX - r.left, e.clientY - r.top, view)
-    onJump(lon, lat)
+    if (plannerMode && onPlanAdd) onPlanAdd(lon, lat)
+    else onJump?.(lon, lat)
   })
 
   return {
     el,
+    setPlannerMode(on) {
+      plannerMode = !!on
+      el.classList.toggle('planner', plannerMode)
+      if (plannerMode) el.classList.remove('hidden')
+      requestAnimationFrame(resize)
+    },
+    resize,
     // route: waypoints source; pts: sampled path (snapped/spline) or null; viewport: lon/lat rect
     update(route, pts, viewport) {
       lastRoute = route
       lastPts = pts
       viewportLonLat = viewport
-      if (!route?.waypoints?.length || route.waypoints.length < 2) {
+      const wps = route?.waypoints ?? []
+      if (wps.length < 2 && !plannerMode) {
         el.classList.add('hidden')
         view = null
         return
       }
       el.classList.remove('hidden')
-      view = viewFromPoints(route.waypoints, canvas.width, canvas.height)
+      const fallback = viewport
+        ? [
+            { lon: viewport.minLon, lat: viewport.minLat },
+            { lon: viewport.maxLon, lat: viewport.maxLat },
+          ]
+        : []
+      const viewPoints = wps.length >= 2 ? wps : fallback
+      if (viewPoints.length < 2) { view = null; return }
+      view = viewFromPoints(viewPoints, canvas.width, canvas.height)
       // pre-fetch visible tiles
       for (let tx = view.x0; tx <= view.x1; tx++) for (let ty = view.y0; ty <= view.y1; ty++) loadTile(view.z, tx, ty)
       draw()

@@ -1,4 +1,5 @@
 // Poster data assembly + layout math — pure, TDD'd. Rendering lives in ui/sharePanel.js.
+import { durationContract, normalizeRouteMode } from './routePlanning.js'
 
 const fmtDur = (minutes) => {
   const m = Math.round(minutes)
@@ -13,19 +14,21 @@ const truncate = (s, max) => (s.length > max ? `${s.slice(0, max - 1)}…` : s)
 
 // { route, stats, legs, weather, profile } → poster copy block
 export function buildPosterData({ route, stats, legs, weather, profile }) {
-  const allReal = legs?.length && legs.every((l) => l.real)
-  const durationText = allReal
-    ? fmtDur(legs.reduce((a, l) => a + l.durationS, 0) / 60)
-    : stats ? fmtDur(stats.driveMinutes) : '—'
-  const profileLabel = allReal ? `${profile === 'car' ? '驾车' : '步行'}路网` : '示意'
+  const mode = normalizeRouteMode(route.mode ?? profile)
+  const duration = durationContract({ mode, legs: legs ?? [], stats })
+  const durationText = duration.minutes == null ? '—' : fmtDur(duration.minutes)
+  const profileLabel = mode === 'straight'
+    ? '直线示意'
+    : duration.reliable ? duration.label.replace('时长', '') : duration.label
+  const hasElevation = stats && [stats.ascentM, stats.descentM, stats.maxEle].every(Number.isFinite)
   const days = (route.dayEnds?.length ?? 0) + 1
   return {
     title: truncate(route.name || '未命名线路', 20),
     durationText,
     profileLabel,
     distanceText: stats ? `${(stats.distanceM / 1000).toFixed(1)} km` : '—',
-    eleText: stats ? `↑${stats.ascentM}m ↓${stats.descentM}m` : '—',
-    maxEleText: stats ? `最高 ${stats.maxEle}m` : '',
+    eleText: hasElevation ? `↑${stats.ascentM}m ↓${stats.descentM}m` : '—',
+    maxEleText: hasElevation ? `最高 ${stats.maxEle}m` : '',
     waypointText: `${route.waypoints.length} 点 · ${days} 天`,
     weatherIndexText: weather?.index?.overall != null ? String(weather.index.overall) : null,
     weatherDays: weather?.agg?.length ? weather.agg.map((d) => !!d.isRain) : null,

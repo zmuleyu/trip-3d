@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { createLayerButtons } from './chrome.js'
+import { createLayerButtons, createPanelHost } from './chrome.js'
 
 beforeEach(() => { document.body.replaceChildren() })
 
@@ -17,6 +17,19 @@ describe('layer button accessibility state', () => {
     expect(button.getAttribute('aria-expanded')).toBe('false')
     button.click()
     expect(button.getAttribute('aria-pressed')).toBe('true')
+    expect(button.getAttribute('aria-expanded')).toBe('true')
+  })
+})
+
+describe('panel collapse accessibility state', () => {
+  it('keeps aria-expanded synchronized with the panel body', () => {
+    const panel = createPanelHost()
+    panel.show('planning', '线路规划', null, document.createElement('div'))
+    const button = panel.el.querySelector('.ui-panel-chev')
+    expect(button.getAttribute('aria-expanded')).toBe('true')
+    button.click()
+    expect(button.getAttribute('aria-expanded')).toBe('false')
+    panel.setCollapsed(false)
     expect(button.getAttribute('aria-expanded')).toBe('true')
   })
 })

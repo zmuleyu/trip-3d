@@ -1,11 +1,12 @@
 // Route model: waypoints + Catmull-Rom path sampling + stats. Pure module.
 import { lonLatToWorld, worldToLonLat, haversineMeters } from './geo.js'
+import { normalizeRouteMode } from './routePlanning.js'
 
 export const MAX_WAYPOINTS = 32
 export const DEFAULT_SAMPLES = 240
 
-export function createRoute(name = '未命名线路') {
-  return { id: crypto.randomUUID(), name, waypoints: [], revision: 0, geometryRevision: 0, createdAt: Date.now() }
+export function createRoute(name = '未命名线路', mode = 'straight') {
+  return { id: crypto.randomUUID(), name, mode: normalizeRouteMode(mode), waypoints: [], revision: 0, geometryRevision: 0, createdAt: Date.now() }
 }
 
 // revision: bumps on ANY user-visible change (incl. rename) — weather/labels bind here.

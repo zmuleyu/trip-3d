@@ -3,6 +3,7 @@ import { buildPosterData, layoutPoster, fitCrop } from './poster.js'
 
 const route = {
   name: '乌兰哈达火山环线',
+  mode: 'car',
   waypoints: [{ name: 'A' }, { name: 'B' }, { name: 'C' }],
   dayEnds: ['x'],
 }
@@ -28,16 +29,27 @@ describe('buildPosterData', () => {
     expect(d.weatherDays).toEqual([false, true, false])
   })
   it('falls back gracefully without weather/legs', () => {
-    const d = buildPosterData({ route, stats, legs: null, weather: null, profile: 'foot' })
+    const d = buildPosterData({ route: { ...route, mode: 'straight' }, stats, legs: null, weather: null, profile: 'foot' })
     expect(d.weatherIndexText).toBeNull()
     expect(d.weatherDays).toBeNull()
-    expect(d.profileLabel).toBe('示意') // no real legs → heuristic label, no fake precision
-    expect(d.durationText).toBeTruthy()
+    expect(d.profileLabel).toBe('直线示意')
+    expect(d.durationText).toBe('—')
   })
   it('long titles are truncated with ellipsis', () => {
     const d = buildPosterData({ route: { ...route, name: '这是一个非常非常非常长的线路名字超过了海报标题允许的最大长度限制' }, stats, legs, weather: null, profile: 'foot' })
     expect(d.title.length).toBeLessThanOrEqual(21)
     expect(d.title.endsWith('…')).toBe(true)
+  })
+  it('omits DEM-derived copy when only geodesic distance is available', () => {
+    const d = buildPosterData({
+      route: { ...route, mode: 'straight' },
+      stats: { distanceM: 57700, ascentM: null, descentM: null, maxEle: null },
+      legs: null,
+      weather: null,
+    })
+    expect(d.distanceText).toBe('57.7 km')
+    expect(d.eleText).toBe('—')
+    expect(d.maxEleText).toBe('')
   })
 })
 

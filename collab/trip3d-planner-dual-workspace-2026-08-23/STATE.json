@@ -1,0 +1,16 @@
+{
+  "state": "IN_PROGRESS",
+  "goal": "2D 精确规划 + 3D 地形预览生产实施",
+  "owner": "hermes-main-session",
+  "authority": "single-writer",
+  "repo": {
+    "branch": "main",
+    "implementation_head": "f97ceac",
+    "dirty": false
+  },
+  "phase": "FINAL_REVIEW",
+  "last_green": "232/232 + build + desktop/mobile/coverage/latest-request/undo CDP E2E",
+  "next_action": "independent final review, then implementation commit/push and production verification",
+  "watchers": {},
+  "updated_at": "2026-08-23T18:40:00+08:00"
+}

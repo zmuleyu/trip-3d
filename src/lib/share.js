@@ -4,6 +4,7 @@
 // hashes still decode.
 import LZString from 'lz-string'
 import { MAX_WAYPOINTS } from './route.js'
+import { normalizeRouteMode } from './routePlanning.js'
 
 const VERSION = 1
 
@@ -29,6 +30,7 @@ export function encodeShare(route, ctx) {
     v: VERSION,
     dem: { lat: ctx.dem.lat, lon: ctx.dem.lon, zoom: ctx.dem.zoom, ...(ctx.dem.size > 768 ? { ta: Math.round(ctx.dem.size / 256) } : {}) },
     name: route.name,
+    mode: normalizeRouteMode(route.mode),
     waypoints: route.waypoints.map(({ lon, lat, ele, name }) => [lon, lat, ele, name]),
     // dayEnds as waypoint INDICES (ids don't survive the hash round-trip)
     ...(route.dayEnds?.length ? { days: route.dayEnds.map((id) => route.waypoints.findIndex((w) => w.id === id)).filter((i) => i >= 0) } : {}),
@@ -67,6 +69,7 @@ export function decodeShare(hash) {
   return {
     dem,
     name: obj.name ?? '分享线路',
+    mode: normalizeRouteMode(obj.mode),
     waypoints: waypoints.map(([lon, lat, ele, name]) => ({ lon, lat, ele, name })),
     days: obj.days, // waypoint indices → mapped to fresh ids on restore
   }

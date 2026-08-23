@@ -671,3 +671,119 @@ body.focus-mode .admin-panel, body.focus-mode .admin-modebar, body.focus-mode .a
   .admin-modebar span:not(.admin-pulse) { display: none; }
   .admin-empty { left: calc(50% + 26px); bottom: 18px; z-index: 45; max-width: calc(100vw - 76px); width: max-content; }
 }
+
+/* ------------------------------------------------------------------ dual planner workspace (Option B) */
+button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focus-visible {
+  outline: 2px solid #ff4d00;
+  outline-offset: 2px;
+}
+.ui-panel, .ui-panel * { box-sizing: border-box; }
+.ui-planner-workspace { position: fixed; inset: 0; z-index: 33; pointer-events: none; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+.ui-planner-workspace.hidden { display: none; }
+.ui-planner-bar {
+  position: fixed; left: 52px; right: 0; top: 0; height: 58px; z-index: 42;
+  display: flex; align-items: center; gap: 18px; padding: 0 16px;
+  background: rgba(248,247,244,.97); border-bottom: 1px solid rgba(23,25,27,.24);
+  pointer-events: auto;
+}
+.ui-planner-brand { display: flex; align-items: baseline; gap: 9px; min-width: 190px; }
+.ui-planner-brand b { font-size: 14px; letter-spacing: .06em; }
+.ui-planner-brand span, .ui-planner-status { color: rgba(23,25,27,.58); font-size: 11px; }
+.ui-view-switch { display: flex; overflow: hidden; border: 1px solid rgba(23,25,27,.35); border-radius: 4px; }
+.ui-view-switch button { min-width: 92px; min-height: 38px; border: 0; border-right: 1px solid rgba(23,25,27,.28); background: #fff; font-size: 12px; }
+.ui-view-switch button:last-child { border-right: 0; }
+.ui-view-switch button.active { background: #17191b; color: #fff; }
+.ui-3d-preview-label {
+  position: fixed; right: 15px; top: 72px; z-index: 34; padding: 7px 10px;
+  background: rgba(248,247,244,.94); border: 1px solid rgba(23,25,27,.3);
+  color: #17191b; font: 700 10px "Segoe UI", sans-serif; pointer-events: none;
+}
+.ui-3d-preview-canvas { position: fixed; right: 0; top: 58px; width: 26%; height: calc(100vh - 58px); object-fit: cover; object-position: center; background: #ddd; border-left: 1px solid rgba(23,25,27,.28); pointer-events: none; }
+.ui-planner-workspace.view-3d .ui-3d-preview-label, .ui-planner-workspace.view-3d .ui-3d-preview-canvas { display: none; }
+.ui-route-coverage {
+  position: fixed; left: 378px; right: calc(26% + 16px); top: 70px; z-index: 48;
+  min-height: 64px; display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+  background: #fff4e8; border: 1px solid #c77842; box-shadow: 0 8px 24px rgba(72,35,12,.16);
+  color: #71350f; pointer-events: auto;
+}
+.ui-route-coverage.hidden { display: none; }
+.ui-route-coverage > div { display: flex; flex-direction: column; min-width: 0; }
+.ui-route-coverage b { font-size: 12px; }
+.ui-route-coverage [data-field="coverage-detail"] { margin-top: 3px; font-size: 10px; color: #76503a; }
+.ui-route-coverage button { margin-left: auto; min-height: 42px; border: 1px solid #8b4314; background: #8b4314; color: #fff; padding: 0 12px; font-size: 11px; font-weight: 700; }
+.ui-coverage-dot { width: 9px; height: 9px; flex: none; border-radius: 50%; background: #a35216; }
+
+body.planner-operate .ui-panel { top: 68px; bottom: 12px; max-height: none; width: 300px; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+body.planner-operate .ui-panel h2 { font-size: 14px; }
+body.planner-operate .ui-panel .name-input, body.planner-operate .pp-search input { min-height: 38px; font-size: 13px; }
+body.planner-operate .hud-brt { display: none !important; }
+.pp-snap-row { display: flex; flex-direction: column; align-items: stretch; gap: 5px; margin-bottom: 10px; cursor: default; }
+.pp-route-mode { display: grid; grid-template-columns: repeat(3,1fr); border: 1px solid rgba(23,25,27,.32); border-radius: 4px; overflow: hidden; }
+.pp-route-mode button { min-height: 40px; border: 0; border-right: 1px solid rgba(23,25,27,.22); background: #fff; font: 12px "Segoe UI", sans-serif; }
+.pp-route-mode button:last-child { border-right: 0; }
+.pp-route-mode button.active { background: #17191b; color: #fff; }
+.pp-snap-status { min-height: 14px; font: 10px "Cascadia Mono", monospace; color: rgba(23,25,27,.62); }
+
+body.planner-2d .ui-overview.planner {
+  display: block; left: 376px; right: 26%; top: 58px; bottom: 0; width: auto; height: auto;
+  min-width: 0; max-width: none; overflow: hidden;
+  border-width: 0 1px 0 0; box-shadow: none; z-index: 29; background: #f4f0e6;
+}
+.ui-overview.planner canvas { width: 100%; max-width: 100%; min-width: 0; height: calc(100% - 14px); cursor: crosshair; }
+.ui-overview.planner .ui-overview-credit { height: 14px; background: rgba(255,255,255,.9); }
+body.planner-2d .ui-profile { left: 394px; right: calc(26% + 18px); bottom: 16px; width: auto; max-width: none; transform: none; z-index: 31; }
+body.planner-2d .ui-layers { top: 70px; z-index: 50; }
+body.planner-2d .ui-attrib { right: calc(26% + 12px); }
+body.planner-2d .ui-admin-panel { right: 26%; }
+
+@media (max-width: 720px) {
+  .ui-planner-bar { left: 0; height: 56px; padding: 0 10px; gap: 8px; }
+  .ui-planner-brand { display: none; }
+  .ui-view-switch { flex: 1; }
+  .ui-view-switch button { flex: 1; min-width: 0; min-height: 44px; }
+  .ui-planner-status { display: none; }
+  .ui-3d-preview-label { right: 10px; top: 64px; }
+  .ui-3d-preview-canvas { display: none; }
+  .ui-route-coverage { left: 8px; right: 8px; top: 64px; min-height: 72px; padding: 8px 9px; }
+  .ui-route-coverage [data-field="coverage-detail"] { max-width: 210px; }
+  .ui-route-coverage button { min-height: 44px; padding: 0 9px; }
+
+  .ui-rail {
+    left: 0; right: 0; top: auto; bottom: 0; width: auto; height: 58px; padding: 0;
+    flex-direction: row; align-items: stretch; border-right: 0; border-top: 1px solid rgba(23,25,27,.22);
+  }
+  .ui-rail-logo, .ui-rail-spacer, .ui-rail-help, .ui-rail-gear { display: none; }
+  .ui-rail-btn { flex: 1; width: auto; height: 58px; min-height: 58px; margin: 0; border-radius: 0; font-size: 14px; }
+  .ui-rail-btn .lbl { font-size: 10px; }
+  .ui-rail-btn.active::before { left: 18%; right: 18%; top: auto; bottom: 0; width: auto; height: 3px; }
+
+  body.planner-operate .ui-panel {
+    left: 0; right: 0; top: auto; bottom: 58px; width: auto; max-height: 47vh;
+    border-width: 1px 0 0; border-radius: 16px 16px 0 0; padding: 10px 14px 16px; z-index: 45;
+  }
+  body.planner-operate .ui-panel::before { content: ""; display: block; width: 42px; height: 4px; margin: 0 auto 7px; border-radius: 3px; background: #b9bdbe; }
+  body.planner-operate .ui-panel h2 { position: sticky; top: -10px; z-index: 2; background: rgba(255,255,255,.98); padding: 8px 0; }
+  body.planner-2d .ui-overview.planner { left: 0; right: 0; top: 56px; bottom: 58px; border: 0; }
+  body.planner-2d .ui-profile, body.planner-operate .hud-block, body.planner-operate .ui-attrib { display: none !important; }
+  body.planner-operate .ui-layers { top: 64px; right: 8px; gap: 6px; }
+  body.planner-operate .ui-layer-btn { width: 44px; height: 44px; }
+  body.planner-operate .ui-layer-btn:nth-child(n+4) { display: none; }
+  .pp-route-mode button, .pp-ops-main button, .pp-ops-edit button, .pp-search input,
+  .pp-search-btn, .pp-amap-toggle, .pp-legs-head, .ui-panel-chev, .name-input,
+  .pp-result button, .admin-actions button { min-height: 44px; }
+  body.planner-operate .ui-panel .name-input { min-height: 44px; }
+  .ui-panel-chev { min-width: 44px; }
+  .pp-search-btn { min-width: 46px; }
+  .pp-amap-box input, .pp-amap-box button { min-height: 44px; }
+  .pp-amap-box button { min-width: 44px; }
+  .pp-tl-ops { display: inline-flex; flex-wrap: wrap; }
+  .pp-tl-ops button { min-width: 44px; min-height: 44px; }
+  .pp-tl-sep { height: 44px; }
+  .pp-tl-sep button { display: inline-block; min-width: 44px; min-height: 44px; }
+  .ui-settings { width: 100%; }
+  .admin-panel { left: 0; bottom: 58px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
+}

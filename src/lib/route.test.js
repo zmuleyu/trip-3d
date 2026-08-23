@@ -11,6 +11,12 @@ const geo = makeGeoContext(dem)
 const flatElev = () => 1000
 
 describe('route model', () => {
+  it('stores a normalized first-class route mode', () => {
+    expect(createRoute('walk', 'foot').mode).toBe('foot')
+    expect(createRoute('legacy').mode).toBe('straight')
+    expect(createRoute('bad', 'drive').mode).toBe('straight')
+  })
+
   it('addWaypoint appends with elevation and auto name; enforces cap', () => {
     const r = createRoute('t')
     for (let i = 0; i < MAX_WAYPOINTS; i++) addWaypoint(r, -110 + i * 0.001, 37, 900 + i)

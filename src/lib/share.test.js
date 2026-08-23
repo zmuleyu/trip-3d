@@ -6,13 +6,14 @@ const ctx = { dem: { lat: 31.05, lon: 102.83, zoom: 12 } }
 
 describe('share codec', () => {
   it('round-trips route + dem context', () => {
-    const r = createRoute('四姑娘山')
+    const r = createRoute('四姑娘山', 'foot')
     addWaypoint(r, 102.83, 31.05, 3850)
     addWaypoint(r, 102.9, 31.02, 4100, '垭口')
     const hash = encodeShare(r, ctx)
     const back = decodeShare(hash)
     expect(back.dem).toEqual(ctx.dem)
     expect(back.name).toBe('四姑娘山')
+    expect(back.mode).toBe('foot')
     expect(back.waypoints).toHaveLength(2)
     expect(back.waypoints[1]).toMatchObject({ lon: 102.9, lat: 31.02, ele: 4100, name: '垭口' })
   })
@@ -53,6 +54,7 @@ describe('share codec', () => {
     })))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
     const dec = decodeShare(legacy)
     expect(dec.name).toBe('old')
+    expect(dec.mode).toBe('straight')
     expect(dec.waypoints).toHaveLength(2)
   })
 

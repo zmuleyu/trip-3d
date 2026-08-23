@@ -22,7 +22,7 @@ describe('route store', () => {
   })
 
   it('serialize/hydrate round-trip strips runtime fields only', () => {
-    const r = createRoute('四姑娘山 D3')
+    const r = createRoute('四姑娘山 D3', 'foot')
     addWaypoint(r, 102.83, 31.05, 3850)
     addWaypoint(r, 102.9, 31.02, 4100, '垭口')
     const h = hydrateRoute(serializeRoute(r))
@@ -30,6 +30,8 @@ describe('route store', () => {
     expect(h.waypoints).toHaveLength(2)
     expect(h.waypoints[1].name).toBe('垭口')
     expect(h.waypoints[1].ele).toBe(4100)
+    expect(h.mode).toBe('foot')
+    expect(hydrateRoute({ id: 'legacy', name: '旧线路', waypoints: [] }).mode).toBe('straight')
   })
 
   it('save / list / load / delete', async () => {

@@ -25,6 +25,7 @@ import { createHud2D } from './hud2d.js'
 import { loadDem, sampleDem } from './dem.js'
 import { makeGeoContext, worldToLonLat, lonLatToWorld, TERRAIN_SIZE } from './lib/geo.js'
 import { createOverviewMap } from './ui/overviewMap.js'
+import { createPlannerWorkspace } from './ui/plannerWorkspace.js'
 import { createAdminLayer } from './ui/adminLayer.js'
 import { provinceAdcode, extractRings, clipRingToBbox, pointInRing } from './lib/adminBoundaries.js'
 import { createAdminBoundaryCache } from './lib/adminBoundaryCache.js'
@@ -54,6 +55,7 @@ import { parseAmapLink, buildAmapLink } from './lib/amapLink.js'
 import qrcode from 'qrcode-generator'
 import { pickRepresentativePoints, aggregateTripDays, archiveWindow } from './lib/weather.js'
 import { tripIndex } from './lib/tripIndex.js'
+import { fitDemToCoordinates, normalizeRouteMode, routeCoverage, routeDistanceMeters } from './lib/routePlanning.js'
 
 // ------------------------------------------------------------------ params
 
@@ -751,7 +753,8 @@ renderer.domElement.addEventListener('pointerup', (e) => {
 
 let dem = null
 let demBusy = false
-// terrain-ready contract: loadRealTerrain bumps terrainGen at start; when the
+let demRequestId = 0
+// terrain-ready contract: the latest successful load bumps terrainGen; when the
 // rebuild completes, waiters resolve with the built generation. Callers compare
 // gens to detect supersession (search-add / snap flows). No demBusy polling.
 let terrainGen = 0
@@ -760,13 +763,16 @@ function whenTerrainBuilt(gen) {
   return new Promise((res) => terrainWaiters.push({ gen, res }))
 }
 async function loadRealTerrain() {
-  if (demBusy) return
+  const requestId = ++demRequestId
+  const request = { lat: params.demLat, lon: params.demLon, zoom: params.demZoom, tilesAcross: params.tilesAcross }
   demBusy = true
-  terrainGen++
   loadingEl.textContent = 'fetching elevation tiles…'
   loadingEl.classList.remove('hidden')
   try {
-    dem = await loadDem({ lat: params.demLat, lon: params.demLon, zoom: params.demZoom, tilesAcross: params.tilesAcross })
+    const loaded = await loadDem(request)
+    if (requestId !== demRequestId) return
+    dem = loaded
+    terrainGen++
     terrain.setDem(dem)
     geo = makeGeoContext(dem)
     ensureRouteLayer()
@@ -778,6 +784,7 @@ async function loadRealTerrain() {
     loadingEl.textContent = 'generating terrain…'
     regenerateTerrain()
   } catch (err) {
+    if (requestId !== demRequestId) return
     console.error('DEM load failed:', err)
     loadingEl.textContent = 'elevation fetch failed — check connection'
     setTimeout(() => {
@@ -787,11 +794,12 @@ async function loadRealTerrain() {
     // failure resolves waiters with -1 so import/search flows can report it
     for (const w of terrainWaiters.splice(0)) w.res(-1)
   } finally {
-    demBusy = false
+    if (requestId === demRequestId) demBusy = false
   }
 }
 
 let rebuildPending = false
+let rebuildQueued = false
 
 // OSM street-tile overlay for the terrain (same slippy grid as the DEM).
 // Per-tile failure leaves a blank cell; stale results are dropped by generation.
@@ -998,7 +1006,7 @@ async function loadAdminBoundaries() {
 }
 
 function regenerateTerrain() {
-  if (rebuildPending) return
+  if (rebuildPending) { rebuildQueued = true; return }
   rebuildPending = true
   loadingEl.classList.remove('hidden')
   // let the indicator paint before the synchronous rebuild blocks the thread
@@ -1012,6 +1020,11 @@ function regenerateTerrain() {
       if (adminNeedsReload({ enabled: adminState.on, loadedKey: adminState.demKey, currentKey: currentDemKey() })) loadAdminBoundaries()
       if (params.shadowMode === 'static') renderer.shadowMap.needsUpdate = true
       rebuildPending = false
+      if (rebuildQueued) {
+        rebuildQueued = false
+        regenerateTerrain()
+        return
+      }
       loadingEl.classList.add('hidden')
       // resolve terrain-ready waiters with the generation that just built
       for (const w of terrainWaiters.splice(0)) w.res(terrainGen)
@@ -1038,8 +1051,37 @@ function elevOfWorld(x, z) {
   return sampleDem(dem, px, py) // real meters (un-exaggerated)
 }
 
+let lastRouteCoverage = { covered: true, outsideCount: 0, total: 0, bounds: null }
+
+function activeRouteCoordinates() {
+  if (snapState.on && snapState.geometry && snapState.version === snapVersion()) return snapState.geometry
+  return route.waypoints
+}
+
 function refreshRoute() {
   if (!routeLayer || !geo || !dem) return
+  const coordinates = activeRouteCoordinates()
+  lastRouteCoverage = route.waypoints.length >= 2
+    ? routeCoverage(geo, coordinates, TERRAIN_SIZE)
+    : { covered: true, outsideCount: 0, total: coordinates.length, bounds: null }
+  plannerWorkspace?.setCoverage(lastRouteCoverage)
+  if (!lastRouteCoverage.covered) {
+    routeLayer.update([], {})
+    lastRoutePts = []
+    normalizeDayEnds(route)
+    routeHistory.record(route)
+    updateRouteUI(route, {
+      distanceM: routeDistanceMeters(coordinates),
+      ascentM: null,
+      descentM: null,
+      maxEle: null,
+      minEle: null,
+      driveMinutes: null,
+    }, [])
+    if (weatherState.result && weatherState.revision !== route.revision) weatherState.requestId++
+    if (adminInteraction.selected) scheduleAdminRouteStat()
+    return
+  }
   // snapped geometry (WGS-84) is re-sampled with CURRENT geo/elevOf getters each
   // refresh — never cache world-space pts across DEM switches (review #8)
   let pathPts = null
@@ -1075,9 +1117,10 @@ const snapVersion = () => `${route.id}:${route.geometryRevision}`
 const SNAP_LS = 'trip3d.snapOn'
 const SNAP_PROFILE_LS = 'trip3d.snapProfile'
 let snapProfile = localStorage.getItem(SNAP_PROFILE_LS) || 'foot'
+route.mode = localStorage.getItem(SNAP_LS) === '1' ? normalizeRouteMode(snapProfile) : 'straight'
 const getRouter = () => createRoutingProvider('osrm', { profile: snapProfile })
 const snapState = {
-  on: localStorage.getItem(SNAP_LS) === '1',
+  on: route.mode !== 'straight',
   geometry: null,
   legs: null,
   version: '',
@@ -1088,7 +1131,7 @@ const snapCache = new Map()
 const snapInflight = new Map()
 let snapTimer = null
 
-const currentDemKey = () => (dem ? `${params.demLat.toFixed(4)},${params.demLon.toFixed(4)},${params.demZoom}x${params.tilesAcross}` : '')
+const currentDemKey = () => (dem ? `${dem.lat.toFixed(4)},${dem.lon.toFixed(4)},${dem.zoom}x${dem.tilesAcross}` : '')
 const snapRouteKey = (wps) => `osrm:${snapProfile}:` + wps.map((w) => `${w.lon.toFixed(5)},${w.lat.toFixed(5)}`).join('>')
 
 function scheduleSnap() {
@@ -1112,7 +1155,7 @@ async function runSnap() {
   const reqId = ++snapState.requestId
   const cached = snapCache.get(key)
   if (cached) { commitSnap(cached.geometry, cached.legs, ver, reqId); return }
-  planningPanel.setSnapState(true, '吸附中…')
+  planningPanel.setRouteMode(route.mode, '吸附中…')
   try {
     const { geometry, legs } = await snapFetch(key, wps)
     if (reqId !== snapState.requestId || ver !== snapVersion()) return
@@ -1123,7 +1166,7 @@ async function runSnap() {
     snapState.geometry = null
     snapState.legs = null
     snapState.version = ver
-    planningPanel.setSnapState(true, '吸附失败,回退直线')
+    planningPanel.setRouteMode(route.mode, '吸附失败；直线回退段不计时')
     toast.show('路网吸附失败,已回退直线')
     refreshRoute()
   }
@@ -1185,7 +1228,8 @@ function commitSnap(geometry, legs, ver, reqId) {
   snapState.legs = legs
   snapState.version = ver
   snapState.demKey = currentDemKey()
-  planningPanel.setSnapState(true, `已吸附(${geometry.length} 点)`)
+  const routed = legs.filter((leg) => leg?.real !== false).length
+  planningPanel.setRouteMode(route.mode, `路网覆盖 ${routed}/${legs.length} 段`)
   refreshRoute()
 }
 
@@ -1510,6 +1554,12 @@ const profileCard = createProfileCard(params.hudAccent)
 let lastSyncedTripDays = 0 // itinerary→weather days sync guard
 
 function currentLegs(pts) {
+  if (!lastRouteCoverage.covered) {
+    return route.waypoints.slice(1).map((to, index) => {
+      const from = route.waypoints[index]
+      return { from: from.name, to: to.name, distanceM: routeDistanceMeters([from, to]), real: false }
+    })
+  }
   const osrmLegs = snapState.on && snapState.legs && snapState.version === snapVersion() && snapState.demKey === currentDemKey()
     ? normalizeOsrmLegs(snapState.legs, route.waypoints)
     : null
@@ -2067,10 +2117,29 @@ async function refreshLibrary() {
   if (s) libraryPanel.setItems(await s.list())
 }
 
+function applyRouteModeState(nextMode, { persist = true, refresh = true } = {}) {
+  route.mode = normalizeRouteMode(nextMode)
+  snapProfile = route.mode === 'car' ? 'car' : 'foot'
+  snapState.on = route.mode !== 'straight'
+  if (persist) {
+    localStorage.setItem(SNAP_LS, snapState.on ? '1' : '0')
+    localStorage.setItem(SNAP_PROFILE_LS, snapProfile)
+  }
+  snapState.version = ''
+  snapState.geometry = null
+  snapState.legs = null
+  snapState.demKey = ''
+  snapState.requestId++
+  planningPanel.setRouteMode(route.mode, snapState.on ? '等待路网吸附' : '仅测距；不估算时长')
+  if (!refresh) return
+  if (snapState.on) scheduleSnap()
+  else refreshRoute()
+}
+
 const routeActions = {
   onNameChange: (v) => { route.name = v; params.routeName = v },
-  onUndo: () => { if (routeHistory.undo(route)) { refreshRoute(); scheduleSnap() } },
-  onRedo: () => { if (routeHistory.redo(route)) { refreshRoute(); scheduleSnap() } },
+  onUndo: () => { if (routeHistory.undo(route)) applyRouteModeState(route.mode) },
+  onRedo: () => { if (routeHistory.redo(route)) applyRouteModeState(route.mode) },
   onClear: () => { route.waypoints = []; route.dayEnds = []; route.revision++; route.geometryRevision++; refreshRoute(); scheduleSnap() },
   onReverse: () => { if (reverseWaypoints(route)) { refreshRoute(); scheduleSnap(); toast.show('已反向') } },
   onCloseLoop: () => { if (closeLoop(route)) { refreshRoute(); scheduleSnap(); toast.show('已闭环') } else toast.show('已是环线或点位不足') },
@@ -2090,26 +2159,12 @@ const routeActions = {
     toast.show(`点击地形,新途经点将插入到第 ${index + 1} 位(ESC 取消)`)
   },
   resetInsert: () => { insertIndex = null },
-  onSnapProfile: (p) => {
-    snapProfile = p
-    localStorage.setItem(SNAP_PROFILE_LS, p)
-    snapState.version = '' // force re-snap with new profile
-    snapState.geometry = null
-    snapState.legs = null
+  onRouteMode: (nextMode) => {
+    route.revision++
+    applyRouteModeState(nextMode, { refresh: false })
+    routeHistory.record(route)
     if (snapState.on) scheduleSnap()
-    refreshRoute()
-  },
-  onSnapToggle: (on) => {
-    snapState.on = on
-    localStorage.setItem(SNAP_LS, on ? '1' : '0')
-    if (on) {
-      scheduleSnap()
-    } else {
-      snapState.geometry = null
-      snapState.requestId++
-      planningPanel.setSnapState(false, '')
-      refreshRoute()
-    }
+    else refreshRoute()
   },
   onSave: async () => {
     const s = await routeStoreReady
@@ -2142,6 +2197,7 @@ const routeActions = {
     inp.onchange = async () => {
       try {
         route = gpxToRoute(await inp.files[0].text())
+        applyRouteModeState('straight', { refresh: false })
         params.routeName = route.name
         ensureRouteLayer()
         routeHistory.reset(route)
@@ -2154,12 +2210,56 @@ const routeActions = {
   },
 }
 const planningPanel = createPlanningPanel(routeActions)
-planningPanel.setSnapState(snapState.on, '', snapProfile)
+planningPanel.setRouteMode(route.mode, snapState.on ? '等待路网吸附' : '仅测距；不估算时长')
 // overview inset map: click → fly the 3D camera to that lon/lat
 const overviewMap = createOverviewMap({
   onJump: (lon, lat) => { if (geo && dem) flyToLonLat(lon, lat, 10) },
+  onPlanAdd: (lon, lat) => {
+    if (!params.planning || !geo || !dem) return
+    const { x, z } = lonLatToWorld(geo, lon, lat)
+    if (Math.abs(x) > TERRAIN_SIZE / 2 || Math.abs(z) > TERRAIN_SIZE / 2) {
+      toast.show('点位超出当前地形；请先扩展地形范围')
+      return
+    }
+    const ele = Math.round(elevOfWorld(x, z))
+    const waypoint = insertIndex != null
+      ? insertWaypoint(route, insertIndex, lon, lat, ele)
+      : addWaypoint(route, lon, lat, ele)
+    if (!waypoint) { toast.show('途经点已达上限'); return }
+    insertIndex = null
+    refreshRoute()
+    scheduleSnap()
+  },
 })
 document.body.appendChild(overviewMap.el)
+
+function expandTerrainToRoute() {
+  const fit = fitDemToCoordinates(activeRouteCoordinates(), { currentZoom: params.demZoom })
+  if (!fit) {
+    toast.show('线路跨度超过单个地形窗口；请拆分线路后再分析', 3600)
+    return
+  }
+  params.demLat = fit.lat
+  params.demLon = fit.lon
+  params.demZoom = fit.zoom
+  params.tilesAcross = fit.tilesAcross
+  params.demLocation = 'Custom'
+  gui.controllersRecursive().forEach((controller) => controller.updateDisplay())
+  toast.show(`扩展地形：Z${fit.zoom} · ${fit.tilesAcross}×${fit.tilesAcross} tiles`)
+  loadRealTerrain()
+}
+
+const plannerWorkspace = createPlannerWorkspace({
+  onView: (view) => {
+    const planner2d = params.planning && view === '2d'
+    document.body.classList.toggle('planner-2d', planner2d)
+    overviewMap.setPlannerMode(planner2d)
+    overviewMap.update(route, lastRoutePts, currentViewportRect())
+    if (planner2d) overviewMap.resize()
+  },
+  onExpand: expandTerrainToRoute,
+})
+document.body.appendChild(plannerWorkspace.el)
 
 // 3D terrain world AABB → lon/lat rect for the inset viewport indicator
 function currentViewportRect() {
@@ -2176,6 +2276,7 @@ const libraryPanel = createLibraryPanel({
     const r = await s.load(id)
     if (!r) return
     route = r
+    applyRouteModeState(route.mode, { refresh: false })
     params.routeName = r.name
     ensureRouteLayer()
     routeHistory.reset(route)
@@ -2197,30 +2298,41 @@ const mode = createModeMachine({
   onChange: (m) => {
     const planning = m === MODES.PLANNING
     params.planning = planning
-    hud2.setTelemetryVisible(planning) // telemetry is dev info: planning tab only
+    hud2.setTelemetryVisible(false) // telemetry is developer-only; never compete with planning
+    plannerWorkspace.setVisible(planning)
+    const planner2d = planning && plannerWorkspace.view === '2d'
+    document.body.classList.toggle('planner-operate', planning)
+    document.body.classList.toggle('planner-2d', planner2d)
+    overviewMap.setPlannerMode(planner2d)
     if (planning) {
       if (!dem) loadRealTerrain()
       ensureRouteLayer()
       refreshRoute()
       rail.setActive('planning')
       panelHost.show('planning', '线路规划', 'ESC 退出', planningPanel.el)
+      requestAnimationFrame(() => { overviewMap.resize(); overviewMap.update(route, lastRoutePts, currentViewportRect()) })
     } else {
       rail.clearActive()
       panelHost.hide()
+      overviewMap.update(route, lastRoutePts, currentViewportRect())
     }
   },
 })
 window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && settingsDrawer?.classList.contains('open')) {
+    toggleSettings()
+    return
+  }
   const tag = document.activeElement?.tagName
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return // don't hijack form editing
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
     e.preventDefault()
-    if (routeHistory.undo(route)) { refreshRoute(); scheduleSnap(); toast.show('撤销') }
+    if (routeHistory.undo(route)) { applyRouteModeState(route.mode); toast.show('撤销') }
     return
   }
   if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey))) {
     e.preventDefault()
-    if (routeHistory.redo(route)) { refreshRoute(); scheduleSnap(); toast.show('重做') }
+    if (routeHistory.redo(route)) { applyRouteModeState(route.mode); toast.show('重做') }
     return
   }
   if (e.key === 'Escape' && insertIndex != null) {
@@ -2239,7 +2351,8 @@ window.addEventListener('keydown', (e) => {
 function showTab(id) {
   if (id === 'planning') { panelHost.setCollapsed(false); mode.enterPlanning(); return }
   if (panelHost.currentId === id) { panelHost.hide(); rail.clearActive(); return }
-  if (mode.isPlanning()) { mode.exitPlanning(); panelHost.setCollapsed(true) } // leaving planning: panel folds to its header
+  if (mode.isPlanning()) mode.exitPlanning()
+  panelHost.setCollapsed(false)
   rail.setActive(id)
   if (id === 'library') panelHost.show('library', '线路库', null, libraryPanel.el)
   if (id === 'weather') panelHost.show('weather', '天气推演', null, weatherPanel.el)
@@ -2292,10 +2405,15 @@ document.body.appendChild(attrib)
 // settings drawer hosts the whole lil-gui (demoted chrome)
 const settingsDrawer = document.createElement('div')
 settingsDrawer.className = 'ui-settings'
+settingsDrawer.setAttribute('aria-hidden', 'true')
+settingsDrawer.inert = true
 document.body.appendChild(settingsDrawer)
 settingsDrawer.appendChild(gui.domElement)
 function toggleSettings() {
-  settingsDrawer.classList.toggle('open')
+  const open = settingsDrawer.classList.toggle('open')
+  settingsDrawer.inert = !open
+  settingsDrawer.setAttribute('aria-hidden', String(!open))
+  if (open) settingsDrawer.querySelector('button,input,select')?.focus()
 }
 
 // high-frequency layer toggles (reuse lil-gui controllers so onChange chains fire)
@@ -2322,7 +2440,8 @@ if (location.hash.startsWith('#r=')) {
     params.demZoom = shared.dem.zoom
     if (shared.dem.ta) params.tilesAcross = shared.dem.ta // wide-view grids ride along
     params.demLocation = 'Custom'
-    route = createRoute(shared.name)
+    route = createRoute(shared.name, shared.mode)
+    applyRouteModeState(route.mode, { persist: false, refresh: false })
     params.routeName = shared.name
     for (const w of shared.waypoints) addWaypoint(route, w.lon, w.lat, w.ele, w.name)
     if (shared.days?.length) route.dayEnds = shared.days.map((i) => route.waypoints[i]?.id).filter(Boolean)
@@ -2335,7 +2454,7 @@ if (location.hash.startsWith('#r=')) {
 }
 
 // console access for debugging/scripting
-window.__exp = { scene, camera, controls, params, terrain, loadRealTerrain, loadAdminBoundaries, get adminState() { return adminState }, get adminInteraction() { return adminInteraction }, get adminLayer() { return adminLayer }, get labels() { return labels }, get route() { return route }, get geo() { return geo }, get dem() { return dem } }
+window.__exp = { scene, camera, controls, params, terrain, loadRealTerrain, loadAdminBoundaries, expandTerrainToRoute, plannerWorkspace, overviewMap, get routeCoverage() { return lastRouteCoverage }, get terrainState() { return { demBusy, demRequestId, rebuildPending, rebuildQueued, terrainGen } }, get routingState() { return { on: snapState.on, profile: snapProfile, version: snapState.version, demKey: snapState.demKey } }, get adminState() { return adminState }, get adminInteraction() { return adminInteraction }, get adminLayer() { return adminLayer }, get labels() { return labels }, get route() { return route }, get geo() { return geo }, get dem() { return dem } }
 
 // real world is the default source — fetch its tiles on startup
 if (params.source === 'real') loadRealTerrain()
@@ -2344,7 +2463,7 @@ routeHistory.reset(route) // baseline for undo/redo (after any hash restore abov
 
 // after first build: restore snap toggle UI + re-snap a hash-restored route
 whenTerrainBuilt(1).then(() => {
-  planningPanel.setSnapState(snapState.on, '', snapProfile)
+  planningPanel.setRouteMode(route.mode, snapState.on ? '等待路网吸附' : '仅测距；不估算时长')
   if (snapState.on && route.waypoints.length >= 2) scheduleSnap()
 })
 
@@ -2456,6 +2575,7 @@ function tick() {
   }
 
   composer.render(dt)
+  if (params.planning && plannerWorkspace.view === '2d') plannerWorkspace.drawPreview(renderer.domElement, performance.now())
 }
 tick()
 

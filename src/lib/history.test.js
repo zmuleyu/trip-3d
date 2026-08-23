@@ -42,6 +42,17 @@ describe('edit history stack', () => {
     h.record(r) // identical state
     expect(h.canUndo()).toBe(false)
   })
+  it('undo/redo includes the first-class route mode', () => {
+    const r = mk()
+    const h = createHistory()
+    h.reset(r)
+    r.mode = 'foot'
+    h.record(r)
+    expect(h.undo(r)).toBe(true)
+    expect(r.mode).toBe('straight')
+    expect(h.redo(r)).toBe(true)
+    expect(r.mode).toBe('foot')
+  })
   it('snapshots include dayEnds; cap trims oldest', () => {
     const r = mk()
     const h = createHistory(3)

@@ -69,6 +69,7 @@ export function createPanelHost() {
   const apply = () => {
     el.classList.toggle('collapsed', collapsed)
     chev.textContent = collapsed ? '▸' : '▾'
+    chev.setAttribute('aria-expanded', String(!collapsed))
   }
   chev.onclick = () => { collapsed = !collapsed; apply() }
   return {

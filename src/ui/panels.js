@@ -1,5 +1,6 @@
 // Context panel contents + profile floating card. DOM only; fed by main.js.
 import { bandColumns } from '../lib/weather.js'
+import { durationContract, normalizeRouteMode } from '../lib/routePlanning.js'
 
 // ---------------------------------------------------------------- planning panel
 // duration formatting: ≥24h shows days (long road trips)
@@ -20,6 +21,7 @@ export function createPlanningPanel(actions) {
   searchWrap.className = 'pp-search'
   const searchInput = document.createElement('input')
   searchInput.placeholder = '搜索地点(如 四姑娘山)…'
+  searchInput.setAttribute('aria-label', '搜索地点')
   const searchBtn = document.createElement('button')
   searchBtn.textContent = '搜索'
   searchBtn.className = 'pp-search-btn'
@@ -36,21 +38,26 @@ export function createPlanningPanel(actions) {
   searchBtn.onclick = doSearch
   searchInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSearch() })
 
-  // ---- snap toggle + profile
-  const snapRow = document.createElement('label')
+  // ---- route mode: first-class straight / foot / car contract
+  const snapRow = document.createElement('div')
   snapRow.className = 'pp-snap-row'
-  const snapCb = document.createElement('input')
-  snapCb.type = 'checkbox'
-  snapRow.append(snapCb, ' 路网吸附')
-  const snapProfile = document.createElement('select')
-  snapProfile.className = 'pp-snap-profile'
-  snapProfile.innerHTML = '<option value="foot">步行</option><option value="car">驾车</option>'
-  snapRow.appendChild(snapProfile)
+  const modeGroup = document.createElement('div')
+  modeGroup.className = 'pp-route-mode'
+  modeGroup.setAttribute('role', 'group')
+  modeGroup.setAttribute('aria-label', '路线模式')
+  const modeButtons = new Map()
+  for (const [mode, label] of [['straight', '直线'], ['foot', '步行'], ['car', '驾车']]) {
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.dataset.mode = mode
+    button.textContent = label
+    button.onclick = () => actions.onRouteMode?.(mode)
+    modeButtons.set(mode, button)
+    modeGroup.appendChild(button)
+  }
   const snapStatus = document.createElement('span')
   snapStatus.className = 'pp-snap-status'
-  snapRow.appendChild(snapStatus)
-  snapCb.onchange = () => actions.onSnapToggle?.(snapCb.checked)
-  snapProfile.onchange = () => actions.onSnapProfile?.(snapProfile.value)
+  snapRow.append(modeGroup, snapStatus)
   el.appendChild(snapRow)
 
   // ---- amap link import (below snap row)
@@ -64,6 +71,7 @@ export function createPlanningPanel(actions) {
   amapBox.className = 'pp-amap-box hidden'
   const amapInput = document.createElement('input')
   amapInput.placeholder = '粘贴 amap.com 行程分享链接…'
+  amapInput.setAttribute('aria-label', '高德分享链接')
   const amapGo = document.createElement('button')
   amapGo.textContent = '导入'
   amapGo.className = 'primary'
@@ -83,6 +91,7 @@ export function createPlanningPanel(actions) {
   el.appendChild(secOf('线路'))
   const name = document.createElement('input')
   name.className = 'name-input'
+  name.setAttribute('aria-label', '线路名称')
   name.value = '未命名线路'
   name.onchange = () => actions.onNameChange(name.value)
   el.appendChild(name)
@@ -255,24 +264,19 @@ export function createPlanningPanel(actions) {
       bigLabel.textContent = '总时长'
       const big = document.createElement('div')
       big.className = 'pp-plan-big'
-      const allReal = legs?.length && legs.every((l) => l.real)
-      if (allReal) {
-        // real routed duration (OSRM legs) — consistent with the per-leg details
-        const totalS = legs.reduce((s, l) => s + l.durationS, 0)
-        big.textContent = fmtDur(totalS / 60)
-      } else if (stats) {
-        big.textContent = fmtDur(stats.driveMinutes)
-      } else {
-        big.textContent = `${km} km`
-      }
+      const duration = durationContract({ mode: route.mode, legs: legs ?? [], stats })
+      bigLabel.textContent = duration.label
+      big.textContent = duration.minutes == null ? '—' : fmtDur(duration.minutes)
       const sub = document.createElement('div')
       sub.className = 'pp-plan-sub'
       sub.textContent = `${km} km · ${n} 点`
-      if (stats) sub.textContent += ` · ↑${stats.ascentM}m ↓${stats.descentM}m · 最高 ${stats.maxEle}m`
+      if (stats && [stats.ascentM, stats.descentM, stats.maxEle].every(Number.isFinite)) {
+        sub.textContent += ` · ↑${stats.ascentM}m ↓${stats.descentM}m · 最高 ${stats.maxEle}m`
+      }
       if (weatherIndex != null) sub.textContent += ` · 天气指数 ${weatherIndex}`
       const d = document.createElement('span')
       d.className = 'disclaimer'
-      d.textContent = allReal ? `(${profile === 'car' ? '驾车' : '步行'}路网时长,非导航)` : '(示意,非导航)'
+      d.textContent = duration.reliable ? '(路网时长,非导航)' : `(${duration.label})`
       sub.appendChild(d)
       stat.append(bigLabel, big, sub)
 
@@ -283,9 +287,7 @@ export function createPlanningPanel(actions) {
         legs.forEach((l, i) => {
           const r = document.createElement('div')
           r.className = 'pp-leg'
-          const dur = l.real
-            ? ` ${fmtDur(l.durationS / 60)}`
-            : ` ~${fmtDur(l.driveMinutes)}`
+          const dur = l.real ? ` ${fmtDur(l.durationS / 60)}` : ' 直线回退'
           const ele = l.ascentM != null ? ` ↑${l.ascentM}m ↓${l.descentM}m` : ''
           const shade = l.shade != null ? ` · 遮阴${Math.round(l.shade * 100)}%` : ''
           r.textContent = `${i + 1}. ${l.from} → ${l.to} · ${(l.distanceM / 1000).toFixed(1)}km${ele}${dur}${l.real ? ' (路网)' : ''}${shade}`
@@ -332,11 +334,15 @@ export function createPlanningPanel(actions) {
     },
     hideSearchResults() { results.classList.add('hidden') },
 
-    // ---- snap API
-    setSnapState(on, statusText, profile) {
-      snapCb.checked = on
+    // ---- route-mode API
+    setRouteMode(mode, statusText) {
+      const normalized = normalizeRouteMode(mode)
+      for (const [value, button] of modeButtons) {
+        const active = value === normalized
+        button.classList.toggle('active', active)
+        button.setAttribute('aria-pressed', String(active))
+      }
       snapStatus.textContent = statusText ?? ''
-      if (profile) snapProfile.value = profile
     },
   }
 }
