@@ -33,7 +33,7 @@ export function createAdminBoundaryUI({ onEnabled, onLevel, onInspect, onCloseSe
   const detail = document.createElement('aside')
   detail.className = 'admin-detail hidden'
   detail.setAttribute('aria-label', '选中行政区详情')
-  detail.innerHTML = '<h3 data-field="name"></h3><p data-field="parents"></p><dl><dt>行政代码</dt><dd data-field="adcode">—</dd><dt>当前状态</dt><dd>已选中</dd><dt>交互说明</dt><dd>规划打点已暂停</dd></dl><div class="admin-actions"><button type="button" data-action="focus">聚焦此区域</button><button type="button" data-action="close-selection">关闭</button></div>'
+  detail.innerHTML = '<h3 data-field="name"></h3><p data-field="parents"></p><dl><dt>行政代码</dt><dd data-field="adcode">—</dd><dt data-field="route-stat-term" class="hidden">路线</dt><dd data-field="route-stat" class="hidden">—</dd><dt>当前状态</dt><dd>已选中</dd><dt>交互说明</dt><dd>规划打点已暂停</dd></dl><div class="admin-actions"><button type="button" data-action="focus">聚焦此区域</button><button type="button" data-action="close-selection">关闭</button></div>'
 
   el.querySelector('[data-action="enabled"]').onclick = () => onEnabled?.(false)
   for (const button of el.querySelectorAll('[data-level]')) button.onclick = () => onLevel?.(button.dataset.level)
@@ -48,7 +48,14 @@ export function createAdminBoundaryUI({ onEnabled, onLevel, onInspect, onCloseSe
       el.classList.toggle('hidden', !open)
       el.setAttribute('aria-hidden', String(!open))
     },
-    update({ enabled = false, breadcrumb = [], level = 'auto', segmentCount = 0, cacheStatus = '缓存状态未知', inspecting = false, emptyMessage = '', selected = null, panelOpen = true } = {}) {
+    setRouteStat(text) {
+      const term = detail.querySelector('[data-field="route-stat-term"]')
+      const dd = detail.querySelector('[data-field="route-stat"]')
+      term.classList.toggle('hidden', !text)
+      dd.classList.toggle('hidden', !text)
+      dd.textContent = text || '—'
+    },
+    update({ enabled = false, breadcrumb = [], level = 'auto', segmentCount = 0, cacheStatus = '缓存状态未知', inspecting = false, emptyMessage = '', selected = null, panelOpen = true, routeStat = null } = {}) {
       this.setPanelOpen(enabled && panelOpen)
       el.querySelector('[data-field="breadcrumb"]').textContent = breadcrumb.length ? breadcrumb.join(' › ') : '区域识别中…'
       const inferredViewLevel = breadcrumb.length >= 3 ? '县级' : breadcrumb.length === 2 ? '市级' : breadcrumb.length === 1 ? '省级' : '—'
@@ -71,6 +78,7 @@ export function createAdminBoundaryUI({ onEnabled, onLevel, onInspect, onCloseSe
         detail.querySelector('[data-field="parents"]').textContent = selected.parents?.join(' · ') ?? ''
         detail.querySelector('[data-field="adcode"]').textContent = selected.adcode || '—'
       }
+      this.setRouteStat(selected ? routeStat : null)
     },
   }
 }

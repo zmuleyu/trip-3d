@@ -29,6 +29,7 @@ import { createAdminLayer } from './ui/adminLayer.js'
 import { provinceAdcode, extractRings, clipRingToBbox, pointInRing } from './lib/adminBoundaries.js'
 import { createAdminBoundaryCache } from './lib/adminBoundaryCache.js'
 import { filterAdminRings, adminBreadcrumb, adminEmptyMessage, adminNeedsReload, findDeepestAdminRegion, createAdminInteractionState } from './lib/adminInteraction.js'
+import { computeRegionRouteStats, formatRouteStats } from './lib/adminRouteStats.js'
 import { createAdminBoundaryUI } from './ui/adminPanel.js'
 import { createSharePanel, renderPoster } from './ui/sharePanel.js'
 import { buildPosterData } from './lib/poster.js'
@@ -834,6 +835,28 @@ let adminLayer = null
 let adminUI = null
 const adminInteraction = createAdminInteractionState({ onChange: () => refreshAdminUI() })
 
+// L4 route-crossing stat for the detail card. Async (setTimeout) with a
+// sequence guard: any selection/route/layer change invalidates in-flight work.
+let adminRouteStat = null
+let adminRouteStatSeq = 0
+function scheduleAdminRouteStat() {
+  adminRouteStatSeq++
+  adminRouteStat = null
+  const sel = adminInteraction.selected
+  if (!adminState.on || !sel?.ring?.length || lastRoutePts.length < 2) {
+    adminUI?.setRouteStat(null)
+    return
+  }
+  const seq = adminRouteStatSeq
+  const pts = lastRoutePts.map((p) => [p.lon, p.lat])
+  setTimeout(() => {
+    if (seq !== adminRouteStatSeq) return
+    const stat = computeRegionRouteStats(pts, sel)
+    adminRouteStat = stat ? formatRouteStats(stat) : null
+    adminUI?.setRouteStat(adminRouteStat)
+  }, 0)
+}
+
 function refreshAdminUI() {
   if (!adminUI) return
   const visibleRings = filterAdminRings(adminState.rings, adminInteraction.level)
@@ -854,8 +877,10 @@ function refreshAdminUI() {
     emptyMessage: visibleRings.length || adminState.loading || adminState.demKey !== currentDemKey()
       ? ''
       : adminEmptyMessage(adminState.breadcrumb),
+    routeStat: adminRouteStat,
   })
   document.body.classList.toggle('admin-inspecting', adminInteraction.inspecting)
+  scheduleAdminRouteStat()
 }
 
 function setAdminEnabled(enabled) {
@@ -1033,6 +1058,7 @@ function refreshRoute() {
   updateRouteUI(route, pts.length ? routeStats(pts) : null, pts)
   // route edited → any in-flight weather query for the old revision is void
   if (weatherState.result && weatherState.revision !== route.revision) weatherState.requestId++
+  if (adminInteraction.selected) scheduleAdminRouteStat() // route change → recompute L4 stat
 }
 
 let lastRoutePts = []

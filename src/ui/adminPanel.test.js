@@ -33,6 +33,30 @@ describe('admin boundary panel', () => {
     expect(ui.modebar.textContent).toContain('ESC 退出')
   })
 
+  it('shows the route crossing row only when a route stat is provided', () => {
+    const ui = createAdminBoundaryUI()
+    const selected = { name: '察哈尔右翼后旗', parents: ['内蒙古自治区', '乌兰察布市'], adcode: '150928' }
+    ui.update({ enabled: true, selected, routeStat: '进入 2 次 · 预计途经 38 km' })
+    const dd = ui.detail.querySelector('[data-field="route-stat"]')
+    expect(dd.textContent).toBe('进入 2 次 · 预计途经 38 km')
+    expect(dd.classList.contains('hidden')).toBe(false)
+
+    ui.update({ enabled: true, selected, routeStat: null })
+    expect(dd.classList.contains('hidden')).toBe(true)
+  })
+
+  it('setRouteStat updates the row without a full update cycle', () => {
+    const ui = createAdminBoundaryUI()
+    const selected = { name: '察哈尔右翼后旗', parents: [], adcode: '150928' }
+    ui.update({ enabled: true, selected, routeStat: null })
+    ui.setRouteStat('进入 1 次 · 预计途经 8.3 km')
+    const dd = ui.detail.querySelector('[data-field="route-stat"]')
+    expect(dd.textContent).toBe('进入 1 次 · 预计途经 8.3 km')
+    expect(dd.classList.contains('hidden')).toBe(false)
+    ui.setRouteStat(null)
+    expect(dd.classList.contains('hidden')).toBe(true)
+  })
+
   it('uses a dialog-like bottom sheet on narrow screens', () => {
     const ui = createAdminBoundaryUI()
     expect(ui.el.classList.contains('admin-panel')).toBe(true)

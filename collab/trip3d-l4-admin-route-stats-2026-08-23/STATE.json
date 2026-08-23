@@ -1,0 +1,16 @@
+{
+  "state": "GOAL_ACTIVE",
+  "goal": "L4 路线穿越行政区统计（详情卡：进入 N 次 · 预计途经 X km）",
+  "owner": "hermes-main-session",
+  "authority": "single-writer",
+  "repo": {
+    "branch": "main",
+    "implementation_head": "dbed6ad",
+    "dirty": false
+  },
+  "phase": "CONTROL_PLANE",
+  "last_green": "196/196 @ dbed6ad",
+  "next_action": "TDD-RED: adminRouteStats + adminPanel tests",
+  "watchers": {},
+  "updated_at": "2026-08-23T00:00:00+08:00"
+}
