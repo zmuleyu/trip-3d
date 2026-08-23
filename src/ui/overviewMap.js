@@ -54,13 +54,15 @@ function routeFeature(route, points) {
   }
 }
 
-function waypointFeatures(route) {
+function waypointFeatures(route, selectedWaypointId) {
   const waypoints = route?.waypoints ?? []
   return waypoints.map((waypoint, index) => ({
     type: 'Feature',
     properties: {
+      waypointId: waypoint.id,
       kind: index === 0 ? 'start' : index === waypoints.length - 1 ? 'end' : 'middle',
       label: index === 0 ? 'A' : index === waypoints.length - 1 ? 'B' : String(index + 1),
+      selected: waypoint.id === selectedWaypointId,
     },
     geometry: { type: 'Point', coordinates: [waypoint.lon, waypoint.lat] },
   }))
@@ -125,6 +127,17 @@ function addPlannerLayers(map) {
   map.addSource(SOURCE_IDS.waypoints, { type: 'geojson', data: EMPTY_FEATURE_COLLECTION })
 
   map.addLayer({
+    id: 'trip-waypoint-selection',
+    type: 'circle',
+    source: SOURCE_IDS.waypoints,
+    filter: ['==', ['get', 'selected'], true],
+    paint: {
+      'circle-radius': 15,
+      'circle-color': ACCENT,
+      'circle-opacity': 0.94,
+    },
+  })
+  map.addLayer({
     id: 'trip-terrain-coverage-fill',
     type: 'fill',
     source: SOURCE_IDS.coverage,
@@ -186,7 +199,7 @@ function addPlannerLayers(map) {
   })
 }
 
-export function createOverviewMap({ onJump, onPlanAdd } = {}) {
+export function createOverviewMap({ onJump, onPlanAdd, onWaypointSelect, onWaypointMoveStart, onWaypointMove, onWaypointMoveEnd, onWaypointMoveCancel } = {}) {
   const el = document.createElement('div')
   el.className = 'ui-overview hidden'
 
@@ -258,6 +271,10 @@ export function createOverviewMap({ onJump, onPlanAdd } = {}) {
   let lastFitKey = ''
   let attributionControlContainer = null
   let attributionMapParent = null
+  let selectedWaypointId = null
+  let waypointDrag = null
+  let suppressNextMapClick = false
+  let suppressMapClickTimer = null
 
   function syncAttributionHost() {
     const control = attributionControlContainer ?? mapSurface.querySelector('.maplibregl-ctrl-bottom-left')
@@ -276,7 +293,7 @@ export function createOverviewMap({ onJump, onPlanAdd } = {}) {
     const route = routeFeature(lastRoute, lastPoints)
     map.getSource(SOURCE_IDS.coverage)?.setData(footprint ? featureCollection([footprint]) : EMPTY_FEATURE_COLLECTION)
     map.getSource(SOURCE_IDS.route)?.setData(route ? featureCollection([route]) : EMPTY_FEATURE_COLLECTION)
-    map.getSource(SOURCE_IDS.waypoints)?.setData(featureCollection(waypointFeatures(lastRoute)))
+    map.getSource(SOURCE_IDS.waypoints)?.setData(featureCollection(waypointFeatures(lastRoute, selectedWaypointId)))
   }
 
   function updateChrome() {
@@ -351,7 +368,99 @@ export function createOverviewMap({ onJump, onPlanAdd } = {}) {
     if (!styleReady) mapError.classList.remove('hidden')
   })
   map.on('zoom', updateChrome)
+  function waypointFeature(event) {
+    const fromEvent = event.features?.find((feature) => feature.layer?.source === SOURCE_IDS.waypoints || feature.properties?.waypointId)
+    if (fromEvent) return fromEvent
+    if (!event.point) return null
+    return map.queryRenderedFeatures(event.point, { layers: ['trip-waypoint-circles'] })
+      .find((feature) => feature.properties?.waypointId) ?? null
+  }
+
+  function startWaypointDrag(event) {
+    if (!plannerMode || event.originalEvent?.button > 0) return
+    const feature = waypointFeature(event)
+    const waypointId = feature?.properties?.waypointId
+    if (!waypointId) return
+    event.preventDefault?.()
+    onWaypointSelect?.(waypointId)
+    onWaypointMoveStart?.(waypointId)
+    waypointDrag = {
+      waypointId,
+      startPoint: event.point,
+      startLngLat: event.lngLat,
+      moved: false,
+      accepted: false,
+    }
+    map.dragPan.disable()
+    map.getCanvas().style.cursor = 'grabbing'
+  }
+
+  function moveWaypointDrag(event) {
+    if (!waypointDrag || !event.lngLat) return
+    const movedPx = event.point && waypointDrag.startPoint
+      ? Math.hypot(event.point.x - waypointDrag.startPoint.x, event.point.y - waypointDrag.startPoint.y)
+      : Math.hypot(event.lngLat.lng - waypointDrag.startLngLat.lng, event.lngLat.lat - waypointDrag.startLngLat.lat) * 1e6
+    if (!waypointDrag.moved && movedPx < 5) return
+    waypointDrag.moved = true
+    const accepted = onWaypointMove?.(waypointDrag.waypointId, event.lngLat.lng, event.lngLat.lat) === true
+    waypointDrag.accepted ||= accepted
+  }
+
+  function endWaypointDrag() {
+    if (!waypointDrag) return
+    const { waypointId, moved, accepted } = waypointDrag
+    waypointDrag = null
+    map.dragPan.enable()
+    map.getCanvas().style.cursor = ''
+    if (moved && accepted) onWaypointMoveEnd?.(waypointId)
+    else onWaypointMoveCancel?.(waypointId)
+    if (moved) {
+      // A MapLibre click synthesized by this pointer release belongs to this drag
+      // only. The next task clears the guard when no such click is dispatched.
+      suppressNextMapClick = true
+      clearTimeout(suppressMapClickTimer)
+      suppressMapClickTimer = setTimeout(() => {
+        suppressNextMapClick = false
+        suppressMapClickTimer = null
+      }, 0)
+    }
+  }
+
+  function cancelWaypointDrag() {
+    if (!waypointDrag) return
+    const { waypointId, moved, accepted, startLngLat } = waypointDrag
+    waypointDrag = null
+    map.dragPan.enable()
+    map.getCanvas().style.cursor = ''
+    onWaypointMoveCancel?.(waypointId, startLngLat?.lng, startLngLat?.lat)
+  }
+
+  map.on('mousedown', 'trip-waypoint-circles', startWaypointDrag)
+  map.on('touchstart', 'trip-waypoint-circles', startWaypointDrag)
+  map.on('mousemove', moveWaypointDrag)
+  map.on('touchmove', moveWaypointDrag)
+  map.on('mouseup', endWaypointDrag)
+  map.on('touchend', endWaypointDrag)
+  map.on('touchcancel', cancelWaypointDrag)
+  map.on('mouseenter', 'trip-waypoint-circles', () => { map.getCanvas().style.cursor = 'grab' })
+  map.on('mouseleave', 'trip-waypoint-circles', () => {
+    if (!waypointDrag) map.getCanvas().style.cursor = ''
+  })
   map.on('click', (event) => {
+    const feature = waypointFeature(event)
+    if (feature) {
+      suppressNextMapClick = false
+      clearTimeout(suppressMapClickTimer)
+      suppressMapClickTimer = null
+      onWaypointSelect?.(feature.properties.waypointId)
+      return
+    }
+    if (suppressNextMapClick) {
+      suppressNextMapClick = false
+      clearTimeout(suppressMapClickTimer)
+      suppressMapClickTimer = null
+      return
+    }
     const { lng, lat } = event.lngLat
     if (plannerMode && onPlanAdd) onPlanAdd(lng, lat)
     else onJump?.(lng, lat)
@@ -378,7 +487,11 @@ export function createOverviewMap({ onJump, onPlanAdd } = {}) {
     resize,
     fit: fitCurrent,
     focusPlanner() { map.getCanvas().focus() },
-    update(route, points, viewport) {
+    setSelectedWaypoint(id) {
+      selectedWaypointId = id ?? null
+      syncPlannerData()
+    },
+    update(route, points, viewport, { fit = true } = {}) {
       lastRoute = route
       lastPoints = points
       viewportLonLat = viewport
@@ -391,7 +504,7 @@ export function createOverviewMap({ onJump, onPlanAdd } = {}) {
       syncPlannerData()
       const footprintKey = viewport ? `${viewport.minLon.toFixed(4)},${viewport.minLat.toFixed(4)},${viewport.maxLon.toFixed(4)},${viewport.maxLat.toFixed(4)}` : ''
       const nextFitKey = waypoints.length >= 2 ? `route:${routeKey(route, points)}` : `terrain:${footprintKey}`
-      if (!hasCamera || nextFitKey !== lastFitKey) {
+      if (fit && (!hasCamera || nextFitKey !== lastFitKey)) {
         lastFitKey = nextFitKey
         fitCurrent()
       } else {

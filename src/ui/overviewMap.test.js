@@ -30,7 +30,8 @@ const maplibre = vi.hoisted(() => {
       }
       return this
     }
-    on(event, handler) {
+    on(event, layerOrHandler, maybeHandler) {
+      const handler = typeof layerOrHandler === 'function' ? layerOrHandler : maybeHandler
       const handlers = this.handlers.get(event) ?? []
       handlers.push(handler)
       this.handlers.set(event, handlers)
@@ -38,6 +39,10 @@ const maplibre = vi.hoisted(() => {
     }
     emit(event, payload = {}) { for (const handler of this.handlers.get(event) ?? []) handler(payload) }
     getCanvas() { return this.canvas }
+    dragPan = { disable: vi.fn(), enable: vi.fn() }
+    queryRenderedFeatures(point, { layers } = {}) {
+      return this.renderedFeatures?.filter((feature) => !layers || layers.includes(feature.layer?.id)) ?? []
+    }
     getCenter() { return this.center }
     getZoom() { return this.zoom }
     getStyle() {
@@ -164,18 +169,71 @@ describe('overview MapLibre planner map', () => {
     expect(waypointData.features.map((feature) => feature.properties.label)).toEqual(['A'])
     expect(instance.getSource('trip-planned-route').data.features).toHaveLength(0)
 
-    const route = { waypoints: [{ lon: 113, lat: 41.2 }, { lon: 113.1, lat: 41.3 }, { lon: 113.2, lat: 41.4 }] }
+    const route = { waypoints: [{ id: 'a', lon: 113, lat: 41.2 }, { id: 'm', lon: 113.1, lat: 41.3 }, { id: 'b', lon: 113.2, lat: 41.4 }] }
     const snapped = [{ lon: 112.98, lat: 41.18 }, { lon: 113.08, lat: 41.38 }, { lon: 113.24, lat: 41.43 }]
     overview.update(route, snapped, VIEWPORT)
 
     waypointData = instance.getSource('trip-route-waypoints').data
     expect(waypointData.features.map((feature) => feature.properties.label)).toEqual(['A', '2', 'B'])
+    expect(waypointData.features.map((feature) => feature.properties.waypointId)).toEqual(['a', 'm', 'b'])
     expect(instance.getSource('trip-planned-route').data.features[0].geometry.coordinates).toEqual([
       [112.98, 41.18], [113.08, 41.38], [113.24, 41.43],
     ])
     expect(instance.getSource('trip-terrain-coverage').data.features[0].geometry.type).toBe('Polygon')
     expect(instance.fitCalls.at(-1).bounds).toEqual([[112.98, 41.18], [113.24, 41.43]])
     expect(overview.el.querySelector('.ui-map-fit span').textContent).toBe('完整路线')
+  })
+
+  it('selects and drags a waypoint without suppressing the next blank-map click', async () => {
+    const onPlanAdd = vi.fn()
+    let overview
+    const onWaypointSelect = vi.fn((id) => overview.setSelectedWaypoint(id))
+    const onWaypointMove = vi.fn(() => true)
+    const onWaypointMoveEnd = vi.fn()
+    const setupResult = setup({ onPlanAdd, onWaypointSelect, onWaypointMove, onWaypointMoveEnd })
+    overview = setupResult.overview
+    const { instance } = setupResult
+    overview.setPlannerMode(true)
+    overview.update({ waypoints: [{ id: 'a', lon: 113, lat: 41.2 }, { id: 'b', lon: 113.2, lat: 41.4 }] }, null, VIEWPORT)
+    const marker = { layer: { id: 'trip-waypoint-circles', source: 'trip-route-waypoints' }, properties: { waypointId: 'a' } }
+
+    instance.emit('mousedown', { features: [marker], point: { x: 10, y: 10 }, lngLat: { lng: 113, lat: 41.2 }, preventDefault: vi.fn() })
+    instance.emit('mousemove', { point: { x: 22, y: 10 }, lngLat: { lng: 113.04, lat: 41.24 } })
+    instance.emit('mousemove', { point: { x: 36, y: 14 }, lngLat: { lng: 113.08, lat: 41.28 } })
+    instance.emit('mouseup')
+
+    expect(onWaypointSelect).toHaveBeenCalledWith('a')
+    expect(onWaypointMove.mock.calls).toEqual([
+      ['a', 113.04, 41.24],
+      ['a', 113.08, 41.28],
+    ])
+    expect(onWaypointMoveEnd).toHaveBeenCalledWith('a')
+    expect(onPlanAdd).not.toHaveBeenCalled()
+    expect(instance.dragPan.disable).toHaveBeenCalledOnce()
+    expect(instance.dragPan.enable).toHaveBeenCalledOnce()
+
+    expect(instance.getSource('trip-route-waypoints').data.features.map((feature) => feature.properties.selected)).toEqual([true, false])
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    instance.emit('click', { lngLat: { lng: 113.3, lat: 41.5 } })
+    expect(onPlanAdd).toHaveBeenCalledWith(113.3, 41.5)
+  })
+
+  it('restores map panning and discards a preview when a touch drag is cancelled', () => {
+    const onWaypointMove = vi.fn(() => true)
+    const onWaypointMoveEnd = vi.fn()
+    const onWaypointMoveCancel = vi.fn()
+    const { overview, instance } = setup({ onWaypointMove, onWaypointMoveEnd, onWaypointMoveCancel })
+    overview.setPlannerMode(true)
+    overview.update({ waypoints: [{ id: 'a', lon: 113, lat: 41.2 }, { id: 'b', lon: 113.2, lat: 41.4 }] }, null, VIEWPORT)
+    const marker = { layer: { id: 'trip-waypoint-circles', source: 'trip-route-waypoints' }, properties: { waypointId: 'a' } }
+
+    instance.emit('touchstart', { features: [marker], point: { x: 10, y: 10 }, lngLat: { lng: 113, lat: 41.2 }, preventDefault: vi.fn() })
+    instance.emit('touchmove', { point: { x: 24, y: 12 }, lngLat: { lng: 113.04, lat: 41.24 } })
+    instance.emit('touchcancel')
+
+    expect(instance.dragPan.enable).toHaveBeenCalledOnce()
+    expect(onWaypointMoveEnd).not.toHaveBeenCalled()
+    expect(onWaypointMoveCancel).toHaveBeenCalledWith('a', 113, 41.2)
   })
 
   it('preserves zoom, fit, focus, resize, and non-planner jump controls', () => {

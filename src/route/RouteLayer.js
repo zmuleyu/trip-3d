@@ -73,6 +73,25 @@ function makeFlagSprite(color) {
   return sp
 }
 
+function makeSelectionRing() {
+  const c = document.createElement('canvas')
+  c.width = c.height = 96
+  const ctx = c.getContext('2d')
+  ctx.beginPath()
+  ctx.arc(48, 48, 34, 0, Math.PI * 2)
+  ctx.strokeStyle = '#ffffff'
+  ctx.lineWidth = 14
+  ctx.stroke()
+  ctx.strokeStyle = ACCENT
+  ctx.lineWidth = 8
+  ctx.stroke()
+  const tex = new THREE.CanvasTexture(c)
+  tex.colorSpace = THREE.SRGBColorSpace
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: true, transparent: true }))
+  sp.scale.set(1.65, 1.65, 1)
+  return sp
+}
+
 const ARROW_GEO = new THREE.ConeGeometry(0.11, 0.34, 5) // world units — subtle at near camera
 const ARROW_MAT = new THREE.MeshBasicMaterial({ color: ACCENT })
 
@@ -127,11 +146,11 @@ export class RouteLayer {
   }
 
   // Returns sampled pts ([] when <2 waypoints) — callers feed profile/stats.
-  // opts: { slopeColors, arrows, ticks, pathPts } — pathPts: precomputed pts
+  // opts: { slopeColors, arrows, ticks, pathPts, selectedWaypointId } — pathPts: precomputed pts
   // (e.g. snapped polyline sampled by caller with CURRENT geo/elevOf getters);
   // when provided, internal spline sampling is skipped.
   update(waypoints, opts = {}) {
-    const { slopeColors = true, arrows = true, ticks = true, pathPts = null } = opts
+    const { slopeColors = true, arrows = true, ticks = true, pathPts = null, selectedWaypointId = null } = opts
     this._clear()
     const geo = this._getGeo()
     const sceneSample = this._getSceneSample()
@@ -150,6 +169,14 @@ export class RouteLayer {
       sp.position.set(x, sceneSample(x, z) + lift, z)
       sp.userData.isMarker = true
       sp.userData.index = i
+      sp.userData.waypointId = w.id
+      if (w.id === selectedWaypointId) {
+        const ring = makeSelectionRing()
+        ring.position.copy(sp.position)
+        ring.position.y += 0.02
+        ring.renderOrder = 12
+        this.group.add(ring)
+      }
       this.group.add(sp)
     })
 
@@ -245,11 +272,11 @@ export class RouteLayer {
     if (this.crosshair) this.crosshair.visible = false
   }
 
-  // Returns waypoint index whose marker sprite is hit, or -1. Sprite raycast
+  // Returns waypoint ID whose marker sprite is hit, or null. Sprite raycast
   // uses each sprite's scaled quad as hit area.
   hitWaypoint(raycaster) {
     const markers = this.group.children.filter((c) => c.userData?.isMarker)
     const hits = raycaster.intersectObjects(markers, false)
-    return hits.length ? hits[0].object.userData.index : -1
+    return hits.length ? hits[0].object.userData.waypointId : null
   }
 }

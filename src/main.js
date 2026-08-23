@@ -620,7 +620,7 @@ let downPos = null
 let dragged = false
 // waypoint drag: capture-phase pointerdown beats OrbitControls' bubble listener,
 // so disabling controls here prevents the camera from starting to orbit.
-// markerDrag: { index, pointerId, startX, startY, moved, prevEnabled } — threshold
+// markerDrag: { waypointId, pointerId, startX, startY, moved, prevEnabled } — threshold
 // before "moved" (no revision churn on jitter); pointerId-bound; cancel-safe.
 let markerDrag = null
 let insertIndex = null // pending insert position (timeline ⊕)
@@ -645,10 +645,11 @@ function endMarkerDrag(commit) {
   controls.enabled = markerDrag.prevEnabled
   renderer.domElement.style.cursor = ''
   if (commit && markerDrag.moved) {
-    route.revision++
-    route.geometryRevision++
-    refreshRoute()
-    scheduleSnap()
+    commitWaypointMove(markerDrag.waypointId)
+  } else if (markerDrag.moved) {
+    cancelWaypointMove(markerDrag.waypointId)
+  } else if (waypointMoveDraft?.id === markerDrag.waypointId) {
+    waypointMoveDraft = null
   }
   markerDrag = null
   downPos = null
@@ -659,9 +660,20 @@ renderer.domElement.addEventListener('pointerdown', (e) => {
   dragged = false
   if (!adminInteraction.inspecting && params.planning && routeLayer && geo && dem) {
     raycaster.setFromCamera(ndcOf(e), camera)
-    const hit = routeLayer.hitWaypoint(raycaster)
-    if (hit >= 0) {
-      markerDrag = { index: hit, pointerId: e.pointerId, startX: e.clientX, startY: e.clientY, moved: false, prevEnabled: controls.enabled }
+    const waypointId = routeLayer.hitWaypoint(raycaster)
+    if (waypointId) {
+      const waypoint = route.waypoints.find((candidate) => candidate.id === waypointId)
+      if (!waypoint) return
+      setSelectedWaypoint(waypointId)
+      beginWaypointMove(waypointId)
+      markerDrag = {
+        waypointId,
+        pointerId: e.pointerId,
+        startX: e.clientX,
+        startY: e.clientY,
+        moved: false,
+        prevEnabled: controls.enabled,
+      }
       controls.enabled = false
     }
   }
@@ -690,13 +702,8 @@ renderer.domElement.addEventListener('pointermove', (e) => {
   const hit = raycaster.intersectObject(terrain.mesh, false)[0]
   if (!hit) return
   const { lon, lat } = worldToLonLat(geo, hit.point.x, hit.point.z)
-  const w = route.waypoints[markerDrag.index]
-  if (!w) return
-  // temp coords during drag — revisions bump once on pointerup
-  w.lon = lon
-  w.lat = lat
-  w.ele = Math.round(elevOfWorld(hit.point.x, hit.point.z))
-  refreshRoute()
+  // Preview coordinates are in-memory only; revision/history/snap commit on pointerup.
+  previewWaypointMove(markerDrag.waypointId, lon, lat)
 })
 // marker hover affordance: grab cursor over waypoint markers (throttled ~90ms)
 let hoverTimer = 0
@@ -706,7 +713,7 @@ function hoverCursor(e) {
   hoverTimer = now
   if (!params.planning || !routeLayer || !geo) { renderer.domElement.style.cursor = ''; return }
   raycaster.setFromCamera(ndcOf(e), camera)
-  renderer.domElement.style.cursor = routeLayer.hitWaypoint(raycaster) >= 0 ? 'grab' : ''
+  renderer.domElement.style.cursor = routeLayer.hitWaypoint(raycaster) ? 'grab' : ''
 }
 window.addEventListener('pointerup', (e) => {
   if (markerDrag && e.pointerId === markerDrag.pointerId) endMarkerDrag(true)
@@ -729,7 +736,7 @@ renderer.domElement.addEventListener('pointerup', (e) => {
     if (region) adminInteraction.select({ ...region, selectedAt: [lon, lat] })
     return // inspect mode owns this click; never drop a planning waypoint
   }
-  if (!params.planning || !downPos || !geo || !dem || e.button !== 0) return
+  if (markerDrag || !params.planning || !downPos || !geo || !dem || e.button !== 0) return
   const moved = Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y) > 6
   const wasDrag = dragged
   downPos = null
@@ -1053,6 +1060,10 @@ function regenerateTerrain() {
 let geo = null // makeGeoContext(dem), set in loadRealTerrain
 let route = createRoute()
 let routeLayer = null
+let selectedWaypointId = null
+let waypointPreviewing = false
+let waypointPreviewRejectNotice = false
+let waypointMoveDraft = null
 const routeStoreReady = openRouteStore()
   .then((s) => {
     refreshLibrary() // first paint only after IDB is actually open
@@ -1071,22 +1082,82 @@ function elevOfWorld(x, z) {
 let lastRouteCoverage = { covered: true, outsideCount: 0, total: 0, bounds: null }
 
 function activeRouteCoordinates() {
-  if (snapState.on && snapState.geometry && snapState.version === snapVersion()) return snapState.geometry
+  if (!waypointPreviewing && snapState.on && snapState.geometry && snapState.version === snapVersion()) return snapState.geometry
   return route.waypoints
 }
 
-function refreshRoute() {
+function reconcileWaypointSelection() {
+  if (selectedWaypointId && !route.waypoints.some((waypoint) => waypoint.id === selectedWaypointId)) selectedWaypointId = null
+  if (waypointMoveDraft && !route.waypoints.some((waypoint) => waypoint.id === waypointMoveDraft.id)) waypointMoveDraft = null
+}
+
+function setSelectedWaypoint(id) {
+  const next = id && route.waypoints.some((waypoint) => waypoint.id === id) ? id : null
+  if (selectedWaypointId === next) return false
+  selectedWaypointId = next
+  refreshRoute({ recordHistory: false, fitOverview: false })
+  return true
+}
+
+function beginWaypointMove(id) {
+  const waypoint = route.waypoints.find((candidate) => candidate.id === id)
+  if (!waypoint) return
+  waypointPreviewRejectNotice = false
+  waypointMoveDraft = { id, values: { ...waypoint } }
+}
+
+function previewWaypointMove(id, lon, lat) {
+  const waypoint = route.waypoints.find((candidate) => candidate.id === id)
+  if (!waypoint || !geo || !dem) return false
+  const { x, z } = lonLatToWorld(geo, lon, lat)
+  if (Math.abs(x) > TERRAIN_SIZE / 2 || Math.abs(z) > TERRAIN_SIZE / 2) {
+    if (!waypointPreviewRejectNotice) toast.show('点位超出当前地形；请先扩展地形范围')
+    waypointPreviewRejectNotice = true
+    return false
+  }
+  waypointPreviewRejectNotice = false
+  waypoint.lon = lon
+  waypoint.lat = lat
+  waypoint.ele = Math.round(elevOfWorld(x, z))
+  waypointPreviewing = true
+  refreshRoute({ recordHistory: false, fitOverview: false })
+  return true
+}
+
+function commitWaypointMove(id) {
+  if (!route.waypoints.some((waypoint) => waypoint.id === id)) {
+    waypointMoveDraft = null
+    return
+  }
+  route.revision++
+  route.geometryRevision++
+  waypointPreviewing = false
+  refreshRoute({ fitOverview: false })
+  scheduleSnap()
+  if (waypointMoveDraft?.id === id) waypointMoveDraft = null
+}
+
+function cancelWaypointMove(id) {
+  const waypoint = route.waypoints.find((candidate) => candidate.id === id)
+  if (waypoint && waypointMoveDraft?.id === id) Object.assign(waypoint, waypointMoveDraft.values)
+  if (waypointMoveDraft?.id === id) waypointMoveDraft = null
+  waypointPreviewing = false
+  refreshRoute({ recordHistory: false, fitOverview: false })
+}
+
+function refreshRoute({ recordHistory = true, fitOverview = true } = {}) {
   if (!routeLayer || !geo || !dem) return
+  reconcileWaypointSelection()
   const coordinates = activeRouteCoordinates()
   lastRouteCoverage = route.waypoints.length >= 2
     ? routeCoverage(geo, coordinates, TERRAIN_SIZE)
     : { covered: true, outsideCount: 0, total: coordinates.length, bounds: null }
   plannerWorkspace?.setCoverage(lastRouteCoverage)
   if (!lastRouteCoverage.covered) {
-    routeLayer.update([], {})
+    routeLayer.update([], { selectedWaypointId })
     lastRoutePts = []
     normalizeDayEnds(route)
-    routeHistory.record(route)
+    if (recordHistory) routeHistory.record(route)
     updateRouteUI(route, {
       distanceM: routeDistanceMeters(coordinates),
       ascentM: null,
@@ -1094,7 +1165,7 @@ function refreshRoute() {
       maxEle: null,
       minEle: null,
       driveMinutes: null,
-    }, [])
+    }, [], { fitOverview })
     if (weatherState.result && weatherState.revision !== route.revision) weatherState.requestId++
     if (adminInteraction.selected) scheduleAdminRouteStat()
     return
@@ -1102,7 +1173,7 @@ function refreshRoute() {
   // snapped geometry (WGS-84) is re-sampled with CURRENT geo/elevOf getters each
   // refresh — never cache world-space pts across DEM switches (review #8)
   let pathPts = null
-  if (snapState.on && snapState.geometry && snapState.version === snapVersion() && snapState.demKey === currentDemKey()) {
+  if (!waypointPreviewing && snapState.on && snapState.geometry && snapState.version === snapVersion() && snapState.demKey === currentDemKey()) {
     pathPts = samplePolyline(geo, snapState.geometry, elevOfWorld)
   }
   const pts = routeLayer.update(route.waypoints, {
@@ -1110,11 +1181,12 @@ function refreshRoute() {
     arrows: params.routeArrows,
     ticks: params.routeTicks,
     pathPts,
+    selectedWaypointId,
   })
   lastRoutePts = pts
   normalizeDayEnds(route) // id-based markers: drop refs to deleted waypoints
-  routeHistory.record(route) // safe: dedup no-ops on non-route refreshes
-  updateRouteUI(route, pts.length ? routeStats(pts) : null, pts)
+  if (recordHistory) routeHistory.record(route) // safe: dedup no-ops on non-route refreshes
+  updateRouteUI(route, pts.length ? routeStats(pts) : null, pts, { fitOverview })
   // route edited → any in-flight weather query for the old revision is void
   if (weatherState.result && weatherState.revision !== route.revision) weatherState.requestId++
   if (adminInteraction.selected) scheduleAdminRouteStat() // route change → recompute L4 stat
@@ -1592,7 +1664,7 @@ function currentLegs(pts) {
   return osrmLegs ?? computeLegsFromPts(pts, route.waypoints) ?? (route.waypoints.length >= 2 ? computeLegs(route.waypoints) : null)
 }
 
-function updateRouteUI(route, stats, pts) {
+function updateRouteUI(route, stats, pts, { fitOverview = true } = {}) {
   // legs: real OSRM segments when snap result matches this revision; computed otherwise
   const legs = currentLegs(pts)
   // sunlight analysis: per-leg shade fraction via DEM horizon march
@@ -1652,7 +1724,8 @@ function updateRouteUI(route, stats, pts) {
     }).filter(Boolean)
   }
   profileCard.update(stats, pts, wxDays, dayBounds)
-  overviewMap.update(route, pts, currentViewportRect())
+  overviewMap.update(route, pts, currentViewportRect(), { fit: fitOverview })
+  overviewMap.setSelectedWaypoint(selectedWaypointId)
 }
 
 // ------------------------------------------------------------------ sunlight analysis
@@ -2167,7 +2240,7 @@ const routeActions = {
   onNameChange: (v) => { route.name = v; params.routeName = v },
   onUndo: () => { if (routeHistory.undo(route)) applyRouteModeState(route.mode) },
   onRedo: () => { if (routeHistory.redo(route)) applyRouteModeState(route.mode) },
-  onClear: () => { route.waypoints = []; route.dayEnds = []; route.revision++; route.geometryRevision++; refreshRoute(); scheduleSnap() },
+  onClear: () => { route.waypoints = []; route.dayEnds = []; waypointMoveDraft = null; route.revision++; route.geometryRevision++; refreshRoute(); scheduleSnap() },
   onReverse: () => { if (reverseWaypoints(route)) { refreshRoute(); scheduleSnap(); toast.show('已反向') } },
   onCloseLoop: () => { if (closeLoop(route)) { refreshRoute(); scheduleSnap(); toast.show('已闭环') } else toast.show('已是环线或点位不足') },
   onToggleDayEnd: (i) => { if (toggleDayEnd(route, i)) refreshRoute() },
@@ -2177,7 +2250,7 @@ const routeActions = {
   onSearchAdd: searchAdd,
   onImportAmap: importAmapLink,
   onExportAmap: exportAmapLink,
-  onWpRemove: (i) => { removeWaypoint(route, i); refreshRoute(); scheduleSnap() },
+  onWpRemove: (i) => { removeWaypoint(route, i); reconcileWaypointSelection(); refreshRoute(); scheduleSnap() },
   onWpMove: (i, dir) => { moveWaypoint(route, i, i + dir); refreshRoute(); scheduleSnap() },
   onWpMoveTo: (from, to) => { if (moveWaypoint(route, from, to)) { refreshRoute(); scheduleSnap() } },
   onWpRename: (i, name) => { route.waypoints[i].name = name; route.revision++; refreshRoute() },
@@ -2224,6 +2297,9 @@ const routeActions = {
     inp.onchange = async () => {
       try {
         route = gpxToRoute(await inp.files[0].text())
+        selectedWaypointId = null
+        waypointPreviewing = false
+        waypointMoveDraft = null
         applyRouteModeState('straight', { refresh: false })
         params.routeName = route.name
         ensureRouteLayer()
@@ -2241,6 +2317,11 @@ planningPanel.setRouteMode(route.mode, snapState.on ? '等待路网吸附' : '�
 // overview inset map: click → fly the 3D camera to that lon/lat
 const overviewMap = createOverviewMap({
   onJump: (lon, lat) => { if (geo && dem) flyToLonLat(lon, lat, 10) },
+  onWaypointSelect: setSelectedWaypoint,
+  onWaypointMoveStart: beginWaypointMove,
+  onWaypointMove: previewWaypointMove,
+  onWaypointMoveEnd: commitWaypointMove,
+  onWaypointMoveCancel: cancelWaypointMove,
   onPlanAdd: (lon, lat) => {
     if (!params.planning || !geo || !dem) return
     const { x, z } = lonLatToWorld(geo, lon, lat)
@@ -2303,6 +2384,9 @@ const libraryPanel = createLibraryPanel({
     const r = await s.load(id)
     if (!r) return
     route = r
+    selectedWaypointId = null
+    waypointPreviewing = false
+    waypointMoveDraft = null
     applyRouteModeState(route.mode, { refresh: false })
     params.routeName = r.name
     ensureRouteLayer()
@@ -2587,6 +2671,9 @@ if (location.hash.startsWith('#r=')) {
     if (shared.dem.ta) params.tilesAcross = shared.dem.ta // wide-view grids ride along
     params.demLocation = 'Custom'
     route = createRoute(shared.name, shared.mode)
+    selectedWaypointId = null
+    waypointPreviewing = false
+    waypointMoveDraft = null
     applyRouteModeState(route.mode, { persist: false, refresh: false })
     params.routeName = shared.name
     for (const w of shared.waypoints) addWaypoint(route, w.lon, w.lat, w.ele, w.name)
