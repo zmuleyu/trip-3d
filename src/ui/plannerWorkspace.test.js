@@ -38,4 +38,15 @@ describe('planner workspace chrome', () => {
     workspace.drawPreview(source, 1300)
     expect(drawImage).toHaveBeenCalledTimes(2)
   })
+
+  it('opens planner layer tools on demand and closes them with the workspace', () => {
+    const workspace = createPlannerWorkspace()
+    document.body.appendChild(workspace.el)
+    const toggle = workspace.el.querySelector('.ui-planner-layer-toggle')
+    toggle.click()
+    expect(toggle.getAttribute('aria-expanded')).toBe('true')
+    expect(document.body.classList.contains('planner-layers-open')).toBe(true)
+    workspace.setVisible(false)
+    expect(document.body.classList.contains('planner-layers-open')).toBe(false)
+  })
 })

@@ -1,3 +1,5 @@
+import { iconSvg } from './icons.js'
+
 export function createPlannerWorkspace({ onView, onExpand } = {}) {
   const el = document.createElement('div')
   el.className = 'ui-planner-workspace hidden'
@@ -9,6 +11,7 @@ export function createPlannerWorkspace({ onView, onExpand } = {}) {
         <button type="button" data-view="3d">3D 预览</button>
       </div>
       <span class="ui-planner-status">地图与地形同步</span>
+      <button type="button" class="ui-planner-layer-toggle" aria-controls="ui-layer-tools" aria-expanded="false" aria-label="打开图层工具">${iconSvg('layers')}<span>图层</span></button>
     </header>
     <div class="ui-route-coverage hidden" role="alert">
       <span class="ui-coverage-dot"></span>
@@ -21,6 +24,13 @@ export function createPlannerWorkspace({ onView, onExpand } = {}) {
   let view = '2d'
   let lastPreviewAt = -Infinity
   const buttons = [...el.querySelectorAll('[data-view]')]
+  const layerToggle = el.querySelector('.ui-planner-layer-toggle')
+  const setLayersOpen = (open) => {
+    document.body.classList.toggle('planner-layers-open', open)
+    layerToggle.setAttribute('aria-expanded', String(open))
+    layerToggle.setAttribute('aria-label', open ? '关闭图层工具' : '打开图层工具')
+  }
+  layerToggle.addEventListener('click', () => setLayersOpen(layerToggle.getAttribute('aria-expanded') !== 'true'))
   const applyView = (next, notify = false) => {
     view = next === '3d' ? '3d' : '2d'
     for (const button of buttons) {
@@ -37,7 +47,8 @@ export function createPlannerWorkspace({ onView, onExpand } = {}) {
   return {
     el,
     get view() { return view },
-    setVisible(on) { el.classList.toggle('hidden', !on) },
+    setVisible(on) { el.classList.toggle('hidden', !on); if (!on) setLayersOpen(false) },
+    setLayersOpen,
     setView(next) { applyView(next) },
     drawPreview(sourceCanvas, now = performance.now()) {
       if (!sourceCanvas || now - lastPreviewAt < 200) return

@@ -9,7 +9,7 @@
 >
 > ```bash
 > npm install && npm run dev   # 开发
-> npm test                     # 单元测试(vitest,66 个)
+> npm test                     # 单元测试(vitest)
 > npm run build                # 构建
 > ```
 
@@ -52,11 +52,11 @@ No API keys or environment variables needed.
 
 ## Deploy
 
-Pushing to `main` auto-deploys to GitHub Pages via the included workflow. Alternatively, any static host works:
+Pushing to `main` auto-builds and deploys to Cloudflare Pages through the configured Git integration. For a deliberate manual Pages upload, build first and deploy the exact `dist` candidate:
 
 ```bash
 npm run build
-npx wrangler deploy   # Cloudflare (uses wrangler.jsonc)
+npx wrangler pages deploy dist --project-name trip-3d
 ```
 
 ## Tech

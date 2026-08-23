@@ -46,8 +46,10 @@ import { routeToGpx, gpxToRoute } from './lib/gpx.js'
 import { encodeShare, decodeShare } from './lib/share.js'
 import { createModeMachine, MODES } from './ui/mode.js'
 import { createRail, createPanelHost, createLayerButtons, createToast } from './ui/chrome.js'
+import { iconSvg } from './ui/icons.js'
 import { createPlanningPanel, createLibraryPanel, createProfileCard } from './ui/panels.js'
 import { createWeatherPanel } from './ui/weatherPanel.js'
+import { createSettingsPanel } from './ui/settingsPanel.js'
 import { createOpenMeteoProvider, createOpenMeteoArchiveProvider } from './providers/openmeteo.js'
 import { createGeocodeProvider } from './providers/geocode.js'
 import { createRoutingProvider } from './providers/routing.js'
@@ -755,6 +757,9 @@ renderer.domElement.addEventListener('pointerup', (e) => {
 let dem = null
 let demBusy = false
 let demRequestId = 0
+let settingsPanel = null
+let layerBtns = null
+let settingsTerrainReadyText = ''
 // terrain-ready contract: the latest successful load bumps terrainGen; when the
 // rebuild completes, waiters resolve with the built generation. Callers compare
 // gens to detect supersession (search-add / snap flows). No demBusy polling.
@@ -767,6 +772,7 @@ async function loadRealTerrain() {
   const requestId = ++demRequestId
   const request = { lat: params.demLat, lon: params.demLon, zoom: params.demZoom, tilesAcross: params.tilesAcross }
   demBusy = true
+  settingsPanel?.setTerrainStatus('loading', '正在获取高程数据…')
   loadingEl.textContent = 'fetching elevation tiles…'
   loadingEl.classList.remove('hidden')
   try {
@@ -782,11 +788,17 @@ async function loadRealTerrain() {
     // in regenerateTerrain()'s completion callback below
     params.source = 'real'
     gui.controllersRecursive().forEach((c) => c.updateDisplay())
+    syncSettingsControls()
     loadingEl.textContent = 'generating terrain…'
+    const loadedGen = terrainGen
     regenerateTerrain()
+    whenTerrainBuilt(loadedGen).then((built) => {
+      if (built >= loadedGen) settingsPanel?.setTerrainStatus('ready', '地形已更新')
+    })
   } catch (err) {
     if (requestId !== demRequestId) return
     console.error('DEM load failed:', err)
+    settingsPanel?.setTerrainStatus('error', '高程数据加载失败，请检查网络后重试。')
     loadingEl.textContent = 'elevation fetch failed — check connection'
     setTimeout(() => {
       loadingEl.classList.add('hidden')
@@ -1027,6 +1039,10 @@ function regenerateTerrain() {
         return
       }
       loadingEl.classList.add('hidden')
+      if (settingsTerrainReadyText) {
+        settingsPanel?.setTerrainStatus('ready', settingsTerrainReadyText)
+        settingsTerrainReadyText = ''
+      }
       // resolve terrain-ready waiters with the generation that just built
       for (const w of terrainWaiters.splice(0)) w.res(terrainGen)
     }, 30)
@@ -1279,7 +1295,12 @@ fSource
   .name('source')
   .onChange((v) => {
     if (v === 'real') loadRealTerrain()
-    else regenerateTerrain()
+    else {
+      settingsPanel?.setTerrainStatus('loading', '正在生成程序化地形…')
+      settingsTerrainReadyText = '已切换到程序化地形'
+      regenerateTerrain()
+    }
+    syncSettingsControls()
   })
 const latCtrl = { lat: null, lon: null }
 fSource
@@ -1293,27 +1314,31 @@ fSource
     latCtrl.lat.updateDisplay()
     latCtrl.lon.updateDisplay()
     if (params.source === 'real') loadRealTerrain()
+    syncSettingsControls()
   })
-latCtrl.lat = fSource.add(params, 'demLat', -85, 85, 0.0001).name('latitude')
-latCtrl.lon = fSource.add(params, 'demLon', -180, 180, 0.0001).name('longitude')
+latCtrl.lat = fSource.add(params, 'demLat', -85, 85, 0.0001).name('latitude').onChange(syncSettingsControls)
+latCtrl.lon = fSource.add(params, 'demLon', -180, 180, 0.0001).name('longitude').onChange(syncSettingsControls)
 fSource
   .add(params, 'demZoom', [8, 9, 10, 11, 12, 13, 14])
   .name('detail (zoom)')
   .onChange(() => {
     if (params.source === 'real') loadRealTerrain()
+    syncSettingsControls()
   })
 fSource
   .add(params, 'demExaggeration', 0.5, 5, 0.1)
   .name('vertical scale')
   .onFinishChange(() => {
     if (params.source === 'real') regenerateTerrain()
+    syncSettingsControls()
   })
 fSource.add({ load: () => loadRealTerrain() }, 'load').name('load location ⤓')
 
 const fRouteStyle = gui.addFolder('Route style')
-fRouteStyle.add(params, 'routeSlopeColors').name('slope gradient').onChange(refreshRoute)
-fRouteStyle.add(params, 'routeArrows').name('direction arrows').onChange(refreshRoute)
-fRouteStyle.add(params, 'routeTicks').name('distance ticks').onChange(refreshRoute)
+const refreshRouteSetting = () => { refreshRoute(); syncSettingsControls() }
+fRouteStyle.add(params, 'routeSlopeColors').name('slope gradient').onChange(refreshRouteSetting)
+fRouteStyle.add(params, 'routeArrows').name('direction arrows').onChange(refreshRouteSetting)
+fRouteStyle.add(params, 'routeTicks').name('distance ticks').onChange(refreshRouteSetting)
 
 const fTerrain = gui.addFolder('Terrain')
 fTerrain.add(params, 'seed', 1, 9999, 1).onFinishChange(regenerateTerrain)
@@ -1396,23 +1421,23 @@ fMap
 const contourOpacityCtrl = fMap
   .add(params, 'contourOpacity', 0, 1, 0.02)
   .name('contour opacity')
-  .onChange((v) => (terrain.mapUniforms.uContourOpacity.value = v))
+  .onChange((v) => { terrain.mapUniforms.uContourOpacity.value = v; reflectLayerSetting('contour', v > 0) })
 fMap
   .addColor(params, 'contourColor')
   .name('contour color')
   .onChange((v) => terrain.mapUniforms.uContourColor.value.set(v))
-const gridOpacityCtrl = fMap.add(params, 'gridOpacity', 0, 1, 0.02).name('grid opacity').onChange((v) => (terrain.mapUniforms.uGridOpacity.value = v))
-const labelsCtrl = fMap.add(params, 'labels').name('place labels').onChange((v) => (labels.visible = v))
+const gridOpacityCtrl = fMap.add(params, 'gridOpacity', 0, 1, 0.02).name('grid opacity').onChange((v) => { terrain.mapUniforms.uGridOpacity.value = v; reflectLayerSetting('grid', v > 0) })
+const labelsCtrl = fMap.add(params, 'labels').name('place labels').onChange((v) => { labels.visible = v; reflectLayerSetting('labels', v) })
 fMap.add(params, 'gridStep', 2, 14, 0.5).name('grid size').onChange((v) => (terrain.mapUniforms.uGridStep.value = v))
 
 const fLook = gui.addFolder('Look')
-fLook.add(params, 'exposure', 0.2, 3, 0.02).onChange((v) => (exposureFx.uniforms.get('exposure').value = v))
-fLook.add(params, 'contrast', -0.2, 0.5, 0.01).onChange((v) => (contrastFx.uniforms.get('contrast').value = v))
-fLook.add(params, 'saturation', -1, 0, 0.02).onChange((v) => (hueSat.saturation = v))
+fLook.add(params, 'exposure', 0.2, 3, 0.02).onChange((v) => { exposureFx.uniforms.get('exposure').value = v; syncSettingsControls() })
+fLook.add(params, 'contrast', -0.2, 0.5, 0.01).onChange((v) => { contrastFx.uniforms.get('contrast').value = v; syncSettingsControls() })
+fLook.add(params, 'saturation', -1, 0, 0.02).onChange((v) => { hueSat.saturation = v; syncSettingsControls() })
 fLook.add(params, 'vignette', 0, 1, 0.02).onChange((v) => (vignette.darkness = v))
 fLook.add(params, 'grain', 0, 0.5, 0.01).onChange((v) => (grain.blendMode.opacity.value = v))
-fLook.add(params, 'fogNear', 5, 60, 0.5).name('fog start').onChange((v) => (scene.fog.near = v))
-fLook.add(params, 'fogFar', 15, 90, 0.5).name('fog end').onChange((v) => (scene.fog.far = v))
+fLook.add(params, 'fogNear', 5, 60, 0.5).name('fog start').onChange((v) => { scene.fog.near = v; syncSettingsControls() })
+fLook.add(params, 'fogFar', 15, 90, 0.5).name('fog end').onChange((v) => { scene.fog.far = v; syncSettingsControls() })
 fLook.addColor(params, 'fogColor').onChange((v) => {
   scene.fog.color.set(v)
   scene.background.set(v)
@@ -1420,7 +1445,7 @@ fLook.addColor(params, 'fogColor').onChange((v) => {
 fLook.add(params, 'surveyLines').name('survey circles').onChange((v) => (hud3.lines.visible = v))
 
 const fHud = gui.addFolder('HUD')
-const hudCtrl = fHud.add(params, 'hud').name('show HUD').onChange((v) => hud2.setVisible(v))
+const hudCtrl = fHud.add(params, 'hud').name('show HUD').onChange((v) => { hud2.setVisible(v); reflectLayerSetting('hud', v) })
 fHud.add(params, 'hudOpacity', 0, 1, 0.02).name('HUD opacity').onChange((v) => hud2.setOpacity(v))
 fHud
   .add(params, 'uiBlur', 0, 30, 1)
@@ -1605,7 +1630,7 @@ function updateRouteUI(route, stats, pts) {
     weatherPanel.setTripDays?.(tripDays)
   }
   // collapsed panel header still shows live route state; POI tags dim under a route
-  panelHost.setSummary(route.waypoints.length ? `${route.name} · ${((stats?.distanceM ?? 0) / 1000).toFixed(1)}km · ${route.waypoints.length}点` : '')
+  panelHost.setSummary(route.waypoints.length ? `${route.name} · ${((stats?.distanceM ?? 0) / 1000).toFixed(1)}km · ${route.waypoints.length}点` : '点击地图添加途经点')
   hud2.root.classList.toggle('has-route', route.waypoints.length > 0)
   // weather band only when a fresh result matches this route revision
   const wxDays = weatherState.result && weatherState.revision === route.revision ? weatherState.result.agg : null
@@ -2138,6 +2163,7 @@ function applyRouteModeState(nextMode, { persist = true, refresh = true } = {}) 
 }
 
 const routeActions = {
+  onMapFocus: () => { panelHost.setSheetState('peek'); overviewMap.focusPlanner?.() },
   onNameChange: (v) => { route.name = v; params.routeName = v },
   onUndo: () => { if (routeHistory.undo(route)) applyRouteModeState(route.mode) },
   onRedo: () => { if (routeHistory.redo(route)) applyRouteModeState(route.mode) },
@@ -2350,6 +2376,7 @@ window.addEventListener('keydown', (e) => {
 })
 
 function showTab(id) {
+  if (settingsDrawer?.classList.contains('open')) setSettingsOpen(false, { restoreFocus: false })
   if (id === 'planning') { panelHost.setCollapsed(false); mode.enterPlanning(); return }
   if (panelHost.currentId === id) { panelHost.hide(); rail.clearActive(); return }
   if (mode.isPlanning()) mode.exitPlanning()
@@ -2362,18 +2389,18 @@ function showTab(id) {
 
 const rail = createRail({
   items: [
-    { id: 'planning', icon: '🗺', label: '规划', onSelect: () => mode.togglePlanning() },
-    { id: 'library', icon: '📁', label: '线路库', onSelect: () => showTab('library') },
-    { id: 'weather', icon: '🌦', label: '天气', badge: null, disabled: false, onSelect: () => showTab('weather') },
-    { id: 'share', icon: '↗', label: '分享', badge: null, disabled: false, onSelect: () => showTab('share') },
+    { id: 'planning', icon: 'planning', label: '规划', onSelect: () => mode.togglePlanning() },
+    { id: 'library', icon: 'library', label: '线路库', onSelect: () => showTab('library') },
+    { id: 'weather', icon: 'weather', label: '天气', badge: null, disabled: false, onSelect: () => showTab('weather') },
+    { id: 'share', icon: 'share', label: '分享', badge: null, disabled: false, onSelect: () => showTab('share') },
   ],
-  settingsItem: { id: 'settings', icon: '⚙', label: '设置', onSelect: () => toggleSettings() },
+  settingsItem: { id: 'settings', icon: 'settings', label: '设置', onSelect: () => toggleSettings() },
 })
 
 // shortcuts help overlay (rail bottom, above settings)
 const helpBtn = document.createElement('button')
 helpBtn.className = 'ui-rail-btn ui-rail-help'
-helpBtn.innerHTML = '<span class="ico">?</span><span class="lbl">快捷键</span>'
+helpBtn.innerHTML = `<span class="ico">${iconSvg('help')}</span><span class="lbl">快捷键</span>`
 rail.el.insertBefore(helpBtn, rail.el.lastElementChild)
 const helpOv = document.createElement('div')
 helpOv.className = 'ui-help-overlay hidden'
@@ -2403,34 +2430,150 @@ attrib.innerHTML =
   'elevation <a href="https://registry.opendata.aws/terrain-tiles/" target="_blank" rel="noreferrer">Mapzen Terrarium</a>'
 document.body.appendChild(attrib)
 
-// settings drawer hosts the whole lil-gui (demoted chrome)
+function layerSettingsSnapshot() {
+  const fallback = {
+    contour: params.contourOpacity > 0,
+    grid: params.gridOpacity > 0,
+    labels: !!params.labels,
+    mapov: !!params.mapOverlay,
+    admin: !!adminState.on,
+    sun: !!sunState.on,
+    hud: !!params.hud,
+  }
+  for (const id of Object.keys(fallback)) fallback[id] = layerBtns?.get(id)?.isOn() ?? fallback[id]
+  return fallback
+}
+
+function syncSettingsControls() {
+  settingsPanel?.sync({ params, layers: layerSettingsSnapshot() })
+}
+
+function reflectLayerSetting(id, on) {
+  layerBtns?.get(id)?.set(!!on)
+  syncSettingsControls()
+}
+
+function updateLegacySettings() {
+  gui.controllersRecursive().forEach((controller) => controller.updateDisplay())
+}
+
+function applyNativeSetting(key, value, { commit = true } = {}) {
+  if (['demLat', 'demLon', 'demZoom', 'demExaggeration', 'exposure', 'contrast', 'saturation', 'fogNear', 'fogFar'].includes(key)) value = Number(value)
+  if (key === 'source') {
+    params.source = value
+    if (value === 'real') loadRealTerrain()
+    else {
+      settingsPanel?.setTerrainStatus('loading', '正在生成程序化地形…')
+      settingsTerrainReadyText = '已切换到程序化地形'
+      regenerateTerrain()
+    }
+  } else if (key === 'demLocation') {
+    params.demLocation = value
+    const preset = DEM_PRESETS[value]
+    if (preset) {
+      params.demLat = preset[0]
+      params.demLon = preset[1]
+      if (params.source === 'real') loadRealTerrain()
+    }
+  } else if (key === 'demLat' || key === 'demLon') {
+    params[key] = value
+    params.demLocation = 'Custom'
+  } else if (key === 'demZoom') {
+    params.demZoom = value
+    if (params.source === 'real') loadRealTerrain()
+  } else if (key === 'demExaggeration') {
+    params.demExaggeration = value
+    if (commit && params.source === 'real') regenerateTerrain()
+  } else if (['routeSlopeColors', 'routeArrows', 'routeTicks'].includes(key)) {
+    params[key] = !!value
+    refreshRoute()
+  } else if (key === 'exposure') {
+    params.exposure = value
+    exposureFx.uniforms.get('exposure').value = value
+  } else if (key === 'contrast') {
+    params.contrast = value
+    contrastFx.uniforms.get('contrast').value = value
+  } else if (key === 'saturation') {
+    params.saturation = value
+    hueSat.saturation = value
+  } else if (key === 'fogNear') {
+    params.fogNear = value
+    scene.fog.near = value
+  } else if (key === 'fogFar') {
+    params.fogFar = value
+    scene.fog.far = value
+  }
+  updateLegacySettings()
+  syncSettingsControls()
+}
+
+function applyNativeLayer(id, on) {
+  layerBtns?.get(id)?.set(!!on, { notify: true })
+  updateLegacySettings()
+  syncSettingsControls()
+}
+
+function loadCurrentSettingsTerrain() {
+  if (params.source === 'real') loadRealTerrain()
+  else {
+    settingsPanel?.setTerrainStatus('loading', '正在生成程序化地形…')
+    settingsTerrainReadyText = '程序化地形已更新'
+    regenerateTerrain()
+  }
+}
+
+// settings drawer: native high-frequency controls + retained legacy experiment controls
 const settingsDrawer = document.createElement('div')
 settingsDrawer.className = 'ui-settings'
 settingsDrawer.setAttribute('role', 'dialog')
-settingsDrawer.setAttribute('aria-label', '高级设置')
+settingsDrawer.setAttribute('aria-label', '显示与地形设置')
 settingsDrawer.setAttribute('aria-hidden', 'true')
 settingsDrawer.inert = true
 document.body.appendChild(settingsDrawer)
-settingsDrawer.appendChild(gui.domElement)
 let settingsReturnFocus = null
+settingsPanel = createSettingsPanel({
+  presets: Object.keys(DEM_PRESETS),
+  advancedEl: gui.domElement,
+  onClose: () => setSettingsOpen(false),
+  onSetting: applyNativeSetting,
+  onLayer: applyNativeLayer,
+  onLoad: loadCurrentSettingsTerrain,
+})
+settingsDrawer.appendChild(settingsPanel.el)
+syncSettingsControls()
+
+function setSettingsOpen(open, { restoreFocus = true } = {}) {
+  if (open) {
+    settingsReturnFocus = document.activeElement
+    plannerWorkspace.setLayersOpen(false)
+    if (!mode.isPlanning() && panelHost.currentId) {
+      panelHost.hide()
+      rail.clearActive()
+    }
+    syncSettingsControls()
+  }
+  setDrawerOpen(settingsDrawer, open, restoreFocus ? settingsReturnFocus : null)
+}
+
 function toggleSettings() {
   const open = !settingsDrawer.classList.contains('open')
-  if (open) settingsReturnFocus = document.activeElement
-  setDrawerOpen(settingsDrawer, open, settingsReturnFocus)
+  setSettingsOpen(open)
 }
 
 // high-frequency layer toggles (reuse lil-gui controllers so onChange chains fire)
-const layerBtns = createLayerButtons({
+layerBtns = createLayerButtons({
   buttons: [
-    { id: 'contour', icon: '〰', tip: '等高线', initial: params.contourOpacity > 0, onToggle: (id, on) => contourOpacityCtrl.setValue(on ? 1 : 0) },
-    { id: 'grid', icon: '⊹', tip: '测量网格', initial: params.gridOpacity > 0, onToggle: (id, on) => gridOpacityCtrl.setValue(on ? 1 : 0) },
-    { id: 'labels', icon: '▲', tip: '山峰标签', initial: params.labels, onToggle: (id, on) => labelsCtrl.setValue(on) },
-    { id: 'mapov', icon: '🛣', tip: '路网叠加', initial: params.mapOverlay, onToggle: (id, on) => { params.mapOverlay = on; terrain.setOverlayMix(on ? 0.55 : 0) } },
-    { id: 'admin', icon: '🏛', tip: '行政区划', initial: false, repeatOpensPanel: true, onToggle: (id, on) => setAdminEnabled(on), onPanelToggle: (id, open) => setAdminPanelOpen(open) },
-    { id: 'sun', icon: '☀', tip: '日照分析', initial: false, onToggle: (id, on) => { sunState.on = on; sunPanel.classList.toggle('hidden', !on); document.body.classList.toggle('sun-open', on); if (on) applySun() } },
-    { id: 'hud', icon: '◎', tip: 'HUD', initial: params.hud, onToggle: (id, on) => hudCtrl.setValue(on) },
+    { id: 'contour', icon: 'contour', tip: '等高线', initial: params.contourOpacity > 0, onToggle: (id, on) => contourOpacityCtrl.setValue(on ? 1 : 0) },
+    { id: 'grid', icon: 'grid', tip: '测量网格', initial: params.gridOpacity > 0, onToggle: (id, on) => gridOpacityCtrl.setValue(on ? 1 : 0) },
+    { id: 'labels', icon: 'labels', tip: '山峰标签', initial: params.labels, onToggle: (id, on) => labelsCtrl.setValue(on) },
+    { id: 'mapov', icon: 'roads', tip: '路网叠加', initial: params.mapOverlay, onToggle: (id, on) => { params.mapOverlay = on; terrain.setOverlayMix(on ? 0.55 : 0) } },
+    { id: 'admin', icon: 'admin', tip: '行政区划', initial: false, repeatOpensPanel: true, onToggle: (id, on) => setAdminEnabled(on), onPanelToggle: (id, open) => setAdminPanelOpen(open) },
+    { id: 'sun', icon: 'sun', tip: '日照分析', initial: false, onToggle: (id, on) => { sunState.on = on; sunPanel.classList.toggle('hidden', !on); document.body.classList.toggle('sun-open', on); if (on) applySun() } },
+    { id: 'hud', icon: 'hud', tip: 'HUD', initial: params.hud, onToggle: (id, on) => hudCtrl.setValue(on) },
   ],
+  onStateChange: syncSettingsControls,
 })
+syncSettingsControls()
 
 // restore shared route from URL hash BEFORE the default DEM load below.
 // The startup line runs `if (params.source === 'real') loadRealTerrain()` once —

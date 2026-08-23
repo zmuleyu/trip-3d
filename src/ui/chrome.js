@@ -1,5 +1,6 @@
 // UI chrome: left icon rail, flyout panel, layer buttons, toast.
 import { nextLayerButtonAction } from './chromeState.js'
+import { iconSvg } from './icons.js'
 // Framework-free DOM components matching the mockup (dist/ui-mockup.html).
 // Style lives in src/style.css (.ui-*).
 
@@ -19,7 +20,7 @@ export function createRail({ items, settingsItem }) {
     const b = document.createElement('button')
     b.className = `ui-rail-btn ${extraClass}`.trim()
     b.dataset.tab = item.id
-    b.innerHTML = `<span class="ico">${item.icon}</span><span class="lbl">${item.label}</span>`
+    b.innerHTML = `<span class="ico">${iconSvg(item.icon)}</span><span class="lbl">${item.label}</span>`
     if (item.badge) {
       const badge = document.createElement('span')
       badge.className = 'ui-rail-badge'
@@ -57,6 +58,9 @@ export function createPanelHost() {
   document.body.appendChild(el)
   let currentId = null
   let collapsed = false
+  let sheetState = 'half'
+  let drag = null
+  let dragged = false
   const h = document.createElement('h2')
   const summary = document.createElement('span')
   summary.className = 'ui-panel-summary'
@@ -67,14 +71,85 @@ export function createPanelHost() {
   const body = document.createElement('div')
   body.className = 'ui-panel-body'
   body.id = 'ui-panel-body'
+  const grabber = document.createElement('button')
+  grabber.type = 'button'
+  grabber.className = 'ui-sheet-grabber'
+  grabber.setAttribute('aria-label', '调整规划面板高度')
+  grabber.innerHTML = '<span></span>'
   chev.setAttribute('aria-controls', body.id)
+  const mobileQuery = globalThis.matchMedia?.('(max-width: 720px)')
+  const isMobilePlanner = () => currentId === 'planning' && mobileQuery?.matches
+  const sheetHeights = () => {
+    const full = Math.max(220, window.innerHeight - 114)
+    const half = Math.max(160, Math.min(full - 24, 470, window.innerHeight * 0.47))
+    return { peek: Math.min(96, half - 24), half, full }
+  }
+  const sheetLabel = () => sheetState === 'peek' ? '展开规划面板' : sheetState === 'half' ? '展开到全屏' : '收起为摘要'
+  const sheetStateLabel = () => ({ peek: '摘要', half: '半屏', full: '全屏' })[sheetState]
   const apply = () => {
     el.classList.toggle('collapsed', collapsed)
-    chev.textContent = collapsed ? '▸' : '▾'
-    chev.setAttribute('aria-expanded', String(!collapsed))
-    chev.setAttribute('aria-label', collapsed ? '展开面板' : '收起面板')
+    el.dataset.sheetState = sheetState
+    const mobile = isMobilePlanner()
+    chev.textContent = mobile ? (sheetState === 'full' ? '⌄' : '⌃') : (collapsed ? '▸' : '▾')
+    chev.setAttribute('aria-expanded', String(mobile ? sheetState !== 'peek' : !collapsed))
+    chev.setAttribute('aria-label', mobile ? sheetLabel() : (collapsed ? '展开面板' : '收起面板'))
+    grabber.setAttribute('aria-label', `调整面板高度；当前${sheetStateLabel()}`)
   }
-  chev.onclick = () => { collapsed = !collapsed; apply() }
+  const nextSheetState = () => ({ peek: 'half', half: 'full', full: 'peek' })[sheetState]
+  const setSheetState = (next) => {
+    if (!['peek', 'half', 'full'].includes(next)) return
+    sheetState = next
+    el.style.removeProperty('--sheet-drag-height')
+    el.classList.remove('dragging')
+    apply()
+  }
+  chev.onclick = () => {
+    if (isMobilePlanner()) setSheetState(nextSheetState())
+    else { collapsed = !collapsed; apply() }
+  }
+  const project = (velocity) => (velocity / 1000) * 0.99 / (1 - 0.99)
+  const nearestSheetState = (height, velocity = 0) => {
+    const heights = sheetHeights()
+    const projected = height + project(velocity)
+    return Object.entries(heights).reduce((best, entry) => Math.abs(entry[1] - projected) < Math.abs(best[1] - projected) ? entry : best)[0]
+  }
+  grabber.addEventListener('pointerdown', (event) => {
+    if (!isMobilePlanner()) return
+    grabber.setPointerCapture?.(event.pointerId)
+    const height = el.getBoundingClientRect().height
+    drag = { pointerId: event.pointerId, startY: event.clientY, startHeight: height, history: [{ y: event.clientY, t: event.timeStamp }] }
+    dragged = false
+    el.classList.add('dragging')
+    el.style.setProperty('--sheet-drag-height', `${height}px`)
+  })
+  grabber.addEventListener('pointermove', (event) => {
+    if (!drag || drag.pointerId !== event.pointerId) return
+    const heights = sheetHeights()
+    const raw = drag.startHeight - (event.clientY - drag.startY)
+    const clamped = Math.max(heights.peek - 24, Math.min(heights.full + 24, raw))
+    dragged ||= Math.abs(event.clientY - drag.startY) > 8
+    drag.history.push({ y: event.clientY, t: event.timeStamp })
+    drag.history = drag.history.filter((sample) => event.timeStamp - sample.t <= 120)
+    el.style.setProperty('--sheet-drag-height', `${clamped}px`)
+  })
+  const finishDrag = (event) => {
+    if (!drag || drag.pointerId !== event.pointerId) return
+    const samples = drag.history
+    const first = samples[0]
+    const last = samples[samples.length - 1] ?? first
+    const dt = Math.max(1, last.t - first.t)
+    const velocity = -((last.y - first.y) / dt) * 1000
+    const height = el.getBoundingClientRect().height
+    drag = null
+    setSheetState(nearestSheetState(height, velocity))
+  }
+  grabber.addEventListener('pointerup', finishDrag)
+  grabber.addEventListener('pointercancel', finishDrag)
+  grabber.onclick = () => {
+    if (dragged) { dragged = false; return }
+    if (isMobilePlanner()) setSheetState(nextSheetState())
+  }
+  mobileQuery?.addEventListener?.('change', apply)
   return {
     el,
     get currentId() { return currentId },
@@ -90,11 +165,14 @@ export function createPanelHost() {
         h.insertBefore(s, summary)
       }
       body.replaceChildren(contentEl)
-      el.replaceChildren(h, body)
+      el.replaceChildren(grabber, h, body)
       el.classList.remove('hidden')
+      if (id === 'planning') sheetState = 'half'
       apply()
     },
     setCollapsed(v) { collapsed = v; apply() },
+    get sheetState() { return sheetState },
+    setSheetState,
     // one-line state shown in the header even when collapsed
     setSummary(text) { summary.textContent = text ?? '' },
     hide() {
@@ -106,14 +184,15 @@ export function createPanelHost() {
 
 // ---------------------------------------------------------------- layer buttons
 // buttons: [{ id, icon, tip, initial, onToggle(id, on) }] → circular toggles, top-right
-export function createLayerButtons({ buttons }) {
+export function createLayerButtons({ buttons, onStateChange } = {}) {
   const el = document.createElement('div')
   el.className = 'ui-layers'
+  el.id = 'ui-layer-tools'
   const map = new Map()
   for (const b of buttons) {
     const btn = document.createElement('button')
     btn.className = 'ui-layer-btn'
-    btn.textContent = b.icon
+    btn.innerHTML = iconSvg(b.icon)
     btn.dataset.id = b.id
     const tip = document.createElement('span')
     tip.className = 'ui-layer-tip'
@@ -135,12 +214,23 @@ export function createLayerButtons({ buttons }) {
       if (b.repeatOpensPanel) btn.setAttribute('aria-expanded', String(panelOpen))
       if (next.toggled) b.onToggle(b.id, on)
       else b.onPanelToggle?.(b.id, panelOpen)
+      onStateChange?.(b.id, on)
     }
     map.set(b.id, {
       btn,
       isOn: () => on,
       isPanelOpen: () => panelOpen,
-      set(v) { on = v; if (!v) panelOpen = false; btn.classList.toggle('on', v); btn.classList.toggle('panel-open', panelOpen); btn.setAttribute('aria-pressed', String(v)); if (b.repeatOpensPanel) btn.setAttribute('aria-expanded', String(panelOpen)) },
+      set(v, { notify = false } = {}) {
+        const changed = on !== !!v
+        on = !!v
+        if (!on) panelOpen = false
+        btn.classList.toggle('on', on)
+        btn.classList.toggle('panel-open', panelOpen)
+        btn.setAttribute('aria-pressed', String(on))
+        if (b.repeatOpensPanel) btn.setAttribute('aria-expanded', String(panelOpen))
+        if (notify && changed) b.onToggle(b.id, on)
+        onStateChange?.(b.id, on)
+      },
       setPanelOpen(v) { panelOpen = !!v; btn.classList.toggle('panel-open', panelOpen); if (b.repeatOpensPanel) btn.setAttribute('aria-expanded', String(panelOpen)) },
     })
     el.appendChild(btn)

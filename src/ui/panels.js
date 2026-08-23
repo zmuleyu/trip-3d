@@ -15,6 +15,7 @@ const fmtDur = (minutes) => {
 
 export function createPlanningPanel(actions) {
   const el = document.createElement('div')
+  el.className = 'pp-root'
 
   // ---- place search (explicit trigger only — Nominatim policy bans autocomplete)
   const searchWrap = document.createElement('div')
@@ -59,6 +60,20 @@ export function createPlanningPanel(actions) {
   snapStatus.className = 'pp-snap-status'
   snapRow.append(modeGroup, snapStatus)
   el.appendChild(snapRow)
+
+  const mobilePrimary = document.createElement('div')
+  mobilePrimary.className = 'pp-mobile-primary'
+  const mapFocus = document.createElement('button')
+  mapFocus.type = 'button'
+  mapFocus.className = 'primary'
+  mapFocus.textContent = '回到地图继续加点'
+  mapFocus.onclick = () => actions.onMapFocus?.()
+  const mobileSave = document.createElement('button')
+  mobileSave.type = 'button'
+  mobileSave.textContent = '保存路线'
+  mobileSave.onclick = () => actions.onSave?.()
+  mobilePrimary.append(mapFocus, mobileSave)
+  el.appendChild(mobilePrimary)
 
   // ---- amap link import (below snap row)
   const amapRow = document.createElement('div')
@@ -161,6 +176,7 @@ export function createPlanningPanel(actions) {
       if (document.activeElement !== name) name.value = route.name
       wpList.replaceChildren()
       const n = route.waypoints.length
+      mobileSave.disabled = n < 2
       // loop route: last point within ~25m of the first → merged start/end marker
       const wpsArr = route.waypoints
       const isLoop = n > 1 && Math.hypot(wpsArr[0].lon - wpsArr[n - 1].lon, wpsArr[0].lat - wpsArr[n - 1].lat) < 0.0003

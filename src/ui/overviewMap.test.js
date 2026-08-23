@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createOverviewMap } from './overviewMap.js'
 
 const ctx = {
-  clearRect: vi.fn(), fillRect: vi.fn(), drawImage: vi.fn(), beginPath: vi.fn(), moveTo: vi.fn(), lineTo: vi.fn(), stroke: vi.fn(), arc: vi.fn(), fill: vi.fn(), setLineDash: vi.fn(), strokeRect: vi.fn(),
+  clearRect: vi.fn(), fillRect: vi.fn(), drawImage: vi.fn(), beginPath: vi.fn(), moveTo: vi.fn(), lineTo: vi.fn(), stroke: vi.fn(), arc: vi.fn(), fill: vi.fn(), setLineDash: vi.fn(), strokeRect: vi.fn(), setTransform: vi.fn(),
   set fillStyle(_) {}, set strokeStyle(_) {}, set lineWidth(_) {},
 }
 

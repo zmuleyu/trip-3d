@@ -1,0 +1,49 @@
+// @vitest-environment jsdom
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { createSettingsPanel } from './settingsPanel.js'
+
+beforeEach(() => { document.body.replaceChildren() })
+
+describe('native settings panel', () => {
+  it('emits controlled setting and layer changes', () => {
+    const onSetting = vi.fn()
+    const onLayer = vi.fn()
+    const panel = createSettingsPanel({ presets: ['Monument Valley', 'Custom'], onSetting, onLayer })
+    document.body.appendChild(panel.el)
+    const source = panel.el.querySelector('[aria-label="地形来源"]')
+    source.value = 'noise'
+    source.dispatchEvent(new Event('change'))
+    expect(onSetting).toHaveBeenCalledWith('source', 'noise', { commit: true })
+    const contour = panel.el.querySelector('[aria-label="等高线"]')
+    contour.click()
+    expect(onLayer).toHaveBeenCalledWith('contour', true)
+  })
+
+  it('syncs route, numeric, and layer state without creating a second state source', () => {
+    const panel = createSettingsPanel({ presets: ['Custom'] })
+    document.body.appendChild(panel.el)
+    panel.sync({
+      params: { source: 'real', demLocation: 'Custom', demLat: 31.2, demLon: 121.4, demZoom: 11, demExaggeration: 1.8, routeArrows: true, exposure: .92 },
+      layers: { contour: true, hud: false },
+    })
+    expect(panel.el.querySelector('[aria-label="纬度"]').value).toBe('31.2')
+    expect(panel.el.querySelector('[aria-label="地图精度"]').value).toBe('11')
+    expect(panel.el.querySelector('[aria-label="方向箭头"]').checked).toBe(true)
+    expect(panel.el.querySelector('[aria-label="等高线"]').checked).toBe(true)
+    expect(panel.el.querySelector('[aria-label="HUD 信息"]').checked).toBe(false)
+  })
+
+  it('owns close, loading, and retained advanced controls', () => {
+    const onClose = vi.fn()
+    const advanced = document.createElement('div')
+    advanced.textContent = 'legacy controls'
+    const panel = createSettingsPanel({ presets: ['Custom'], advancedEl: advanced, onClose })
+    document.body.appendChild(panel.el)
+    expect(panel.el.querySelector('.settings-advanced').textContent).toContain('legacy controls')
+    panel.setTerrainStatus('loading', '正在获取高程数据')
+    expect(panel.el.querySelector('.settings-primary').disabled).toBe(true)
+    expect(panel.el.querySelector('[role="status"]').textContent).toContain('正在获取')
+    panel.closeButton.click()
+    expect(onClose).toHaveBeenCalledOnce()
+  })
+})
