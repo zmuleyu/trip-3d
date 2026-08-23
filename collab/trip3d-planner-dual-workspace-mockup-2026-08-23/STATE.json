@@ -1,0 +1,16 @@
+{
+  "state": "GOAL_CLOSEOUT_COMPLETE",
+  "goal": "2D 精确规划 + 3D 地形预览高保真 Mockup",
+  "owner": "hermes-main-session",
+  "authority": "single-writer",
+  "repo": {
+    "branch": "main",
+    "implementation_head": "49e4c65",
+    "dirty": false
+  },
+  "phase": "DONE",
+  "last_green": "desktop 1440x1000 + mobile 390x844 + keyboard + a11y tree + 0 runtime errors",
+  "next_action": "open production implementation goal",
+  "watchers": {},
+  "updated_at": "2026-08-23T18:00:00+08:00"
+}

@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>trip-3d 路线规划方案 B — 2D 精确规划 + 3D 地形预览</title>
+<style>
+:root{
+  --ink:#17191b;
+  --muted:#687074;
+  --paper:#f8f7f4;
+  --paper-strong:#fff;
+  --line:#d6d4cf;
+  --line-strong:#adaaa4;
+  --orange:#ff4d00;
+  --orange-deep:#dd4300;
+  --green:#248155;
+  --red:#c53c32;
+  --warning:#a35216;
+  --warning-bg:#fff4e8;
+  --map:#ecebe6;
+  --shadow:0 18px 48px rgba(18,21,23,.18);
+  --sans:"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  --mono:"Cascadia Mono","SFMono-Regular",Consolas,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:#dfe1e2;color:var(--ink);font-family:var(--sans)}
+button,input{font:inherit;color:inherit}
+button{cursor:pointer}
+button:focus-visible,input:focus-visible{outline:3px solid rgba(255,77,0,.38);outline-offset:2px}
+.artifact{min-height:100vh;padding:18px}
+.reviewbar{max-width:1480px;height:58px;margin:0 auto;display:flex;align-items:center;gap:18px;padding:0 18px;background:#151718;color:#fff;border-radius:5px 5px 0 0}
+.reviewbar strong{font-size:13px;letter-spacing:.09em}
+.reviewbar .note{font-size:12px;color:rgba(255,255,255,.62)}
+.reviewbar .states{margin-left:auto;display:flex;gap:6px}
+.reviewbar button{min-height:38px;border:1px solid rgba(255,255,255,.26);background:transparent;color:#fff;padding:0 13px;border-radius:3px;font-size:12px}
+.reviewbar button.active{background:var(--orange);border-color:var(--orange)}
+.stage{position:relative;max-width:1480px;aspect-ratio:16/10;margin:0 auto;background:var(--paper);overflow:hidden;border:1px solid #b7b9ba;border-top:0;box-shadow:var(--shadow)}
+.appbar{position:absolute;left:0;right:0;top:0;height:62px;display:flex;align-items:center;gap:18px;padding:0 20px;background:rgba(248,247,244,.98);border-bottom:1px solid var(--line);z-index:30}
+.brand{display:flex;align-items:center;gap:11px;min-width:304px}
+.brandmark{width:36px;height:36px;display:grid;place-items:center;background:var(--ink);color:#fff;font:700 12px var(--mono);letter-spacing:.08em}
+.brandtext b{display:block;font-size:14px;letter-spacing:.05em}.brandtext span{display:block;margin-top:2px;font-size:10px;color:var(--muted)}
+.appbar .view-switch{display:flex;border:1px solid var(--line-strong);border-radius:4px;overflow:hidden}
+.appbar .view-switch button{min-height:36px;border:0;border-right:1px solid var(--line-strong);background:#fff;padding:0 14px;font-size:12px}.appbar .view-switch button:last-child{border-right:0}.appbar .view-switch button.active{background:var(--ink);color:#fff}
+.appbar .route-name{margin-left:4px;font-size:13px;font-weight:650}.appbar .save-state{font:11px var(--mono);color:var(--muted)}
+.appbar .top-actions{margin-left:auto;display:flex;gap:8px}.appbar .top-actions button{min-height:38px;border:1px solid var(--line-strong);background:#fff;padding:0 14px;border-radius:3px;font-size:12px}.appbar .top-actions .primary{background:var(--orange);border-color:var(--orange);color:#fff;font-weight:700}
+.workspace{position:absolute;inset:62px 0 0;display:grid;grid-template-columns:340px minmax(0,1fr);z-index:5}
+.sidebar{position:relative;background:rgba(248,247,244,.98);border-right:1px solid var(--line);padding:18px;overflow:auto;z-index:12}
+.section-label{margin:0 0 8px;font:700 10px var(--mono);letter-spacing:.12em;color:var(--muted)}
+.mode-choice{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--line-strong);border-radius:4px;overflow:hidden;margin-bottom:16px}.mode-choice button{min-height:42px;border:0;border-right:1px solid var(--line);background:#fff;font-size:12px}.mode-choice button:last-child{border-right:0}.mode-choice button.active{background:var(--ink);color:#fff}
+.field-stack{position:relative;margin-bottom:12px}.field-stack::before{content:"";position:absolute;left:15px;top:31px;bottom:31px;width:1px;background:var(--line-strong)}
+.place-field{position:relative;display:grid;grid-template-columns:30px 1fr 28px;align-items:center;min-height:58px;margin-bottom:6px;background:#fff;border:1px solid var(--line);border-radius:4px;padding:0 8px}.place-field .marker{position:relative;z-index:1;width:15px;height:15px;border-radius:50%;display:grid;place-items:center;background:var(--green);box-shadow:0 0 0 4px #fff}.place-field.end .marker{background:var(--red)}.place-field.via .marker{background:#fff;border:2px solid var(--orange)}
+.place-field label{display:block;font-size:10px;color:var(--muted);margin-bottom:2px}.place-field input{width:100%;border:0;background:transparent;padding:0;font-size:13px;font-weight:650}.place-field .drag{font:15px var(--mono);color:#9a9e9f;text-align:center}
+.add-stop{width:100%;min-height:38px;border:1px dashed var(--line-strong);background:transparent;border-radius:4px;font-size:12px;color:var(--muted);margin-bottom:18px}
+.summary{border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:14px 0;margin-bottom:16px}.summary-grid{display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:12px}.metric b{display:block;font:700 23px/1.1 var(--mono);letter-spacing:-.04em}.metric span{display:block;margin-top:5px;font-size:10px;color:var(--muted)}.metric:first-child b{color:var(--orange)}
+.confidence{display:flex;align-items:center;gap:7px;margin-top:12px;font-size:11px;color:var(--green)}.confidence i{width:7px;height:7px;border-radius:50%;background:var(--green)}
+.coverage-status{display:none;min-height:46px;align-items:center;margin-top:12px;padding:9px 10px;background:var(--warning-bg);border:1px solid #d78a50;color:#75330d;font-size:11px;font-weight:700}
+.route-tools{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:14px}.route-tools button{min-height:38px;border:1px solid var(--line);background:#fff;border-radius:3px;font-size:11px}.route-tools button:hover{border-color:var(--orange)}
+.plan-primary{width:100%;min-height:46px;background:var(--orange);border:1px solid var(--orange);color:#fff;border-radius:4px;font-weight:750}
+.plan-secondary{width:100%;min-height:42px;margin-top:8px;background:#fff;border:1px solid var(--line-strong);border-radius:4px;font-size:12px}
+.map-area{position:relative;overflow:hidden;background:var(--map)}
+.plan-map{position:absolute;inset:0;background-color:#eeede8;background-image:linear-gradient(rgba(23,25,27,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(23,25,27,.035) 1px,transparent 1px);background-size:40px 40px}
+.plan-map::after{content:"";position:absolute;inset:0;background:rgba(255,255,255,.14);pointer-events:none}
+.contours{position:absolute;inset:0;opacity:.55}.contours path{fill:none;stroke:#a8aaa8;stroke-width:1}.contours .minor{stroke:#c7c8c5;stroke-width:.7}.contours text{font:10px var(--mono);fill:#8a8e8f}
+.route-svg{position:absolute;inset:0;width:100%;height:100%;z-index:3}.route-shadow{fill:none;stroke:#fff;stroke-width:8;stroke-linecap:round;stroke-linejoin:round}.route-path{fill:none;stroke:var(--orange);stroke-width:5;stroke-linecap:round;stroke-linejoin:round}.route-pending{fill:none;stroke:var(--orange);stroke-width:5;stroke-dasharray:8 9;stroke-linecap:round}.route-hazard{fill:none;stroke:var(--red);stroke-width:6;stroke-dasharray:6 7;stroke-linecap:round}
+.route-dot{position:absolute;z-index:5;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;color:#fff;font:700 11px var(--mono);box-shadow:0 3px 10px rgba(0,0,0,.22);transform:translate(-50%,-50%)}.route-dot.start{left:18%;top:65%;background:var(--green)}.route-dot.via{left:48%;top:43%;background:var(--orange)}.route-dot.end{left:76%;top:66%;background:var(--red)}
+.map-search{position:absolute;left:20px;top:18px;z-index:9;width:min(460px,calc(100% - 420px));min-height:44px;display:flex;align-items:center;background:#fff;border:1px solid var(--line-strong);box-shadow:0 8px 24px rgba(23,25,27,.12);border-radius:4px;padding:0 12px}.map-search span{font-size:13px;color:var(--muted)}.map-search kbd{margin-left:auto;border:1px solid var(--line);padding:3px 6px;border-radius:3px;font:10px var(--mono);color:var(--muted)}
+.map-tools{position:absolute;right:18px;top:18px;z-index:15;display:flex;gap:8px}.map-tools button{min-width:44px;min-height:44px;border:1px solid var(--line-strong);background:#fff;border-radius:4px;box-shadow:0 6px 18px rgba(23,25,27,.12);font-size:12px}.map-tools .layers-btn{padding:0 13px}
+.preview3d{position:absolute;right:18px;top:76px;z-index:8;width:33%;min-width:310px;aspect-ratio:4/3;background:url('assets/trip3d-route-clean-2026-08-23.png') center/cover no-repeat;border:1px solid rgba(23,25,27,.55);box-shadow:0 14px 36px rgba(23,25,27,.22);overflow:hidden}.preview3d::after{content:"";position:absolute;inset:0;border:5px solid rgba(255,255,255,.35);pointer-events:none}.preview-head{position:absolute;left:0;right:0;top:0;height:42px;display:flex;align-items:center;padding:0 11px;background:rgba(248,247,244,.94);border-bottom:1px solid var(--line);font-size:11px;font-weight:700;z-index:2}.preview-head span{margin-left:auto;font:10px var(--mono);color:var(--muted)}.preview-action{position:absolute;right:10px;bottom:10px;min-height:40px;border:1px solid var(--ink);background:var(--ink);color:#fff;padding:0 12px;border-radius:3px;font-size:11px;z-index:2}
+.analysis{position:absolute;left:18px;right:calc(33% + 36px);bottom:16px;z-index:10;min-height:178px;background:rgba(248,247,244,.97);border:1px solid var(--line-strong);box-shadow:0 12px 30px rgba(23,25,27,.14)}.analysis-tabs{height:42px;display:flex;align-items:center;border-bottom:1px solid var(--line)}.analysis-tabs button{align-self:stretch;border:0;border-right:1px solid var(--line);background:transparent;padding:0 15px;font-size:11px}.analysis-tabs button.active{background:#fff;color:var(--orange);font-weight:700;box-shadow:inset 0 -3px var(--orange)}.analysis-tabs .legend{margin-left:auto;padding-right:12px;font:10px var(--mono);color:var(--muted)}.profile{position:absolute;left:14px;right:14px;bottom:9px;height:118px}.profile svg{width:100%;height:100%}.profile .grid{stroke:#deddd8;stroke-width:1}.profile .fill{fill:rgba(255,77,0,.07)}.profile .line{fill:none;stroke:var(--orange);stroke-width:3}.profile .cursor{stroke:var(--ink);stroke-width:1;stroke-dasharray:3 4}.profile text{font:10px var(--mono);fill:var(--muted)}
+.coverage-banner{display:none;position:absolute;left:18px;right:18px;top:18px;z-index:25;min-height:84px;background:var(--warning-bg);border:1px solid #d78a50;box-shadow:0 12px 30px rgba(61,30,8,.16);padding:14px 16px}.coverage-banner .title{display:flex;align-items:center;gap:9px;font-size:14px;font-weight:750;color:#75330d}.coverage-banner .title i{width:10px;height:10px;background:var(--warning);border-radius:50%}.coverage-banner p{margin:6px 260px 0 19px;font-size:12px;line-height:1.45;color:#684a39}.coverage-actions{position:absolute;right:14px;top:18px;display:flex;gap:8px}.coverage-actions button{min-height:44px;border:1px solid #aa6331;background:#fff;padding:0 13px;border-radius:3px;font-size:11px}.coverage-actions .primary{background:#8b4314;color:#fff;border-color:#8b4314;font-weight:700}
+.coverage-mask{display:none;position:absolute;right:0;top:0;bottom:0;width:37%;z-index:6;background:repeating-linear-gradient(135deg,rgba(139,67,20,.04),rgba(139,67,20,.04) 10px,rgba(139,67,20,.11) 10px,rgba(139,67,20,.11) 20px);border-left:2px dashed #b65f24}.coverage-label{display:none;position:absolute;right:9%;top:49%;z-index:7;padding:7px 10px;background:#fff4e8;border:1px solid #c67842;font:11px var(--mono);color:#7a3a12}
+.stage.coverage .coverage-banner,.stage.coverage .coverage-mask,.stage.coverage .coverage-label{display:block}.stage.coverage .summary-grid,.stage.coverage .confidence{display:none}.stage.coverage .coverage-status{display:flex}.stage.coverage .analysis{opacity:.46}.stage.coverage .analysis::after{content:"高程与坡度暂不可用 · 先扩展地形数据";position:absolute;inset:42px 0 0;display:grid;place-items:center;background:rgba(248,247,244,.78);font-size:12px;font-weight:700}.stage.coverage .route-hazard{display:block}.stage:not(.coverage) .route-hazard{display:none}
+.default-scene{display:none;position:absolute;inset:0;background:url('assets/trip3d-route-clean-2026-08-23.png') center/cover no-repeat;z-index:2}.default-scene::after{content:"";position:absolute;inset:0;background:rgba(248,247,244,.08)}.default-nav{position:absolute;left:22px;right:22px;top:18px;height:52px;display:flex;align-items:center;background:rgba(248,247,244,.93);border:1px solid rgba(23,25,27,.32);padding:0 14px;z-index:4}.default-nav .brand{min-width:auto}.default-nav .default-actions{margin-left:auto;display:flex;gap:8px}.default-nav button{min-height:38px;border:1px solid var(--line-strong);background:#fff;padding:0 14px;border-radius:3px;font-size:12px}.default-nav .primary{background:var(--orange);border-color:var(--orange);color:#fff;font-weight:700}.default-summary{position:absolute;left:22px;bottom:22px;z-index:4;width:410px;background:rgba(248,247,244,.94);border:1px solid rgba(23,25,27,.34);padding:16px}.default-summary .eyebrow{font:10px var(--mono);letter-spacing:.12em;color:var(--muted)}.default-summary h1{font-size:20px;margin:7px 0 10px}.default-summary .numbers{display:flex;gap:22px}.default-summary .numbers span{font:700 15px var(--mono)}.default-summary p{margin:10px 0 0;font-size:12px;color:var(--muted)}
+.stage.default .appbar,.stage.default .workspace{display:none}.stage.default .default-scene{display:block}
+.stage.view3d .plan-map{background:url('assets/trip3d-route-clean-2026-08-23.png') center/cover no-repeat}.stage.view3d .plan-map::after,.stage.view3d .contours,.stage.view3d .route-svg,.stage.view3d .route-dot{display:none}.stage.view3d .preview3d{display:none}.stage.view3d .analysis{right:18px}.stage.view3d .map-search span{color:var(--ink)}
+.mobile-shell{display:none;position:absolute;inset:0;background:url('assets/trip3d-route-clean-2026-08-23.png') center/cover no-repeat;z-index:40}.mobile-shell::before{content:"";position:absolute;inset:0;background:rgba(248,247,244,.12)}.mobile-top{position:absolute;left:10px;right:10px;top:10px;z-index:3;display:flex;align-items:center;gap:8px}.mobile-top .back,.mobile-top .layer{width:44px;height:44px;border:1px solid var(--line-strong);background:rgba(255,255,255,.96);border-radius:4px}.mobile-search{flex:1;height:44px;display:flex;align-items:center;background:rgba(255,255,255,.96);border:1px solid var(--line-strong);border-radius:4px;padding:0 12px;font-size:12px;color:var(--muted)}.mobile-mode{position:absolute;left:10px;top:64px;z-index:3;display:flex;border:1px solid var(--line-strong);border-radius:4px;overflow:hidden}.mobile-mode button{min-height:44px;border:0;border-right:1px solid var(--line-strong);background:#fff;padding:0 13px;font-size:11px}.mobile-mode button.active{background:var(--ink);color:#fff}.mobile-mode button:last-child{border-right:0}.mobile-sheet{position:absolute;left:0;right:0;bottom:58px;z-index:4;min-height:390px;background:rgba(248,247,244,.98);border-top:1px solid var(--line-strong);border-radius:16px 16px 0 0;box-shadow:0 -12px 34px rgba(23,25,27,.18);padding:9px 14px 14px}.grab{width:42px;height:4px;border-radius:3px;background:#b9bbba;margin:0 auto 10px}.mobile-sheet-head{display:flex;align-items:center}.mobile-sheet-head h2{font-size:16px;margin:0}.mobile-sheet-head span{margin-left:auto;font:11px var(--mono);color:var(--green)}.mobile-tabs{display:grid;grid-template-columns:repeat(3,1fr);margin:12px 0;border-bottom:1px solid var(--line)}.mobile-tabs button{min-height:44px;border:0;background:transparent;font-size:12px}.mobile-tabs button.active{color:var(--orange);box-shadow:inset 0 -3px var(--orange);font-weight:700}.mobile-fields{display:grid;grid-template-columns:1fr 1fr;gap:8px}.mobile-field{min-height:58px;background:#fff;border:1px solid var(--line);border-radius:4px;padding:8px 10px}.mobile-field span{display:block;font-size:10px;color:var(--muted)}.mobile-field b{display:block;font-size:12px;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.mobile-summary{display:grid;grid-template-columns:repeat(3,1fr);margin:12px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}.mobile-summary div{padding:10px 0}.mobile-summary b{display:block;font:700 17px var(--mono)}.mobile-summary span{font-size:9px;color:var(--muted)}.mobile-actions{display:grid;grid-template-columns:1fr 1.4fr;gap:8px}.mobile-actions button{min-height:48px;border:1px solid var(--line-strong);background:#fff;border-radius:4px;font-size:12px}.mobile-actions .primary{background:var(--orange);border-color:var(--orange);color:#fff;font-weight:700}.mobile-nav{position:absolute;left:0;right:0;bottom:0;height:58px;z-index:5;display:grid;grid-template-columns:repeat(4,1fr);background:#fff;border-top:1px solid var(--line)}.mobile-nav button{border:0;background:#fff;font-size:11px}.mobile-nav button.active{color:var(--orange);font-weight:700}.stage.mobile{width:min(390px,calc(100vw - 16px));max-width:none;height:844px;aspect-ratio:auto;border-top:1px solid #b7b9ba}.stage.mobile .appbar,.stage.mobile .workspace,.stage.mobile .default-scene{display:none}.stage.mobile .mobile-shell{display:block}
+.handoff{position:absolute;right:14px;bottom:14px;z-index:70;background:rgba(23,25,27,.9);color:#fff;padding:7px 10px;font:10px var(--mono);letter-spacing:.04em}.stage.mobile .handoff{display:none}
+@media(max-width:900px){.reviewbar{height:auto;min-height:58px;flex-wrap:wrap;padding:10px 12px}.reviewbar .note{display:none}.reviewbar .states{width:100%;margin:0;overflow:auto}.reviewbar button{white-space:nowrap}.artifact{padding:8px}.stage:not(.mobile){aspect-ratio:4/3}.preview3d{min-width:260px}.analysis{right:38%;}.sidebar{padding:12px}.workspace{grid-template-columns:300px minmax(0,1fr)}}
+@media(prefers-reduced-motion:no-preference){.sidebar,.preview3d,.analysis,.mobile-sheet,.coverage-banner{animation:enter .18s ease-out}@keyframes enter{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}}
+</style>
+</head>
+<body>
+<div class="artifact">
+  <header class="reviewbar">
+    <strong>TRIP-3D / PLANNER OPTION B</strong>
+    <span class="note">2D 精确规划 + 3D 地形理解 · 高保真交互 Mockup</span>
+    <nav class="states" aria-label="预览状态">
+      <button data-state="default">桌面主态</button>
+      <button data-state="planning" class="active">路线规划</button>
+      <button data-state="coverage">超覆盖保护</button>
+      <button data-state="mobile">移动端</button>
+    </nav>
+  </header>
+
+  <main class="stage planning" id="stage">
+    <header class="appbar">
+      <div class="brand"><div class="brandmark">T3</div><div class="brandtext"><b>TRIP / 3D</b><span>ROUTE PLANNER</span></div></div>
+      <div class="view-switch" aria-label="地图视图"><button data-view="2d" class="active">2D 规划</button><button data-view="3d">3D 预览</button></div>
+      <div class="route-name">Monument Ridge Loop</div><span class="save-state">已自动保存</span>
+      <div class="top-actions"><button>导入 / 导出</button><button class="primary">保存路线</button></div>
+    </header>
+
+    <div class="workspace">
+      <aside class="sidebar" aria-label="路线规划面板">
+        <div class="section-label">ROUTING MODE / 路线模式</div>
+        <div class="mode-choice"><button>直线</button><button class="active">步行</button><button>驾车</button></div>
+        <div class="section-label">ITINERARY / 行程</div>
+        <div class="field-stack">
+          <div class="place-field"><span class="marker"></span><div><label>起点</label><input value="Monument Valley Trailhead" aria-label="起点"></div><span class="drag">⠿</span></div>
+          <div class="place-field via"><span class="marker"></span><div><label>途经点</label><input value="Ridge Viewpoint" aria-label="途经点"></div><span class="drag">⠿</span></div>
+          <div class="place-field end"><span class="marker"></span><div><label>终点</label><input value="South Mesa Camp" aria-label="终点"></div><span class="drag">⠿</span></div>
+        </div>
+        <button class="add-stop">＋ 添加途经点</button>
+        <div class="summary">
+          <div class="summary-grid"><div class="metric"><b>3h 10m</b><span>步行路网时长</span></div><div class="metric"><b>12.0</b><span>公里</span></div><div class="metric"><b>+231</b><span>累计爬升 m</span></div></div>
+          <div class="confidence"><i></i><span>3/3 路段已沿步道吸附 · FOSSGIS</span></div>
+          <div class="coverage-status">统计已暂停：先扩展地形范围并重新采样</div>
+        </div>
+        <div class="section-label">EDIT / 编辑</div>
+        <div class="route-tools"><button>撤销</button><button>重做</button><button>反向</button><button>闭环</button></div>
+        <button class="plan-primary" id="previewBtn">在 3D 中检查路线</button>
+        <button class="plan-secondary">查看逐段详情</button>
+      </aside>
+
+      <section class="map-area" aria-label="路线地图">
+        <div class="plan-map">
+          <svg class="contours" viewBox="0 0 1000 700" preserveAspectRatio="none" aria-hidden="true">
+            <path d="M-30 130 C120 40 220 210 360 120 S650 45 1030 150"/><path class="minor" d="M-20 160 C130 70 230 240 370 150 S660 75 1020 180"/><path d="M-50 500 C160 390 290 580 480 470 S770 350 1050 440"/><path class="minor" d="M-50 530 C160 420 300 610 490 500 S780 380 1050 470"/><path d="M620 -40 C540 130 760 180 690 340 S540 580 730 760"/><path class="minor" d="M660 -40 C580 130 800 190 730 350 S580 590 770 760"/><text x="135" y="122">1580</text><text x="760" y="458">1690</text><text x="510" y="620">1525</text>
+          </svg>
+          <svg class="route-svg" viewBox="0 0 1000 700" preserveAspectRatio="none" aria-hidden="true">
+            <path class="route-shadow" d="M180 455 C280 430 335 332 480 300 C570 282 635 386 760 462"/>
+            <path class="route-path" d="M180 455 C280 430 335 332 480 300 C570 282 635 386 760 462"/>
+            <path class="route-hazard" d="M760 462 C845 510 912 440 1040 505"/>
+          </svg>
+          <span class="route-dot start">A</span><span class="route-dot via">2</span><span class="route-dot end">B</span>
+        </div>
+        <div class="map-search"><span>搜索地点、坐标或点击地图添加</span><kbd>/</kbd></div>
+        <div class="map-tools"><button aria-label="回到整条路线">全览</button><button class="layers-btn">图层</button></div>
+        <aside class="preview3d" aria-label="3D 地形预览"><div class="preview-head">3D 地形预览 <span>与 2D 同步</span></div><button class="preview-action" data-view="3d">全屏检查</button></aside>
+        <section class="analysis" aria-label="路线分析">
+          <div class="analysis-tabs"><button class="active">高程</button><button>坡度</button><button>天气</button><button>日照</button><span class="legend">最低 1561m · 最高 1696m</span></div>
+          <div class="profile"><svg viewBox="0 0 760 118" preserveAspectRatio="none" aria-hidden="true"><line class="grid" x1="0" y1="25" x2="760" y2="25"/><line class="grid" x1="0" y1="78" x2="760" y2="78"/><path class="fill" d="M0 91 C90 82 118 48 190 22 C260 52 305 82 390 88 C470 55 535 35 610 74 C690 66 720 48 760 56 L760 110 L0 110 Z"/><path class="line" d="M0 91 C90 82 118 48 190 22 C260 52 305 82 390 88 C470 55 535 35 610 74 C690 66 720 48 760 56"/><line class="cursor" x1="472" y1="10" x2="472" y2="108"/><text x="6" y="18">1696m</text><text x="6" y="108">1561m</text><text x="446" y="20">7.4km · 1618m · 8%</text></svg></div>
+        </section>
+        <div class="coverage-mask"></div><div class="coverage-label">路线超出当前 DEM</div>
+        <div class="coverage-banner" role="alert">
+          <div class="title"><i></i>路线有 3.8 km 超出当前地形数据范围</div>
+          <p>为避免生成错误高程，剖面、爬升与坡度暂时停用。扩展范围后会重新采样整条路线。</p>
+          <div class="coverage-actions"><button>仅保留路线</button><button class="primary" id="extendBtn">扩展地形范围</button></div>
+        </div>
+      </section>
+    </div>
+
+    <section class="default-scene" aria-label="桌面主态">
+      <div class="default-nav"><div class="brand"><div class="brandmark">T3</div><div class="brandtext"><b>TRIP / 3D</b><span>TERRAIN ROUTE PLANNER</span></div></div><div class="default-actions"><button>打开路线</button><button class="primary" data-state="planning">开始规划</button></div></div>
+      <div class="default-summary"><div class="eyebrow">RECENT ROUTE / 最近路线</div><h1>Monument Ridge Loop</h1><div class="numbers"><span>12.0 km</span><span>+231 m</span><span>3h 10m</span></div><p>地图保持干净；进入规划后再显示途经点、分析托盘与编辑工具。</p></div>
+    </section>
+
+    <section class="mobile-shell" aria-label="移动端规划态">
+      <div class="mobile-top"><button class="back" aria-label="返回">←</button><div class="mobile-search">搜索地点或坐标</div><button class="layer" aria-label="图层">层</button></div>
+      <div class="mobile-mode"><button class="active">2D 规划</button><button>3D 预览</button></div>
+      <section class="mobile-sheet"><div class="grab"></div><div class="mobile-sheet-head"><h2>Monument Ridge Loop</h2><span>3/3 已吸附</span></div><div class="mobile-tabs"><button class="active" data-mobile-tab="route">行程</button><button data-mobile-tab="profile">高程</button><button data-mobile-tab="weather">天气</button></div><div class="mobile-body route-body"><div class="mobile-fields"><div class="mobile-field"><span>起点</span><b>Monument Valley Trailhead</b></div><div class="mobile-field"><span>终点</span><b>South Mesa Camp</b></div></div><div class="mobile-summary"><div><b>12.0</b><span>公里</span></div><div><b>3h10</b><span>步行时长</span></div><div><b>+231</b><span>爬升 m</span></div></div><div class="mobile-actions"><button>途经点</button><button class="primary">继续规划</button></div></div></section>
+      <nav class="mobile-nav"><button class="active">规划</button><button>路线</button><button>分析</button><button>分享</button></nav>
+    </section>
+
+    <div class="handoff">键盘 1–4 切换状态 · Esc 返回主态</div>
+  </main>
+</div>
+<script>
+const stage=document.querySelector('#stage');
+const stateButtons=[...document.querySelectorAll('[data-state]')];
+const viewButtons=[...document.querySelectorAll('[data-view]')];
+function setState(state){
+  stage.classList.remove('default','planning','coverage','mobile','view3d');
+  stage.classList.add(state);
+  stateButtons.forEach(b=>b.classList.toggle('active',b.dataset.state===state));
+  if(state==='mobile') stage.scrollIntoView({block:'nearest'});
+}
+function setView(view){
+  stage.classList.toggle('view3d',view==='3d');
+  viewButtons.forEach(b=>b.classList.toggle('active',b.dataset.view===view));
+}
+stateButtons.forEach(b=>b.addEventListener('click',()=>setState(b.dataset.state)));
+viewButtons.forEach(b=>b.addEventListener('click',()=>setView(b.dataset.view)));
+document.querySelector('#previewBtn').addEventListener('click',()=>setView('3d'));
+document.querySelector('#extendBtn').addEventListener('click',()=>setState('planning'));
+document.querySelectorAll('.mode-choice button').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.mode-choice button').forEach(x=>x.classList.remove('active'));b.classList.add('active')}));
+document.querySelectorAll('.analysis-tabs button').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.analysis-tabs button').forEach(x=>x.classList.remove('active'));b.classList.add('active')}));
+document.querySelectorAll('[data-mobile-tab]').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('[data-mobile-tab]').forEach(x=>x.classList.remove('active'));b.classList.add('active')}));
+document.addEventListener('keydown',e=>{if(e.key==='Escape')setState('default');if(['1','2','3','4'].includes(e.key))setState(['default','planning','coverage','mobile'][Number(e.key)-1])});
+</script>
+</body>
+</html>
