@@ -26,6 +26,7 @@ import { loadDem, sampleDem } from './dem.js'
 import { makeGeoContext, worldToLonLat, lonLatToWorld, TERRAIN_SIZE } from './lib/geo.js'
 import { createOverviewMap } from './ui/overviewMap.js'
 import { createPlannerWorkspace } from './ui/plannerWorkspace.js'
+import { setDrawerOpen } from './ui/drawer.js'
 import { createAdminLayer } from './ui/adminLayer.js'
 import { provinceAdcode, extractRings, clipRingToBbox, pointInRing } from './lib/adminBoundaries.js'
 import { createAdminBoundaryCache } from './lib/adminBoundaryCache.js'
@@ -2405,15 +2406,17 @@ document.body.appendChild(attrib)
 // settings drawer hosts the whole lil-gui (demoted chrome)
 const settingsDrawer = document.createElement('div')
 settingsDrawer.className = 'ui-settings'
+settingsDrawer.setAttribute('role', 'dialog')
+settingsDrawer.setAttribute('aria-label', '高级设置')
 settingsDrawer.setAttribute('aria-hidden', 'true')
 settingsDrawer.inert = true
 document.body.appendChild(settingsDrawer)
 settingsDrawer.appendChild(gui.domElement)
+let settingsReturnFocus = null
 function toggleSettings() {
-  const open = settingsDrawer.classList.toggle('open')
-  settingsDrawer.inert = !open
-  settingsDrawer.setAttribute('aria-hidden', String(!open))
-  if (open) settingsDrawer.querySelector('button,input,select')?.focus()
+  const open = !settingsDrawer.classList.contains('open')
+  if (open) settingsReturnFocus = document.activeElement
+  setDrawerOpen(settingsDrawer, open, settingsReturnFocus)
 }
 
 // high-frequency layer toggles (reuse lil-gui controllers so onChange chains fire)

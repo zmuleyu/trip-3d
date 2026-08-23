@@ -66,10 +66,13 @@ export function createPanelHost() {
   chev.title = '收起/展开面板'
   const body = document.createElement('div')
   body.className = 'ui-panel-body'
+  body.id = 'ui-panel-body'
+  chev.setAttribute('aria-controls', body.id)
   const apply = () => {
     el.classList.toggle('collapsed', collapsed)
     chev.textContent = collapsed ? '▸' : '▾'
     chev.setAttribute('aria-expanded', String(!collapsed))
+    chev.setAttribute('aria-label', collapsed ? '展开面板' : '收起面板')
   }
   chev.onclick = () => { collapsed = !collapsed; apply() }
   return {
