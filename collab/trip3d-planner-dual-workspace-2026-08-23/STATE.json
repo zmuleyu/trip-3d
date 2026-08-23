@@ -5,14 +5,14 @@
   "authority": "single-writer",
   "repo": {
     "branch": "main",
-    "implementation_head": "f57bbdd",
+    "implementation_head": "8947a87",
     "dirty": false
   },
   "phase": "DONE",
-  "last_green": "232/232 + build + independent review + desktop/mobile/coverage/latest-request/undo CDP E2E + production hash match",
+  "last_green": "233/233 + build + independent review + desktop/mobile/coverage/latest-request/undo/focus CDP E2E + production hash match",
   "production": {
     "url": "https://trip-3d.pages.dev/",
-    "js": "assets/index-DKobhQ0F.js",
+    "js": "assets/index-CC9ji_d0.js",
     "css": "assets/index-i5EfTseN.css"
   },
   "next_action": "none",

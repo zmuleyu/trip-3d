@@ -12,7 +12,7 @@
 
 ## TDD / 门禁
 
-- `npm test`：36 个测试文件，最终 232 项测试全绿。
+- `npm test`：37 个测试文件，最终 233 项测试全绿。
 - `npm run build`：Vite 构建成功。
 - `git diff --check`：通过。
 - 静态安全扫描：无硬编码 secret/token、eval/new Function/document.write。
@@ -31,9 +31,9 @@
 ## 生产验收
 
 - URL：`https://trip-3d.pages.dev/`
-- JS：`assets/index-DKobhQ0F.js`
+- JS：`assets/index-CC9ji_d0.js`
 - CSS：`assets/index-i5EfTseN.css`
-- JS SHA256：`b36ab41ea4674effbcc7c4d7945bc605ac12d355f23aeaf4ab467634fd4f9468`
+- JS SHA256：`f2b48b96f7e829fd940f2b8e6fd5432d7f504bae5046873f9f4997d15438dcf2`
 - CSS SHA256：`e0e810cc3df589e9059622ff0c60546641ea0cbdb5d9ff89104e05b1af3b0e91`
 - 生产下载与本地 dist 逐字节一致。
 - 生产桌面、移动和超覆盖三条路径实驾均 0 JS 错误。
