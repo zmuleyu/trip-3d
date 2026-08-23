@@ -1,16 +1,21 @@
 {
-  "state": "IN_PROGRESS",
+  "state": "GOAL_CLOSEOUT_COMPLETE",
   "goal": "2D 精确规划 + 3D 地形预览生产实施",
   "owner": "hermes-main-session",
   "authority": "single-writer",
   "repo": {
     "branch": "main",
-    "implementation_head": "f97ceac",
+    "implementation_head": "f57bbdd",
     "dirty": false
   },
-  "phase": "FINAL_REVIEW",
-  "last_green": "232/232 + build + desktop/mobile/coverage/latest-request/undo CDP E2E",
-  "next_action": "independent final review, then implementation commit/push and production verification",
+  "phase": "DONE",
+  "last_green": "232/232 + build + independent review + desktop/mobile/coverage/latest-request/undo CDP E2E + production hash match",
+  "production": {
+    "url": "https://trip-3d.pages.dev/",
+    "js": "assets/index-DKobhQ0F.js",
+    "css": "assets/index-i5EfTseN.css"
+  },
+  "next_action": "none",
   "watchers": {},
   "updated_at": "2026-08-23T18:40:00+08:00"
 }
