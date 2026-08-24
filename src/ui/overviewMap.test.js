@@ -202,8 +202,8 @@ describe('overview MapLibre planner map', () => {
 
     expect(instance.stop).toHaveBeenCalledTimes(4)
     expect(instance.easeCalls.map((call) => call.duration)).toEqual([380, 380, 380])
-    expect(instance.easeCalls.at(-1)).toMatchObject({ pitch: 55, bearing: -90 })
-    expect(instance.getPitch()).toBe(55)
+    expect(instance.easeCalls.at(-1)).toMatchObject({ pitch: 46, bearing: -90 })
+    expect(instance.getPitch()).toBe(46)
     expect(instance.getBearing()).toBe(-90)
     expect(instance.dragPan.enable).not.toHaveBeenCalled()
   })
@@ -302,6 +302,26 @@ describe('overview MapLibre planner map', () => {
     expect(overview.el.querySelector('.ui-map-fit span').textContent).toBe('完整路线')
   })
 
+  it('keeps the selection ring below canonical waypoint markers and labels', () => {
+    const { overview, instance } = setup()
+    overview.setPlannerMode(true)
+    overview.update({ waypoints: [{ id: 'a', lon: 113, lat: 41.2 }, { id: 'b', lon: 113.2, lat: 41.4 }] }, null, VIEWPORT)
+    overview.setSelectedWaypoint('a')
+
+    const layers = instance.layers
+    const indexOf = (id) => layers.findIndex((layer) => layer.id === id)
+    expect(indexOf('trip-weather-markers')).toBeLessThan(indexOf('trip-waypoint-selection'))
+    expect(indexOf('trip-waypoint-selection')).toBeLessThan(indexOf('trip-waypoint-circles'))
+    expect(indexOf('trip-waypoint-circles')).toBeLessThan(indexOf('trip-waypoint-labels'))
+    expect(layers[indexOf('trip-waypoint-selection')].paint).toMatchObject({
+      'circle-radius': 17,
+      'circle-color': 'rgba(255,77,0,0)',
+      'circle-stroke-color': '#ff4d00',
+      'circle-stroke-width': 2.5,
+    })
+    expect(instance.getSource('trip-route-waypoints').data.features[0].properties).toMatchObject({ label: 'A', selected: true })
+  })
+
   it('selects and drags a waypoint without suppressing the next blank-map click', async () => {
     const onPlanAdd = vi.fn()
     let overview
@@ -373,5 +393,28 @@ describe('overview MapLibre planner map', () => {
     overview.setPlannerMode(false)
     instance.emit('click', { lngLat: { lng: 113.3, lat: 41.5 } })
     expect(onJump).toHaveBeenCalledWith(113.3, 41.5)
+  })
+
+  it('keeps admin and only fresh weather in shared MapLibre sources', () => {
+    const { overview, instance } = setup()
+    overview.setAdminOverlay({
+      enabled: true,
+      selected: { adcode: 110000 },
+      rings: [{ adcode: 110000, name: '北京', level: 'province', ring: [[116.1, 39.8], [116.2, 39.9]] }],
+    })
+    overview.setWeatherOverlay({
+      routeRevision: 3,
+      weatherRevision: 3,
+      result: {
+        rep: [{ lon: 116.1, lat: 39.8, role: '起点' }],
+        agg: [{ points: [{ point: { lon: 116.1, lat: 39.8 }, precipMm: 0, windMax: 10, tempMin: 3, weatherCode: 0 }] }],
+      },
+    })
+
+    expect(instance.getSource('trip-admin-boundaries').data.features[0].properties.selected).toBe(true)
+    expect(instance.getSource('trip-route-weather').data.features).toHaveLength(1)
+
+    overview.setWeatherOverlay({ routeRevision: 4, weatherRevision: 3, result: { rep: [{ lon: 116.1, lat: 39.8 }] } })
+    expect(instance.getSource('trip-route-weather').data.features).toEqual([])
   })
 })

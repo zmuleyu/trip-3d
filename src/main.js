@@ -891,6 +891,7 @@ function refreshAdminUI() {
   const visibleRings = filterAdminRings(adminState.rings, adminInteraction.level)
   adminLayer?.setLevel(adminInteraction.level)
   adminLayer?.setSelected(adminInteraction.selected)
+  overviewMap?.setAdminOverlay({ enabled: adminState.on, rings: visibleRings, selected: adminInteraction.selected })
   adminUI.update({
     enabled: adminState.on,
     panelOpen: adminState.panelOpen,
@@ -957,6 +958,11 @@ async function loadAdminBoundaries() {
   if (!dem || !geo) return
   const key = currentDemKey()
   if (adminState.demKey === key && adminLayer) { adminLayer.setVisible(true); refreshAdminUI(); return }
+  if (adminState.demKey && adminState.demKey !== key) {
+    adminState.rings = []
+    adminState.regions = []
+    adminInteraction.exitInspect()
+  }
   adminState.loading = true
   toast.show('区划边界加载中…')
   try {
@@ -1725,6 +1731,7 @@ function updateRouteUI(route, stats, pts, { fitOverview = true } = {}) {
     }).filter(Boolean)
   }
   profileCard.update(stats, pts, wxDays, dayBounds)
+  overviewMap?.setWeatherOverlay({ routeRevision: route.revision, weatherRevision: weatherState.revision, result: weatherState.result })
   overviewMap.update(route, pts, currentViewportRect(), { fit: fitOverview })
   overviewMap.setSelectedWaypoint(selectedWaypointId)
 }
@@ -1813,6 +1820,9 @@ async function runWeatherQuery({ dates, allPoints }) {
   const rev = route.revision
   const reqId = ++weatherState.requestId
   weatherPanel.setLoading(rep)
+  weatherState.revision = -1
+  weatherState.result = null
+  refreshRoute()
   try {
     const from = dates[0]
     const to = dates[dates.length - 1]
@@ -2362,6 +2372,8 @@ const overviewMap = createOverviewMap({
   },
 })
 document.body.appendChild(overviewMap.el)
+overviewMap.setAdminOverlay({ enabled: adminState.on, rings: filterAdminRings(adminState.rings, adminInteraction.level), selected: adminInteraction.selected })
+overviewMap.setWeatherOverlay({ routeRevision: route.revision, weatherRevision: weatherState.revision, result: weatherState.result })
 
 function expandTerrainToRoute() {
   const fit = fitDemToCoordinates(activeRouteCoordinates(), { currentZoom: params.demZoom })

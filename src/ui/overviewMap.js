@@ -6,6 +6,7 @@ import {
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { iconSvg } from './icons.js'
 import { routeCameraBearing } from '../map/routeView.js'
+import { adminOverlayGeoJSON, weatherOverlayGeoJSON } from '../map/overlayAdapters.js'
 
 const OPENFREEMAP_STYLE = 'https://tiles.openfreemap.org/styles/positron'
 const FALLBACK_STYLE = {
@@ -15,12 +16,15 @@ const FALLBACK_STYLE = {
 }
 const ACCENT = '#ff4d00'
 const TERRAIN_PITCH = 55
+const MOBILE_TERRAIN_PITCH = 46
 const DESKTOP_TRANSITION_MS = 650
 const MOBILE_TRANSITION_MS = 380
 const BASE_LABELS_TO_HIDE = /poi|housenumber|airport|aeroway|transit|neighbourhood|suburb/i
 const SOURCE_IDS = {
   coverage: 'trip-terrain-coverage',
+  admin: 'trip-admin-boundaries',
   route: 'trip-planned-route',
+  weather: 'trip-route-weather',
   waypoints: 'trip-route-waypoints',
 }
 
@@ -132,20 +136,11 @@ function tuneBaseStyle(map) {
 function addPlannerLayers(map) {
   if (map.getSource(SOURCE_IDS.coverage)) return
   map.addSource(SOURCE_IDS.coverage, { type: 'geojson', data: EMPTY_FEATURE_COLLECTION })
+  map.addSource(SOURCE_IDS.admin, { type: 'geojson', data: EMPTY_FEATURE_COLLECTION })
   map.addSource(SOURCE_IDS.route, { type: 'geojson', data: EMPTY_FEATURE_COLLECTION })
+  map.addSource(SOURCE_IDS.weather, { type: 'geojson', data: EMPTY_FEATURE_COLLECTION })
   map.addSource(SOURCE_IDS.waypoints, { type: 'geojson', data: EMPTY_FEATURE_COLLECTION })
 
-  map.addLayer({
-    id: 'trip-waypoint-selection',
-    type: 'circle',
-    source: SOURCE_IDS.waypoints,
-    filter: ['==', ['get', 'selected'], true],
-    paint: {
-      'circle-radius': 15,
-      'circle-color': ACCENT,
-      'circle-opacity': 0.94,
-    },
-  })
   map.addLayer({
     id: 'trip-terrain-coverage-fill',
     type: 'fill',
@@ -161,6 +156,16 @@ function addPlannerLayers(map) {
       'line-opacity': 0.56,
       'line-width': 1.25,
       'line-dasharray': [4, 3],
+    },
+  })
+  map.addLayer({
+    id: 'trip-admin-boundary-line',
+    type: 'line',
+    source: SOURCE_IDS.admin,
+    paint: {
+      'line-color': ['case', ['get', 'selected'], ACCENT, '#17191b'],
+      'line-opacity': ['case', ['get', 'selected'], 0.94, 0.58],
+      'line-width': ['case', ['get', 'selected'], 3, 1.2],
     },
   })
   map.addLayer({
@@ -187,6 +192,36 @@ function addPlannerLayers(map) {
     source: SOURCE_IDS.route,
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: { 'line-color': ACCENT, 'line-width': 3.5 },
+  })
+  map.addLayer({
+    id: 'trip-weather-markers',
+    type: 'circle',
+    source: SOURCE_IDS.weather,
+    paint: {
+      // Representative points deliberately sit beneath waypoint ownership. A
+      // larger, restrained halo keeps fresh weather visible without another
+      // dense label system or a competing click target.
+      'circle-radius': 15,
+      'circle-color': ['match', ['get', 'risk'], 'high', ACCENT, 'medium', '#c97817', 'low', '#355f50', '#f4f0e6'],
+      'circle-stroke-color': '#17191b',
+      'circle-stroke-width': 1.5,
+      'circle-opacity': 0.72,
+    },
+  })
+  map.addLayer({
+    id: 'trip-waypoint-selection',
+    type: 'circle',
+    source: SOURCE_IDS.waypoints,
+    filter: ['==', ['get', 'selected'], true],
+    paint: {
+      // A transparent center makes this a true focus ring: the waypoint's
+      // canonical identity and its A/B label remain readable above it.
+      'circle-radius': 17,
+      'circle-color': 'rgba(255,77,0,0)',
+      'circle-stroke-color': ACCENT,
+      'circle-stroke-width': 2.5,
+      'circle-opacity': 0.96,
+    },
   })
   map.addLayer({
     id: 'trip-waypoint-circles',
@@ -296,6 +331,8 @@ export function createOverviewMap({ terrainLayer, onTerrainUnavailable, onJump, 
   let attributionControlContainer = null
   let attributionMapParent = null
   let selectedWaypointId = null
+  let adminOverlay = { enabled: false, rings: [], selected: null }
+  let weatherOverlay = { routeRevision: -1, weatherRevision: -1, result: null }
   let waypointDrag = null
   let suppressNextMapClick = false
   let suppressMapClickTimer = null
@@ -312,6 +349,10 @@ export function createOverviewMap({ terrainLayer, onTerrainUnavailable, onJump, 
 
   function hasReducedMotion() {
     return globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true
+  }
+
+  function terrainPitch() {
+    return globalThis.matchMedia?.('(max-width: 720px)').matches ? MOBILE_TERRAIN_PITCH : TERRAIN_PITCH
   }
 
   function setRouteVisualTreatment(terrain3d) {
@@ -342,7 +383,7 @@ export function createOverviewMap({ terrainLayer, onTerrainUnavailable, onJump, 
 
   function moveCameraForView(terrain3d, { animate = true } = {}) {
     const camera = {
-      pitch: terrain3d ? TERRAIN_PITCH : 0,
+      pitch: terrain3d ? terrainPitch() : 0,
       bearing: terrain3d ? currentRouteBearing() : 0,
     }
     map.stop?.()
@@ -399,7 +440,9 @@ export function createOverviewMap({ terrainLayer, onTerrainUnavailable, onJump, 
     const footprint = footprintFeature(viewportLonLat)
     const route = routeFeature(lastRoute, lastPoints)
     map.getSource(SOURCE_IDS.coverage)?.setData(footprint ? featureCollection([footprint]) : EMPTY_FEATURE_COLLECTION)
+    map.getSource(SOURCE_IDS.admin)?.setData(adminOverlayGeoJSON(adminOverlay))
     map.getSource(SOURCE_IDS.route)?.setData(route ? featureCollection([route]) : EMPTY_FEATURE_COLLECTION)
+    map.getSource(SOURCE_IDS.weather)?.setData(weatherOverlayGeoJSON(weatherOverlay))
     map.getSource(SOURCE_IDS.waypoints)?.setData(featureCollection(waypointFeatures(lastRoute, selectedWaypointId)))
   }
 
@@ -440,7 +483,7 @@ export function createOverviewMap({ terrainLayer, onTerrainUnavailable, onJump, 
     if (!bounds) return
     const [[minLon, minLat], [maxLon, maxLat]] = bounds
     const camera = plannerMode && plannerView === '3d'
-      ? { pitch: TERRAIN_PITCH, bearing: currentRouteBearing() }
+      ? { pitch: terrainPitch(), bearing: currentRouteBearing() }
       : { pitch: 0, bearing: 0 }
     if (minLon === maxLon && minLat === maxLat) {
       map.jumpTo({ center: [minLon, minLat], zoom: Math.min(13, Math.max(10, map.getZoom())), ...camera })
@@ -641,6 +684,14 @@ export function createOverviewMap({ terrainLayer, onTerrainUnavailable, onJump, 
     focusPlanner() { map.getCanvas().focus() },
     setSelectedWaypoint(id) {
       selectedWaypointId = id ?? null
+      syncPlannerData()
+    },
+    setAdminOverlay(next) {
+      adminOverlay = next ?? { enabled: false, rings: [], selected: null }
+      syncPlannerData()
+    },
+    setWeatherOverlay(next) {
+      weatherOverlay = next ?? { routeRevision: -1, weatherRevision: -1, result: null }
       syncPlannerData()
     },
     update(route, points, viewport, { fit = true } = {}) {
