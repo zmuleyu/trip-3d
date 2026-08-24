@@ -5,6 +5,7 @@ import {
 } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { iconSvg } from './icons.js'
+import { routeCameraBearing } from '../map/routeView.js'
 
 const OPENFREEMAP_STYLE = 'https://tiles.openfreemap.org/styles/positron'
 const FALLBACK_STYLE = {
@@ -13,6 +14,10 @@ const FALLBACK_STYLE = {
   layers: [{ id: 'planner-fallback-background', type: 'background', paint: { 'background-color': '#f4f0e6' } }],
 }
 const ACCENT = '#ff4d00'
+const TERRAIN_PITCH = 55
+const DESKTOP_TRANSITION_MS = 650
+const MOBILE_TRANSITION_MS = 380
+const BASE_LABELS_TO_HIDE = /poi|housenumber|airport|aeroway|transit|neighbourhood|suburb/i
 const SOURCE_IDS = {
   coverage: 'trip-terrain-coverage',
   route: 'trip-planned-route',
@@ -99,11 +104,10 @@ function boundsForCoordinates(coordinates) {
 
 function tuneBaseStyle(map) {
   const layers = map.getStyle()?.layers ?? []
-  const hideSymbols = /poi|housenumber|airport|aeroway|transit|neighbourhood|suburb/i
   for (const layer of layers) {
     const semanticName = `${layer.id} ${layer['source-layer'] ?? ''}`
     try {
-      if (layer.type === 'symbol' && hideSymbols.test(semanticName)) {
+      if (layer.type === 'symbol' && BASE_LABELS_TO_HIDE.test(semanticName)) {
         map.setLayoutProperty(layer.id, 'visibility', 'none')
         continue
       }
@@ -157,6 +161,17 @@ function addPlannerLayers(map) {
       'line-opacity': 0.56,
       'line-width': 1.25,
       'line-dasharray': [4, 3],
+    },
+  })
+  map.addLayer({
+    id: 'trip-route-corridor',
+    type: 'line',
+    source: SOURCE_IDS.route,
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: {
+      'line-color': '#17191b',
+      'line-opacity': 0,
+      'line-width': 0,
     },
   })
   map.addLayer({
@@ -284,13 +299,67 @@ export function createOverviewMap({ terrainLayer, onTerrainUnavailable, onJump, 
   let waypointDrag = null
   let suppressNextMapClick = false
   let suppressMapClickTimer = null
+  const baseLabelVisibility = new Map()
 
   function setTerrainError(message) {
     mapError.textContent = message
     mapError.classList.remove('hidden')
   }
 
-  function setInteractionForView() {
+  function currentRouteBearing() {
+    return routeCameraBearing(routeCoordinates(lastRoute, lastPoints))
+  }
+
+  function hasReducedMotion() {
+    return globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true
+  }
+
+  function setRouteVisualTreatment(terrain3d) {
+    if (!styleReady) return
+    const corridor = map.getLayer('trip-route-corridor')
+    if (corridor) {
+      map.setPaintProperty('trip-route-corridor', 'line-opacity', terrain3d ? 0.23 : 0)
+      map.setPaintProperty('trip-route-corridor', 'line-width', terrain3d ? 18 : 0)
+    }
+    const casing = map.getLayer('trip-route-casing')
+    if (casing) map.setPaintProperty('trip-route-casing', 'line-width', terrain3d ? 9 : 7)
+    const routeLine = map.getLayer('trip-route-line')
+    if (routeLine) map.setPaintProperty('trip-route-line', 'line-width', terrain3d ? 4.5 : 3.5)
+
+    for (const layer of map.getStyle()?.layers ?? []) {
+      if (layer.type !== 'symbol' || layer.id.startsWith('trip-')) continue
+      const semanticName = `${layer.id} ${layer['source-layer'] ?? ''}`
+      if (BASE_LABELS_TO_HIDE.test(semanticName)) continue
+      if (!baseLabelVisibility.has(layer.id)) baseLabelVisibility.set(layer.id, layer.layout?.visibility ?? 'visible')
+      try {
+        map.setLayoutProperty(layer.id, 'visibility', terrain3d ? 'none' : baseLabelVisibility.get(layer.id))
+      } catch {
+        // Upstream styles may replace a layer between style events. The route
+        // remains readable even when a label cannot be retuned.
+      }
+    }
+  }
+
+  function moveCameraForView(terrain3d, { animate = true } = {}) {
+    const camera = {
+      pitch: terrain3d ? TERRAIN_PITCH : 0,
+      bearing: terrain3d ? currentRouteBearing() : 0,
+    }
+    map.stop?.()
+    if (!animate || hasReducedMotion()) {
+      map.jumpTo(camera)
+      return
+    }
+    const mobile = globalThis.matchMedia?.('(max-width: 720px)').matches
+    map.easeTo({
+      ...camera,
+      duration: mobile ? MOBILE_TRANSITION_MS : DESKTOP_TRANSITION_MS,
+      easing: (t) => 1 - ((1 - t) ** 3),
+      essential: false,
+    })
+  }
+
+  function setInteractionForView({ animate = true } = {}) {
     const terrain3d = plannerMode && plannerView === '3d'
     if (terrain3d) {
       map.dragRotate?.enable?.()
@@ -300,12 +369,13 @@ export function createOverviewMap({ terrainLayer, onTerrainUnavailable, onJump, 
       map.touchPitch?.disable?.()
     }
     terrainLayer?.setEnabled(terrain3d)
-    map.jumpTo({ pitch: terrain3d ? 55 : 0, bearing: terrain3d ? -28 : 0 })
+    setRouteVisualTreatment(terrain3d)
+    moveCameraForView(terrain3d, { animate })
   }
 
   function degradeTo2d(error, message = '3D 地形暂时不可用；已保留 2D 路线规划') {
     plannerView = '2d'
-    setInteractionForView()
+    setInteractionForView({ animate: false })
     setTerrainError(message)
     updateChrome()
     onTerrainUnavailable?.(error instanceof Error ? error : new Error(message))
@@ -370,7 +440,7 @@ export function createOverviewMap({ terrainLayer, onTerrainUnavailable, onJump, 
     if (!bounds) return
     const [[minLon, minLat], [maxLon, maxLat]] = bounds
     const camera = plannerMode && plannerView === '3d'
-      ? { pitch: 55, bearing: -28 }
+      ? { pitch: TERRAIN_PITCH, bearing: currentRouteBearing() }
       : { pitch: 0, bearing: 0 }
     if (minLon === maxLon && minLat === maxLat) {
       map.jumpTo({ center: [minLon, minLat], zoom: Math.min(13, Math.max(10, map.getZoom())), ...camera })
@@ -410,6 +480,7 @@ export function createOverviewMap({ terrainLayer, onTerrainUnavailable, onJump, 
       if (terrainLayer.failed) degradeTo2d(terrainLayer.failed)
     }
     addPlannerLayers(map)
+    setRouteVisualTreatment(plannerMode && plannerView === '3d')
     syncPlannerData()
     decorateCanvas()
     resize()
@@ -545,7 +616,7 @@ export function createOverviewMap({ terrainLayer, onTerrainUnavailable, onJump, 
       el.classList.toggle('planner', plannerMode)
       if (plannerMode) el.classList.remove('hidden')
       if (!plannerMode) plannerView = '2d'
-      setInteractionForView()
+      setInteractionForView({ animate: false })
       updateChrome()
       decorateCanvas()
       requestAnimationFrame(resize)

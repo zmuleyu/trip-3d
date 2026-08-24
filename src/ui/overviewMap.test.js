@@ -17,6 +17,7 @@ const maplibre = vi.hoisted(() => {
       options.container.appendChild(this.canvas)
       this.resizeCalls = 0
       this.fitCalls = []
+      this.easeCalls = []
       this.pitch = 0
       this.bearing = 0
       instances.push(this)
@@ -61,8 +62,8 @@ const maplibre = vi.hoisted(() => {
         ],
       }
     }
-    setPaintProperty() {}
-    setLayoutProperty() {}
+    setPaintProperty = vi.fn()
+    setLayoutProperty = vi.fn()
     addSource(id, definition) {
       const source = {
         data: definition.data,
@@ -92,6 +93,11 @@ const maplibre = vi.hoisted(() => {
       if (pitch != null) this.pitch = pitch
       if (bearing != null) this.bearing = bearing
       this.emit('zoom')
+    }
+    stop = vi.fn()
+    easeTo(options) {
+      this.easeCalls.push(options)
+      this.jumpTo(options)
     }
     zoomIn() { this.zoom = Math.min(this.options.maxZoom, this.zoom + 1); this.emit('zoom') }
     zoomOut() { this.zoom = Math.max(this.options.minZoom, this.zoom - 1); this.emit('zoom') }
@@ -165,15 +171,58 @@ describe('overview MapLibre planner map', () => {
     expect(maplibre.instances).toHaveLength(1)
     expect(instance.getCanvas()).toBe(canvas)
     expect(instance.getPitch()).toBe(55)
-    expect(instance.getBearing()).toBe(-28)
+    expect(instance.getBearing()).toBeLessThan(-30)
     expect(terrainLayer.setEnabled).toHaveBeenLastCalledWith(true)
+    expect(instance.getLayer('trip-route-corridor')).toMatchObject({ source: 'trip-planned-route' })
+    expect(instance.setPaintProperty).toHaveBeenCalledWith('trip-route-corridor', 'line-width', 18)
 
+    overview.setSelectedWaypoint('a')
     expect(overview.setPlannerView('2d')).toBe(true)
     expect(instance.getPitch()).toBe(0)
     expect(instance.getBearing()).toBe(0)
     expect(instance.getCenter()).toEqual(center)
     expect(instance.getZoom()).toBe(zoom)
     expect(terrainLayer.setEnabled).toHaveBeenLastCalledWith(false)
+    expect(instance.getSource('trip-route-waypoints').data.features[0].properties.selected).toBe(true)
+    expect(instance.stop).toHaveBeenCalledTimes(3)
+    expect(instance.easeCalls).toHaveLength(2)
+    expect(instance.easeCalls.at(-1)).toMatchObject({ pitch: 0, bearing: 0, duration: 650, essential: false })
+  })
+
+  it('retargets rapid toggles to the latest view and uses the mobile transition duration', () => {
+    vi.stubGlobal('matchMedia', (query) => ({ matches: query === '(max-width: 720px)' }))
+    const terrainLayer = { id: 'trip-three-terrain', type: 'custom', setFailureHandler: vi.fn(), setEnabled: vi.fn(() => true) }
+    const { overview, instance } = setup({ terrainLayer })
+    overview.setPlannerMode(true)
+    overview.update({ waypoints: [{ id: 'a', lon: 179.8, lat: 12 }, { id: 'b', lon: -179.8, lat: 12 }] }, null, VIEWPORT)
+
+    overview.setPlannerView('3d')
+    overview.setPlannerView('2d')
+    overview.setPlannerView('3d')
+
+    expect(instance.stop).toHaveBeenCalledTimes(4)
+    expect(instance.easeCalls.map((call) => call.duration)).toEqual([380, 380, 380])
+    expect(instance.easeCalls.at(-1)).toMatchObject({ pitch: 55, bearing: -90 })
+    expect(instance.getPitch()).toBe(55)
+    expect(instance.getBearing()).toBe(-90)
+    expect(instance.dragPan.enable).not.toHaveBeenCalled()
+  })
+
+  it('switches immediately for reduced-motion users without changing the map instance', () => {
+    vi.stubGlobal('matchMedia', (query) => ({ matches: query === '(prefers-reduced-motion: reduce)' }))
+    const terrainLayer = { id: 'trip-three-terrain', type: 'custom', setFailureHandler: vi.fn(), setEnabled: vi.fn(() => true) }
+    const { overview, instance } = setup({ terrainLayer })
+    overview.setPlannerMode(true)
+    const canvas = instance.getCanvas()
+
+    overview.setPlannerView('3d')
+    overview.setPlannerView('2d')
+
+    expect(maplibre.instances).toHaveLength(1)
+    expect(instance.getCanvas()).toBe(canvas)
+    expect(instance.easeCalls).toHaveLength(0)
+    expect(instance.getPitch()).toBe(0)
+    expect(instance.getBearing()).toBe(0)
   })
 
   it('returns to an operable 2D route map when the terrain layer fails', () => {
