@@ -1,11 +1,14 @@
-# MONOLITH — interactive 3D topographic map
+# TRIP 3D — 时间、空间与气候的旅行地图
 
 > **在线访问**: https://trip-3d.pages.dev (Cloudflare Pages)
 
-> **trip-3d fork**:在 monolith-terrain(MIT)底座上增加线路规划 —— 3D 地形打点成线、
-> 高程剖面、线路库(IndexedDB)、GPX 导入导出、URL 分享。实施计划与三轮 Codex review 记录见
-> `docs/plans/2026-08-04-p0-p1-waypoint-routing.md`;设计收敛见
-> `../brainstorming/2026-08-04-3d-trip-weather-planner-brainstorm.md`;v1.1+ 见 `docs/followups.md`。
+TRIP 3D 是以地图和路线为核心的旅行规划与记录工具：在 3D 地形上规划线路、查看高程剖面与沿途天气，并可使用本地线路库、GPX 导入导出和 URL 分享。
+
+本项目基于 [monolith-terrain](https://github.com/kaolti/monolith-terrain) 的 MIT 许可基础演进而来；其地形渲染与数据来源说明保留在本文档中。
+
+实施计划与三轮 Codex review 记录见
+`docs/plans/2026-08-04-p0-p1-waypoint-routing.md`;设计收敛见
+`../brainstorming/2026-08-04-3d-trip-weather-planner-brainstorm.md`;v1.1+ 见 `docs/followups.md`。
 >
 > ```bash
 > npm install && npm run dev   # 开发
@@ -15,7 +18,7 @@
 
 An interactive, real-time 3D terrain map in the style of a vintage USGS topographic sheet, crossed with a sci-fi FUI overlay. Load **real-world elevation data** for anywhere on Earth, or generate procedural mountain ranges — then explore them with contour lines, hypsometric tinting, survey grids, spot elevations, clickable peak markers, radar scans, and cinematic camera tours.
 
-**Live demo:** https://kaolti.github.io/monolith-terrain/
+**上游演示:** https://kaolti.github.io/monolith-terrain/
 
 ## How to use
 
