@@ -48,14 +48,11 @@ describe('rail accessibility', () => {
 })
 
 describe('panel collapse accessibility state', () => {
-  it('uses one inspector tab model for overview, weather, and retention', () => {
-    const onTab = vi.fn()
-    const panel = createPanelHost({ onTab })
-    panel.show('weather', '行程检视', null, document.createElement('div'))
-    const weather = panel.el.querySelector('[data-panel-tab="weather"]')
-    expect(weather.getAttribute('aria-pressed')).toBe('true')
-    panel.el.querySelector('[data-panel-tab="share"]').click()
-    expect(onTab).toHaveBeenCalledWith('share')
+  it('keeps each inspector single-purpose without nested category tabs', () => {
+    const panel = createPanelHost()
+    panel.show('weather', '沿途天气', null, document.createElement('div'))
+    expect(panel.el.querySelector('.ui-panel-tabs')).toBeNull()
+    expect(panel.el.querySelector('h2').textContent).toContain('沿途天气')
   })
 
   it('keeps aria-expanded synchronized with the panel body', () => {

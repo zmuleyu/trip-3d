@@ -1489,6 +1489,73 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
 }
 .ui-panel-tabs button.active { color: var(--trip-ink); font-weight: 650; box-shadow: inset 0 -2px var(--trip-route); }
 
+/* Final single-responsibility inspector pass. The map stays continuous while
+   each rail destination owns its own focused panel instead of nested tabs. */
+body.planner-operate .ui-panel {
+  width: min(410px, calc(100vw - 96px));
+  background: var(--trip-paper) !important;
+}
+body.planner-operate .ui-panel h2 {
+  min-height: 76px;
+  padding: 0 26px;
+  border-bottom: 0;
+  border-radius: 15px 15px 0 0;
+  background: #172126;
+  color: #fff;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -.02em;
+}
+body.planner-operate .ui-panel-hint { color: rgba(255,255,255,.58); font-size: 12px; font-weight: 400; letter-spacing: 0; }
+body.planner-operate .ui-panel-chev { border: 0; background: transparent; color: #fff; }
+body.planner-operate .ui-panel-body { height: calc(100% - 76px); padding: 28px 26px 30px; }
+.pp-mobile-primary, .pp-journey-list, .pp-plan, .pp-legs, .pp-root .ui-profile { display: none !important; }
+.pp-root .pp-section { margin: 0 0 8px; padding: 0; border: 0; color: var(--trip-ink); font-size: 14px; font-weight: 650; }
+.pp-root .pp-section + .name-input { margin: 0 0 28px; }
+.pp-root .name-input { min-height: 56px; border-radius: 12px; font-size: 16px; }
+.pp-root .pp-snap-row { margin: 0 0 20px; }
+.pp-root .pp-route-mode { border-radius: 14px; }
+.pp-root .pp-route-mode button { min-height: 48px; font-size: 15px; }
+.pp-root .ui-wp-list { overflow: hidden; border: 1px solid var(--trip-line); border-radius: 12px; background: #fff; }
+.pp-root .pp-tl-item { min-height: 58px; padding: 0 12px; }
+.pp-root .pp-tl-body { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; align-items: center; gap: 8px; width: 100%; }
+.pp-root .pp-tl-role { font-size: 14px; font-weight: 650; }
+.pp-root .pp-tl-name { font-size: 14px; color: var(--trip-ink-soft); }
+.pp-root .pp-tl-coord { display: none; }
+.pp-root .pp-day-badge { display: none; }
+.pp-add-waypoint { display: block; width: 100%; min-height: 54px; border: 0; border-top: 1px solid var(--trip-line); background: #fff; color: var(--trip-ink-soft); font: 14px var(--trip-font); text-align: left; padding: 0 16px; cursor: pointer; }
+.pp-add-waypoint:hover, .pp-add-waypoint:focus-visible { color: var(--trip-route); background: rgba(240,74,29,.05); }
+.pp-root .pp-secondary-tools { margin-top: 22px; border-radius: 12px; }
+.pp-root .pp-secondary-tools > summary { min-height: 64px; color: var(--trip-ink); font-size: 15px; font-weight: 650; }
+.pp-root .pp-secondary-tools > summary::after { content: '›'; margin-left: auto; color: var(--trip-ink-soft); font-size: 25px; font-weight: 400; }
+.pp-root .pp-secondary-tools[open] > summary::after { transform: rotate(90deg); }
+.pp-root .pp-ops-main { margin-top: 28px; }
+.pp-root .pp-ops-main button.primary, .wx-go { min-height: 64px; border-radius: 12px; background: var(--trip-route); color: #fff; font: 700 17px var(--trip-font); }
+
+.wx-panel { display: grid; gap: 20px; }
+.wx-route-context { display: grid; gap: 5px; width: 100%; min-height: 60px; padding: 12px 16px; border: 1px solid var(--trip-line-strong); border-radius: 12px; background: #fff; color: var(--trip-ink); text-align: left; }
+.wx-route-context b { font-size: 16px; font-weight: 650; }
+.wx-route-context span { color: var(--trip-ink-soft); font-size: 13px; }
+.wx-route-context.is-empty { border-style: dashed; cursor: pointer; }
+.wx-date-section { display: grid; gap: 12px; }
+.wx-date-section h3 { margin: 0; font-size: 14px; font-weight: 650; }
+.wx-date-shortcuts { display: grid; grid-template-columns: repeat(3, 1fr); padding: 3px; border: 1px solid var(--trip-line-strong); border-radius: 14px; background: #fff; }
+.wx-date-shortcuts button { min-height: 42px; border: 0; border-radius: 11px; background: transparent; color: var(--trip-ink-soft); font: 14px var(--trip-font); }
+.wx-date-shortcuts button.active { background: var(--trip-ink); color: #fff; }
+.wx-date-input { display: flex; align-items: center; justify-content: space-between; min-height: 56px; padding: 0 15px; border: 1px solid var(--trip-line-strong); border-radius: 12px; background: #fff; color: var(--trip-ink-soft); font-size: 14px; }
+.wx-date-input input { border: 0; background: transparent; color: var(--trip-ink); font: 16px var(--trip-font); }
+.wx-preflight { min-height: 56px; display: flex; align-items: center; padding: 0 15px; border: 1px solid var(--trip-line); border-radius: 12px; color: var(--trip-ink-soft); font-size: 14px; }
+.wx-status { margin: 0; font-size: 13px; line-height: 1.55; }
+.wx-attr { margin-top: -8px; color: var(--trip-ink-soft); }
+
+@media (max-width: 720px) {
+  body.planner-operate .ui-panel, body.weather-operate .ui-panel { width: 100%; border-radius: 18px 18px 0 0; }
+  body.planner-operate .ui-panel h2, body.weather-operate .ui-panel h2 { min-height: 64px; padding: 0 18px; font-size: 19px; }
+  body.planner-operate .ui-panel-body, body.weather-operate .ui-panel-body { height: calc(100% - 64px); padding: 20px 16px 28px; }
+  .pp-root .name-input { min-height: 50px; }
+  .pp-root .pp-ops-main button.primary, .wx-go { min-height: 56px; }
+}
+
 .ui-trip-spine {
   position: fixed; left: 50%; bottom: 24px; z-index: 44; display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto; align-items: center;
