@@ -111,6 +111,12 @@ export function createPlanningPanel(actions) {
   name.onchange = () => actions.onNameChange(name.value)
   el.appendChild(name)
 
+  const journeyList = document.createElement('div')
+  journeyList.className = 'pp-journey-list'
+  journeyList.setAttribute('aria-label', '按天行程列表')
+  el.appendChild(journeyList)
+  let selectedDay = 1
+
   const wpList = document.createElement('div')
   wpList.className = 'ui-wp-list pp-tl'
   el.appendChild(wpList)
@@ -172,11 +178,73 @@ export function createPlanningPanel(actions) {
     el,
     get nameEl() { return name },
     // update(route, stats, legs, weatherIndex, profile) — timeline list + summary card + legs
-    update(route, stats, legs = null, weatherIndex = null, profile = 'foot') {
+    update(route, stats, legs = null, weatherIndex = null, profile = 'foot', weatherDays = null) {
       if (document.activeElement !== name) name.value = route.name
       wpList.replaceChildren()
       const n = route.waypoints.length
       mobileSave.disabled = n < 2
+      journeyList.replaceChildren()
+      if (n >= 2) {
+        const endIndexes = (route.dayEnds ?? [])
+          .map((id) => route.waypoints.findIndex((point) => point.id === id))
+          .filter((index) => index > 0 && index < n - 1)
+          .sort((a, b) => a - b)
+        const boundaries = [...endIndexes, n - 1]
+        let startIndex = 0
+        boundaries.forEach((endIndex, dayIndex) => {
+          const day = dayIndex + 1
+          const dayLegs = (legs ?? []).slice(startIndex, endIndex)
+          const distanceM = dayLegs.length
+            ? dayLegs.reduce((sum, leg) => sum + (Number(leg.distanceM) || 0), 0)
+            : null
+          const durationS = dayLegs.length && dayLegs.every((leg) => leg.real && Number.isFinite(leg.durationS))
+            ? dayLegs.reduce((sum, leg) => sum + leg.durationS, 0)
+            : null
+          const weather = weatherDays?.[dayIndex]
+          const row = document.createElement('button')
+          row.type = 'button'
+          row.className = 'pp-journey-row'
+          row.classList.toggle('selected', selectedDay === day)
+          row.setAttribute('aria-pressed', String(selectedDay === day))
+          const dayCell = document.createElement('span')
+          dayCell.className = 'pp-journey-day'
+          const dayName = document.createElement('b')
+          dayName.textContent = `D${day}`
+          const dayDate = document.createElement('small')
+          dayDate.textContent = weather?.date?.slice?.(5) ?? ''
+          dayCell.append(dayName, dayDate)
+          const routeCell = document.createElement('span')
+          routeCell.className = 'pp-journey-route'
+          const from = document.createElement('b')
+          from.textContent = route.waypoints[startIndex].name
+          const arrow = document.createElement('i')
+          arrow.textContent = '→'
+          const to = document.createElement('b')
+          to.textContent = route.waypoints[endIndex].name
+          routeCell.append(from, arrow, to)
+          const distanceCell = document.createElement('span')
+          distanceCell.className = 'pp-journey-metric'
+          distanceCell.textContent = distanceM == null ? '—' : `${(distanceM / 1000).toFixed(1)} km`
+          const durationCell = document.createElement('span')
+          durationCell.className = 'pp-journey-metric'
+          durationCell.textContent = durationS == null ? '—' : fmtDur(durationS / 60)
+          const weatherCell = document.createElement('span')
+          weatherCell.className = 'pp-journey-weather'
+          weatherCell.textContent = weather ? `${Math.round(weather.tempMin)}–${Math.round(weather.tempMax)}°C · ${weather.precipMm.toFixed(1)}mm` : '天气未加载'
+          row.append(dayCell, routeCell, distanceCell, durationCell, weatherCell)
+          row.onclick = () => {
+            selectedDay = day
+            actions.onDaySelect?.({ day, startIndex, endIndex })
+            for (const button of journeyList.querySelectorAll('.pp-journey-row')) {
+              const active = button === row
+              button.classList.toggle('selected', active)
+              button.setAttribute('aria-pressed', String(active))
+            }
+          }
+          journeyList.appendChild(row)
+          startIndex = endIndex
+        })
+      }
       // loop route: last point within ~25m of the first → merged start/end marker
       const wpsArr = route.waypoints
       const isLoop = n > 1 && Math.hypot(wpsArr[0].lon - wpsArr[n - 1].lon, wpsArr[0].lat - wpsArr[n - 1].lat) < 0.0003
@@ -349,6 +417,10 @@ export function createPlanningPanel(actions) {
       results.appendChild(attr) // OSM attribution always visible with results
     },
     hideSearchResults() { results.classList.add('hidden') },
+    search(query) {
+      searchInput.value = query ?? ''
+      actions.onSearch?.(searchInput.value)
+    },
 
     // ---- route-mode API
     setRouteMode(mode, statusText) {

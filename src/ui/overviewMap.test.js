@@ -417,4 +417,53 @@ describe('overview MapLibre planner map', () => {
     overview.setWeatherOverlay({ routeRevision: 4, weatherRevision: 3, result: { rep: [{ lon: 116.1, lat: 39.8 }] } })
     expect(instance.getSource('trip-route-weather').data.features).toEqual([])
   })
+
+  it('opens weather from local marker properties and does not forward the click to planning', () => {
+    vi.useFakeTimers()
+    vi.stubGlobal('matchMedia', (query) => ({ matches: query === '(hover: hover) and (pointer: fine)' }))
+    const onPlanAdd = vi.fn()
+    const onWeatherDetails = vi.fn()
+    const { overview, instance } = setup({ onPlanAdd, onWeatherDetails })
+    overview.setPlannerMode(true)
+    overview.setWeatherMode(true, { hoverCards: true, pinCards: true })
+    const marker = {
+      layer: { id: 'trip-weather-markers' },
+      properties: {
+        role: '木骡子', date: '2026-08-24', tempMin: 2, tempMax: 18,
+        precipMm: 5.2, windMax: 18, weatherCode: 71, source: 'forecast',
+      },
+    }
+
+    instance.emit('mouseenter', { features: [marker], point: { x: 320, y: 220 } })
+    vi.advanceTimersByTime(100)
+    expect(overview.el.querySelector('.ui-weather-card').classList.contains('hidden')).toBe(false)
+    expect(overview.el.querySelector('[data-weather="temperature"]').textContent).toBe('2–18°C')
+
+    instance.emit('click', { features: [marker], point: { x: 320, y: 220 }, lngLat: { lng: 113, lat: 31 } })
+    expect(onPlanAdd).not.toHaveBeenCalled()
+    overview.el.querySelector('[data-weather-action]').click()
+    expect(onWeatherDetails).toHaveBeenCalledWith(expect.objectContaining({ role: '木骡子' }))
+    vi.useRealTimers()
+  })
+
+  it('opens the same weather card from a keyboard-accessible weather list', () => {
+    const { overview } = setup()
+    overview.setPlannerMode(true)
+    overview.setWeatherOverlay({
+      routeRevision: 2,
+      weatherRevision: 2,
+      result: {
+        source: 'forecast',
+        rep: [{ lon: 116.1, lat: 39.8, role: '木骡子' }],
+        agg: [{ points: [{
+          point: { lon: 116.1, lat: 39.8 }, date: '2026-08-24', tempMin: 2, tempMax: 18,
+          precipMm: 5.2, windMax: 18, weatherCode: 71,
+        }] }],
+      },
+    })
+    overview.setWeatherMode(true)
+    expect(overview.focusWeatherPoint('木骡子', { pinned: true })).toBe(true)
+    expect(overview.el.querySelector('.ui-weather-card').classList.contains('hidden')).toBe(false)
+    expect(overview.el.querySelector('[data-weather="role"]').textContent).toBe('木骡子')
+  })
 })

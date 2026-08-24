@@ -46,4 +46,25 @@ describe('native settings panel', () => {
     panel.closeButton.click()
     expect(onClose).toHaveBeenCalledOnce()
   })
+
+  it('edits summary and weather preferences without touching route settings', () => {
+    const onSummaryPreferences = vi.fn()
+    const onWeatherPreferences = vi.fn()
+    const panel = createSettingsPanel({
+      presets: ['Custom'],
+      summaryPreferences: { mode: 'auto', fields: ['distance', 'duration', 'ascent', 'weatherRisk'] },
+      weatherPreferences: { hoverCards: true, pinCards: true, temperatureLabels: 'auto', transparency: 'system' },
+      onSummaryPreferences,
+      onWeatherPreferences,
+    })
+    document.body.appendChild(panel.el)
+
+    const mode = panel.el.querySelector('[aria-label="摘要字段模式"]')
+    mode.value = 'custom'
+    mode.dispatchEvent(new Event('change'))
+    expect(onSummaryPreferences).toHaveBeenLastCalledWith(expect.objectContaining({ mode: 'custom' }))
+
+    panel.el.querySelector('[aria-label="悬停显示天气卡"]').click()
+    expect(onWeatherPreferences).toHaveBeenLastCalledWith(expect.objectContaining({ hoverCards: false }))
+  })
 })

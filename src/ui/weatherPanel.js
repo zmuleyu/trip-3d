@@ -1,9 +1,10 @@
 // Weather panel: date/days inputs, explicit query, per-point cards, trip index.
 // DOM only; main.js wires data flow. Panel state (date/days) persists to localStorage.
-import { tripDates, wmoIcon, MAX_TRIP_DAYS } from '../lib/weather.js'
+import { tripDates, MAX_TRIP_DAYS } from '../lib/weather.js'
 import { indexLabel } from '../lib/tripIndex.js'
 
 const LS_KEY = 'trip3d.weatherPanel'
+const weatherLabel = (code) => code === 0 ? '晴' : code <= 3 ? '多云' : code <= 48 ? '雾' : code <= 67 ? '雨' : code <= 77 ? '雪' : code <= 86 ? '阵雨雪' : '雷暴'
 
 const todayLocal = () => {
   const d = new Date()
@@ -11,7 +12,7 @@ const todayLocal = () => {
 }
 const plusDays = (iso, n) => new Date(new Date(`${iso}T00:00:00Z`).getTime() + n * 86400000).toISOString().slice(0, 10)
 
-export function createWeatherPanel({ onQuery }) {
+export function createWeatherPanel({ onQuery, onPointFocus }) {
   const el = document.createElement('div')
   const saved = JSON.parse(localStorage.getItem(LS_KEY) ?? '{}')
   const today = todayLocal()
@@ -28,6 +29,7 @@ export function createWeatherPanel({ onQuery }) {
     </div>
     <div class="wx-index hidden"></div>
     <div class="wx-status">选择日期后查询 — ≤16 天为预报;超窗自动回填去年历史同期(ERA5)</div>
+    <div class="wx-points hidden" aria-label="路线天气地点"></div>
     <div class="wx-cards"></div>
     <div class="wx-attr">Weather data by <a href="https://open-meteo.com/" target="_blank" rel="noreferrer">Open-Meteo.com</a>(非商用,CC-BY 4.0)</div>`
 
@@ -37,6 +39,7 @@ export function createWeatherPanel({ onQuery }) {
   const allPtsEl = el.querySelector('.wx-allpts-cb')
   const statusEl = el.querySelector('.wx-status')
   const cardsEl = el.querySelector('.wx-cards')
+  const pointsEl = el.querySelector('.wx-points')
   const indexEl = el.querySelector('.wx-index')
 
   const persist = () => localStorage.setItem(LS_KEY, JSON.stringify({ start: dateEl.value, days: +daysEl.value, allPoints: allPtsEl.checked }))
@@ -65,6 +68,7 @@ export function createWeatherPanel({ onQuery }) {
     setLoading(pts) {
       goBtn.disabled = true
       indexEl.classList.add('hidden')
+      pointsEl.classList.add('hidden')
       cardsEl.replaceChildren()
       setStatus(`查询中: ${pts.map((p) => p.role).join(' / ')} …`)
     },
@@ -75,6 +79,7 @@ export function createWeatherPanel({ onQuery }) {
     setEmptyRoute() {
       goBtn.disabled = false
       indexEl.classList.add('hidden')
+      pointsEl.classList.add('hidden')
       cardsEl.replaceChildren()
       setStatus('先在规划 tab 打点成线(至少 1 个途经点)', 'error')
     },
@@ -89,14 +94,30 @@ export function createWeatherPanel({ onQuery }) {
           `<em>最差日 ${index.worst.date}(${index.worst.score})</em>`
       }
       cardsEl.replaceChildren()
+      pointsEl.replaceChildren()
+      pointsEl.classList.toggle('hidden', !rep.length)
+      for (const point of rep) {
+        const weather = agg.flatMap((day) => day.points ?? []).find((entry) => entry.point.lon === point.lon && entry.point.lat === point.lat)
+        const button = document.createElement('button')
+        button.type = 'button'
+        button.className = 'wx-point'
+        const name = document.createElement('b')
+        name.textContent = point.role ?? point.name ?? '天气点'
+        const summary = document.createElement('span')
+        summary.textContent = weather ? `${Math.round(weather.tempMin)}–${Math.round(weather.tempMax)}°C · ${weather.precipMm.toFixed(1)}mm` : '数据未知'
+        button.append(name, summary)
+        button.onfocus = () => onPointFocus?.(point.role ?? point.name ?? '', false)
+        button.onclick = () => onPointFocus?.(point.role ?? point.name ?? '', true)
+        pointsEl.appendChild(button)
+      }
       for (const day of agg) {
         const card = document.createElement('div')
         card.className = 'wx-card' + (day.isRain ? ' rain' : '')
         const head = document.createElement('div')
         head.className = 'wx-card-head'
-        head.innerHTML = `<span class="d">${day.date.slice(5)}</span><span class="ico">${wmoIcon(day.weatherCode)}</span>` +
+        head.innerHTML = `<span class="d">${day.date.slice(5)}</span><span class="ico">${weatherLabel(day.weatherCode)}</span>` +
           `<span class="t">${Math.round(day.tempMin)}~${Math.round(day.tempMax)}°C</span>` +
-          `<span class="p">${day.isRain ? '🌧' : ''}${day.precipMm.toFixed(1)}mm</span>` +
+          `<span class="p">降水 ${day.precipMm.toFixed(1)}mm</span>` +
           `<span class="w">风 ${Math.round(day.windMax)}km/h</span>`
         card.appendChild(head)
         const sub = document.createElement('div')
@@ -104,7 +125,7 @@ export function createWeatherPanel({ onQuery }) {
         sub.textContent = day.points.map((p) => {
           const rp = rep.find((r) => r.lon === p.point.lon && r.lat === p.point.lat)
           const role = rp?.role ?? p.point.name ?? ''
-          return `${role} ${wmoIcon(p.weatherCode)}${p.precipMm.toFixed(1)}`
+          return `${role} ${weatherLabel(p.weatherCode)} ${p.precipMm.toFixed(1)}mm`
         }).join(' · ')
         card.appendChild(sub)
         cardsEl.appendChild(card)

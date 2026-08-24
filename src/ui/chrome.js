@@ -174,7 +174,17 @@ export function createPanelHost() {
     get sheetState() { return sheetState },
     setSheetState,
     // one-line state shown in the header even when collapsed
-    setSummary(text) { summary.textContent = text ?? '' },
+    setSummary(value) {
+      summary.replaceChildren()
+      const items = Array.isArray(value) ? value : value == null ? [] : [{ text: String(value) }]
+      for (const item of items) {
+        if (!item?.text) continue
+        const span = document.createElement('span')
+        span.dataset.field = item.id ?? ''
+        span.textContent = item.text
+        summary.appendChild(span)
+      }
+    },
     hide() {
       currentId = null
       el.classList.add('hidden')

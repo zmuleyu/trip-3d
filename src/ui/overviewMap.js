@@ -197,6 +197,7 @@ function addPlannerLayers(map) {
     id: 'trip-weather-markers',
     type: 'circle',
     source: SOURCE_IDS.weather,
+    layout: { visibility: 'none' },
     paint: {
       // Representative points deliberately sit beneath waypoint ownership. A
       // larger, restrained halo keeps fresh weather visible without another
@@ -206,6 +207,24 @@ function addPlannerLayers(map) {
       'circle-stroke-color': '#17191b',
       'circle-stroke-width': 1.5,
       'circle-opacity': 0.72,
+    },
+  })
+  map.addLayer({
+    id: 'trip-weather-labels',
+    type: 'symbol',
+    source: SOURCE_IDS.weather,
+    layout: {
+      visibility: 'none',
+      'text-field': ['get', 'tempLabel'],
+      'text-font': ['Noto Sans Regular'],
+      'text-size': 11,
+      'text-offset': [0, 1.9],
+      'text-allow-overlap': false,
+    },
+    paint: {
+      'text-color': '#ffffff',
+      'text-halo-color': 'rgba(23,25,27,.78)',
+      'text-halo-width': 2,
     },
   })
   map.addLayer({
@@ -254,7 +273,11 @@ function addPlannerLayers(map) {
   })
 }
 
-export function createOverviewMap({ terrainLayer, onTerrainUnavailable, onJump, onPlanAdd, onWaypointSelect, onWaypointMoveStart, onWaypointMove, onWaypointMoveEnd, onWaypointMoveCancel } = {}) {
+export function createOverviewMap({
+  terrainLayer, onTerrainUnavailable, onJump, onPlanAdd, onWaypointSelect,
+  onWaypointMoveStart, onWaypointMove, onWaypointMoveEnd, onWaypointMoveCancel,
+  onWeatherDetails,
+} = {}) {
   const el = document.createElement('div')
   el.className = 'ui-overview hidden'
 
@@ -298,7 +321,17 @@ export function createOverviewMap({ terrainLayer, onTerrainUnavailable, onJump, 
   mapError.className = 'ui-map-error hidden'
   mapError.textContent = '底图暂时不可用；路线数据仍已保留'
 
-  el.append(mapSurface, mapContext, controls, emptyHint, footprintLegend, mapError)
+  const weatherCard = document.createElement('section')
+  weatherCard.className = 'ui-weather-card hidden'
+  weatherCard.setAttribute('aria-live', 'polite')
+  weatherCard.setAttribute('aria-label', '地点天气')
+  weatherCard.innerHTML = `
+    <header><div><b data-weather="role">地点</b><span data-weather="date"></span></div><button type="button" aria-label="关闭天气卡">×</button></header>
+    <div class="ui-weather-current"><strong data-weather="temperature">—</strong><span data-weather="condition">天气数据</span></div>
+    <dl><div><dt>降水</dt><dd data-weather="precipitation">—</dd></div><div><dt>风速</dt><dd data-weather="wind">—</dd></div></dl>
+    <footer><span data-weather="source">预报</span><button type="button" data-weather-action>逐小时预报</button></footer>`
+
+  el.append(mapSurface, mapContext, controls, emptyHint, footprintLegend, mapError, weatherCard)
 
   const map = new MapLibreMap({
     container: mapSurface,
@@ -333,6 +366,13 @@ export function createOverviewMap({ terrainLayer, onTerrainUnavailable, onJump, 
   let selectedWaypointId = null
   let adminOverlay = { enabled: false, rings: [], selected: null }
   let weatherOverlay = { routeRevision: -1, weatherRevision: -1, result: null }
+  let weatherData = EMPTY_FEATURE_COLLECTION
+  let weatherMode = false
+  let weatherPreferences = { hoverCards: true, pinCards: true, temperatureLabels: 'auto', transparency: 'system' }
+  let weatherPinned = false
+  let weatherFeatureCurrent = null
+  let weatherOpenTimer = null
+  let weatherCloseTimer = null
   let waypointDrag = null
   let suppressNextMapClick = false
   let suppressMapClickTimer = null
@@ -402,6 +442,7 @@ export function createOverviewMap({ terrainLayer, onTerrainUnavailable, onJump, 
 
   function setInteractionForView({ animate = true } = {}) {
     const terrain3d = plannerMode && plannerView === '3d'
+    el.classList.toggle('view-3d', terrain3d)
     if (terrain3d) {
       map.dragRotate?.enable?.()
       map.touchPitch?.enable?.()
@@ -442,8 +483,92 @@ export function createOverviewMap({ terrainLayer, onTerrainUnavailable, onJump, 
     map.getSource(SOURCE_IDS.coverage)?.setData(footprint ? featureCollection([footprint]) : EMPTY_FEATURE_COLLECTION)
     map.getSource(SOURCE_IDS.admin)?.setData(adminOverlayGeoJSON(adminOverlay))
     map.getSource(SOURCE_IDS.route)?.setData(route ? featureCollection([route]) : EMPTY_FEATURE_COLLECTION)
-    map.getSource(SOURCE_IDS.weather)?.setData(weatherOverlayGeoJSON(weatherOverlay))
+    weatherData = weatherOverlayGeoJSON(weatherOverlay)
+    map.getSource(SOURCE_IDS.weather)?.setData(weatherData)
     map.getSource(SOURCE_IDS.waypoints)?.setData(featureCollection(waypointFeatures(lastRoute, selectedWaypointId)))
+  }
+
+  const weatherCondition = (code) => {
+    if (!Number.isFinite(Number(code))) return '天气数据'
+    const value = Number(code)
+    if (value === 0) return '晴'
+    if (value <= 3) return '多云'
+    if (value <= 48) return '雾'
+    if (value <= 67) return '雨'
+    if (value <= 77) return '雪'
+    if (value <= 82) return '阵雨'
+    if (value <= 86) return '阵雪'
+    return '雷暴'
+  }
+
+  function weatherFeatureAt(event) {
+    return event?.features?.find?.((feature) => feature.layer?.id === 'trip-weather-markers')
+      ?? map.queryRenderedFeatures?.(event?.point, { layers: ['trip-weather-markers'] })?.[0]
+      ?? null
+  }
+
+  function closeWeatherCard({ force = false } = {}) {
+    clearTimeout(weatherOpenTimer)
+    clearTimeout(weatherCloseTimer)
+    if (weatherPinned && !force) return
+    weatherPinned = false
+    weatherFeatureCurrent = null
+    weatherCard.classList.add('hidden')
+    weatherCard.classList.remove('pinned')
+  }
+
+  function positionWeatherCard(point) {
+    const rect = el.getBoundingClientRect()
+    const x = Number.isFinite(point?.x) ? point.x : rect.width / 2
+    const y = Number.isFinite(point?.y) ? point.y : rect.height / 2
+    weatherCard.style.setProperty('--weather-x', `${Math.max(12, Math.min(rect.width - 282, x + 14))}px`)
+    weatherCard.style.setProperty('--weather-y', `${Math.max(70, Math.min(rect.height - 216, y - 44))}px`)
+  }
+
+  function openWeatherCard(feature, point, { pinned = false } = {}) {
+    if (!weatherMode || !feature?.properties) return
+    clearTimeout(weatherOpenTimer)
+    clearTimeout(weatherCloseTimer)
+    weatherFeatureCurrent = feature
+    weatherPinned = pinned && weatherPreferences.pinCards
+    const p = feature.properties
+    weatherCard.querySelector('[data-weather="role"]').textContent = p.role || '路线天气点'
+    weatherCard.querySelector('[data-weather="date"]').textContent = p.date || ''
+    const min = Number(p.tempMin)
+    const max = Number(p.tempMax)
+    weatherCard.querySelector('[data-weather="temperature"]').textContent = Number.isFinite(min) && Number.isFinite(max)
+      ? `${Math.round(min)}–${Math.round(max)}°C` : '—'
+    weatherCard.querySelector('[data-weather="condition"]').textContent = weatherCondition(p.weatherCode)
+    weatherCard.querySelector('[data-weather="precipitation"]').textContent = Number.isFinite(Number(p.precipMm)) ? `${Number(p.precipMm).toFixed(1)} mm` : '未知'
+    weatherCard.querySelector('[data-weather="wind"]').textContent = Number.isFinite(Number(p.windMax)) ? `${Math.round(Number(p.windMax))} km/h` : '未知'
+    weatherCard.querySelector('[data-weather="source"]').textContent = p.source === 'archive' ? '历史同期参考' : '天气预报'
+    weatherCard.dataset.material = weatherPreferences.transparency
+    weatherCard.classList.toggle('pinned', weatherPinned)
+    positionWeatherCard(point)
+    weatherCard.classList.remove('hidden')
+  }
+
+  function scheduleWeatherOpen(feature, point) {
+    if (!weatherPreferences.hoverCards || globalThis.matchMedia?.('(hover: hover) and (pointer: fine)')?.matches === false) return
+    clearTimeout(weatherOpenTimer)
+    clearTimeout(weatherCloseTimer)
+    weatherOpenTimer = setTimeout(() => openWeatherCard(feature, point), 100)
+  }
+
+  function scheduleWeatherClose() {
+    clearTimeout(weatherOpenTimer)
+    clearTimeout(weatherCloseTimer)
+    if (weatherPinned) return
+    weatherCloseTimer = setTimeout(() => closeWeatherCard(), 150)
+  }
+
+  function syncWeatherLayerVisibility() {
+    if (!styleReady) return
+    const visibility = weatherMode ? 'visible' : 'none'
+    if (map.getLayer('trip-weather-markers')) map.setLayoutProperty('trip-weather-markers', 'visibility', visibility)
+    const showLabels = weatherMode && weatherPreferences.temperatureLabels !== 'off'
+    if (map.getLayer('trip-weather-labels')) map.setLayoutProperty('trip-weather-labels', 'visibility', showLabels ? 'visible' : 'none')
+    if (!weatherMode) closeWeatherCard({ force: true })
   }
 
   function updateChrome() {
@@ -523,6 +648,7 @@ export function createOverviewMap({ terrainLayer, onTerrainUnavailable, onJump, 
       if (terrainLayer.failed) degradeTo2d(terrainLayer.failed)
     }
     addPlannerLayers(map)
+    syncWeatherLayerVisibility()
     setRouteVisualTreatment(plannerMode && plannerView === '3d')
     syncPlannerData()
     decorateCanvas()
@@ -623,7 +749,31 @@ export function createOverviewMap({ terrainLayer, onTerrainUnavailable, onJump, 
   map.on('mouseleave', 'trip-waypoint-circles', () => {
     if (!waypointDrag) map.getCanvas().style.cursor = ''
   })
+  map.on('mouseenter', 'trip-weather-markers', (event) => {
+    if (!weatherMode) return
+    map.getCanvas().style.cursor = 'pointer'
+    scheduleWeatherOpen(weatherFeatureAt(event), event.point)
+  })
+  map.on('mouseleave', 'trip-weather-markers', () => {
+    if (!waypointDrag) map.getCanvas().style.cursor = ''
+    scheduleWeatherClose()
+  })
+  weatherCard.addEventListener('mouseenter', () => clearTimeout(weatherCloseTimer))
+  weatherCard.addEventListener('mouseleave', scheduleWeatherClose)
+  weatherCard.querySelector('header button').onclick = () => closeWeatherCard({ force: true })
+  weatherCard.querySelector('[data-weather-action]').onclick = () => onWeatherDetails?.(weatherFeatureCurrent?.properties ?? null)
+  map.getCanvas().addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !weatherCard.classList.contains('hidden')) {
+      event.stopPropagation()
+      closeWeatherCard({ force: true })
+    }
+  })
   map.on('click', (event) => {
+    const weatherFeature = weatherMode ? weatherFeatureAt(event) : null
+    if (weatherFeature) {
+      openWeatherCard(weatherFeature, event.point, { pinned: true })
+      return
+    }
     const feature = waypointFeature(event)
     if (feature) {
       suppressNextMapClick = false
@@ -693,6 +843,25 @@ export function createOverviewMap({ terrainLayer, onTerrainUnavailable, onJump, 
     setWeatherOverlay(next) {
       weatherOverlay = next ?? { routeRevision: -1, weatherRevision: -1, result: null }
       syncPlannerData()
+    },
+    setWeatherMode(on, preferences) {
+      weatherMode = !!on
+      el.classList.toggle('weather-mode', weatherMode)
+      if (preferences) weatherPreferences = { ...weatherPreferences, ...preferences }
+      syncWeatherLayerVisibility()
+    },
+    setWeatherPreferences(preferences) {
+      weatherPreferences = { ...weatherPreferences, ...preferences }
+      if (!weatherPreferences.pinCards && weatherPinned) closeWeatherCard({ force: true })
+      syncWeatherLayerVisibility()
+    },
+    focusWeatherPoint(role, { pinned = false } = {}) {
+      const feature = weatherData.features?.find((candidate) => candidate.properties?.role === role)
+      if (!feature) return false
+      const [lon, lat] = feature.geometry.coordinates
+      const point = map.project?.([lon, lat]) ?? { x: el.clientWidth / 2, y: el.clientHeight / 2 }
+      openWeatherCard(feature, point, { pinned })
+      return true
     },
     update(route, points, viewport, { fit = true } = {}) {
       lastRoute = route

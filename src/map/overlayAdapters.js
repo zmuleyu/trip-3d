@@ -43,6 +43,14 @@ function scoreForPoint(result, point) {
   return complete ? Math.min(...days.map(dailyIndex)) : null
 }
 
+function weatherForPoint(result, point) {
+  const days = (result?.agg ?? [])
+    .flatMap((day) => day?.points ?? [])
+    .filter((day) => samePoint(day?.point, point))
+  if (!days.length) return null
+  return days.reduce((worst, day) => dailyIndex(day) < dailyIndex(worst) ? day : worst, days[0])
+}
+
 function riskBand(score) {
   if (!Number.isFinite(score)) return 'unknown'
   if (score < 45) return 'high'
@@ -61,12 +69,21 @@ export function weatherOverlayGeoJSON({ routeRevision, weatherRevision, result }
     if (seen.has(key)) return []
     seen.add(key)
     const score = scoreForPoint(result, point)
+    const weather = weatherForPoint(result, point)
     return [{
       type: 'Feature',
       properties: {
         role: point.role ?? point.name ?? '',
         risk: riskBand(score),
         score: Number.isFinite(score) ? score : null,
+        date: weather?.date ?? '',
+        tempMin: Number.isFinite(weather?.tempMin) ? weather.tempMin : null,
+        tempMax: Number.isFinite(weather?.tempMax) ? weather.tempMax : null,
+        tempLabel: Number.isFinite(weather?.tempMax) ? `${Math.round(weather.tempMax)}°` : '',
+        precipMm: Number.isFinite(weather?.precipMm) ? weather.precipMm : null,
+        windMax: Number.isFinite(weather?.windMax) ? weather.windMax : null,
+        weatherCode: Number.isFinite(weather?.weatherCode) ? weather.weatherCode : null,
+        source: result?.source ?? 'forecast',
       },
       geometry: { type: 'Point', coordinates: [point.lon, point.lat] },
     }]

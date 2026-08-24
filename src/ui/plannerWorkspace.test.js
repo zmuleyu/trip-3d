@@ -37,4 +37,20 @@ describe('planner workspace chrome', () => {
     workspace.setVisible(false)
     expect(document.body.classList.contains('planner-layers-open')).toBe(false)
   })
+
+  it('keeps search and secondary actions progressively disclosed', () => {
+    const onSearch = vi.fn()
+    const onMoreAction = vi.fn()
+    const workspace = createPlannerWorkspace({ onSearch, onMoreAction })
+    document.body.appendChild(workspace.el)
+    const search = workspace.el.querySelector('.ui-command-search')
+    search.querySelector('input').value = '四姑娘山'
+    search.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+    expect(onSearch).toHaveBeenCalledWith('四姑娘山')
+
+    workspace.el.querySelector('.ui-planner-more').click()
+    expect(workspace.el.querySelector('.ui-planner-more-menu').classList.contains('hidden')).toBe(false)
+    workspace.el.querySelector('[data-more-action="settings"]').click()
+    expect(onMoreAction).toHaveBeenCalledWith('settings')
+  })
 })
