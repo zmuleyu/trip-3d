@@ -14,6 +14,13 @@ const FIXTURE = {
     weather_code: [2, 61, 3],
     wind_speed_10m_max: [14.5, 33.2, 18.0],
   },
+  hourly: {
+    time: ['2026-09-14T09:00', '2026-09-14T10:00', '2026-09-15T09:00'],
+    temperature_2m: [5.2, 6.1, 4.4],
+    precipitation: [0.1, 0, 1.2],
+    weather_code: [2, 1, 61],
+    wind_speed_10m: [8, 9, 15],
+  },
 }
 
 const fetchOk = async (url) => ({
@@ -37,6 +44,10 @@ describe('open-meteo provider', () => {
       source: 'forecast',
     })
     expect(days[0].point).toMatchObject({ lon: 102.83, lat: 31.05, ele: 3850 })
+    expect(days[0].hours).toEqual([
+      { time: '2026-09-14T09:00', temperature: 5.2, precipMm: 0.1, weatherCode: 2, windKmh: 8 },
+      { time: '2026-09-14T10:00', temperature: 6.1, precipMm: 0, weatherCode: 1, windKmh: 9 },
+    ])
   })
 
   it('builds the request URL with daily fields, timezone=auto and elevation', async () => {
@@ -49,6 +60,7 @@ describe('open-meteo provider', () => {
     expect(seenUrl).toContain('latitude=31.05')
     expect(seenUrl).toContain('longitude=102.83')
     expect(seenUrl).toContain('daily=temperature_2m_max%2Ctemperature_2m_min%2Cprecipitation_sum%2Cweather_code%2Cwind_speed_10m_max')
+    expect(seenUrl).toContain('hourly=temperature_2m%2Cprecipitation%2Cweather_code%2Cwind_speed_10m')
     expect(seenUrl).toContain('timezone=auto')
     expect(seenUrl).toContain('start_date=2026-09-14')
     expect(seenUrl).toContain('end_date=2026-09-16')

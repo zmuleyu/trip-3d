@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from 'vitest'
-import { createPlanningPanel } from './panels.js'
+import { createLibraryPanel, createPlanningPanel } from './panels.js'
 
 describe('planning panel route contract', () => {
   it('uses an explicit straight/foot/car mode control', () => {
@@ -12,10 +12,12 @@ describe('planning panel route contract', () => {
     expect(onRouteMode).toHaveBeenCalledWith('car')
   })
 
-  it('gives every primary planning text input a stable accessible name', () => {
+  it('keeps one command-bar search instead of duplicating search in the drawer', () => {
     const panel = createPlanningPanel({})
     const names = [...panel.el.querySelectorAll('input[type="text"], input:not([type])')].map((input) => input.getAttribute('aria-label'))
-    expect(names).toEqual(expect.arrayContaining(['搜索地点', '高德分享链接', '线路名称']))
+    expect(names).toEqual(expect.arrayContaining(['高德分享链接', '线路名称']))
+    expect(names).not.toContain('搜索地点')
+    expect(panel.el.querySelector('.pp-search')).toBeNull()
     expect(names.every(Boolean)).toBe(true)
   })
 
@@ -29,7 +31,7 @@ describe('planning panel route contract', () => {
       { from: 'A', to: 'B', distanceM: 6100, driveMinutes: 10, real: false },
     ])
     expect(panel.el.textContent).toContain('直线示意不估时')
-    expect(panel.el.querySelector('.pp-plan-big').textContent).toBe('—')
+    expect(panel.el.querySelector('.pp-plan-summary').textContent).toContain('直线示意不估时 —')
   })
 
   it('keeps distance but omits DEM-derived elevation fields while coverage is blocked', () => {
@@ -43,5 +45,17 @@ describe('planning panel route contract', () => {
     ])
     expect(panel.el.textContent).toContain('57.7 km')
     expect(panel.el.textContent).not.toContain('nullm')
+  })
+})
+
+describe('route library recovery', () => {
+  it('offers a direct planning action when the local library is empty', () => {
+    const onPlan = vi.fn()
+    const panel = createLibraryPanel({ onPlan })
+    panel.setItems([])
+    const empty = panel.el.querySelector('.ui-empty')
+    expect(empty.textContent).toContain('线路库为空')
+    empty.querySelector('button').click()
+    expect(onPlan).toHaveBeenCalledOnce()
   })
 })

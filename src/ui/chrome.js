@@ -10,6 +10,7 @@ import { iconSvg } from './icons.js'
 export function createRail({ items, settingsItem }) {
   const el = document.createElement('nav')
   el.className = 'ui-rail'
+  el.setAttribute('aria-label', '主要工具')
   const logo = document.createElement('div')
   logo.className = 'ui-rail-logo'
   logo.textContent = 'T3'
@@ -20,6 +21,7 @@ export function createRail({ items, settingsItem }) {
     const b = document.createElement('button')
     b.className = `ui-rail-btn ${extraClass}`.trim()
     b.dataset.tab = item.id
+    b.setAttribute('aria-label', item.label)
     b.innerHTML = `<span class="ico">${iconSvg(item.icon)}</span><span class="lbl">${item.label}</span>`
     if (item.badge) {
       const badge = document.createElement('span')
@@ -78,7 +80,7 @@ export function createPanelHost() {
   grabber.innerHTML = '<span></span>'
   chev.setAttribute('aria-controls', body.id)
   const mobileQuery = globalThis.matchMedia?.('(max-width: 720px)')
-  const isMobilePlanner = () => currentId === 'planning' && mobileQuery?.matches
+  const isMobileSheet = () => !!currentId && mobileQuery?.matches
   const sheetHeights = () => {
     const full = Math.max(220, window.innerHeight - 114)
     const half = Math.max(160, Math.min(full - 24, 470, window.innerHeight * 0.47))
@@ -89,7 +91,7 @@ export function createPanelHost() {
   const apply = () => {
     el.classList.toggle('collapsed', collapsed)
     el.dataset.sheetState = sheetState
-    const mobile = isMobilePlanner()
+    const mobile = isMobileSheet()
     chev.textContent = mobile ? (sheetState === 'full' ? '⌄' : '⌃') : (collapsed ? '▸' : '▾')
     chev.setAttribute('aria-expanded', String(mobile ? sheetState !== 'peek' : !collapsed))
     chev.setAttribute('aria-label', mobile ? sheetLabel() : (collapsed ? '展开面板' : '收起面板'))
@@ -99,12 +101,13 @@ export function createPanelHost() {
   const setSheetState = (next) => {
     if (!['peek', 'half', 'full'].includes(next)) return
     sheetState = next
+    if (isMobileSheet()) collapsed = next === 'peek'
     el.style.removeProperty('--sheet-drag-height')
     el.classList.remove('dragging')
     apply()
   }
   chev.onclick = () => {
-    if (isMobilePlanner()) setSheetState(nextSheetState())
+    if (isMobileSheet()) setSheetState(nextSheetState())
     else { collapsed = !collapsed; apply() }
   }
   const project = (velocity) => (velocity / 1000) * 0.99 / (1 - 0.99)
@@ -114,7 +117,7 @@ export function createPanelHost() {
     return Object.entries(heights).reduce((best, entry) => Math.abs(entry[1] - projected) < Math.abs(best[1] - projected) ? entry : best)[0]
   }
   grabber.addEventListener('pointerdown', (event) => {
-    if (!isMobilePlanner()) return
+    if (!isMobileSheet()) return
     grabber.setPointerCapture?.(event.pointerId)
     const height = el.getBoundingClientRect().height
     drag = { pointerId: event.pointerId, startY: event.clientY, startHeight: height, history: [{ y: event.clientY, t: event.timeStamp }] }
@@ -147,7 +150,7 @@ export function createPanelHost() {
   grabber.addEventListener('pointercancel', finishDrag)
   grabber.onclick = () => {
     if (dragged) { dragged = false; return }
-    if (isMobilePlanner()) setSheetState(nextSheetState())
+    if (isMobileSheet()) setSheetState(nextSheetState())
   }
   mobileQuery?.addEventListener?.('change', apply)
   return {
@@ -167,10 +170,14 @@ export function createPanelHost() {
       body.replaceChildren(contentEl)
       el.replaceChildren(grabber, h, body)
       el.classList.remove('hidden')
-      if (id === 'planning') sheetState = 'half'
+      sheetState = 'half'
       apply()
     },
-    setCollapsed(v) { collapsed = v; apply() },
+    setCollapsed(v) {
+      collapsed = v
+      if (isMobileSheet()) sheetState = v ? 'peek' : 'half'
+      apply()
+    },
     get sheetState() { return sheetState },
     setSheetState,
     // one-line state shown in the header even when collapsed

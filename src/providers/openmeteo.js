@@ -4,6 +4,21 @@
 
 // ERA5 archive provider — same WeatherDay shape, source 'archive'.
 const ARCHIVE_BASE = 'https://archive-api.open-meteo.com/v1/archive'
+const HOURLY = 'temperature_2m,precipitation,weather_code,wind_speed_10m'
+
+function hourlyRows(body, date) {
+  const h = body?.hourly
+  if (!Array.isArray(h?.time)) return []
+  const fields = [h.temperature_2m, h.precipitation, h.weather_code, h.wind_speed_10m]
+  if (fields.some((values) => !Array.isArray(values) || values.length !== h.time.length)) return []
+  return h.time.flatMap((time, index) => time.slice(0, 10) === date ? [{
+    time,
+    temperature: h.temperature_2m[index],
+    precipMm: h.precipitation[index],
+    weatherCode: h.weather_code[index],
+    windKmh: h.wind_speed_10m[index],
+  }] : [])
+}
 
 export function createOpenMeteoArchiveProvider({ fetchImpl = fetch } = {}) {
   const fc = createOpenMeteoProvider({ fetchImpl })
@@ -15,6 +30,7 @@ export function createOpenMeteoArchiveProvider({ fetchImpl = fetch } = {}) {
       url.searchParams.set('latitude', String(point.lat))
       url.searchParams.set('longitude', String(point.lon))
       url.searchParams.set('daily', DAILY)
+      url.searchParams.set('hourly', HOURLY)
       url.searchParams.set('timezone', 'auto')
       url.searchParams.set('start_date', fromISO)
       url.searchParams.set('end_date', toISO)
@@ -38,6 +54,7 @@ export function createOpenMeteoArchiveProvider({ fetchImpl = fetch } = {}) {
         precipMm: d.precipitation_sum[i],
         weatherCode: wc[i],
         windMax: d.wind_speed_10m_max[i],
+        hours: hourlyRows(body, date),
         source: 'archive',
       }))
     },
@@ -58,6 +75,7 @@ export function createOpenMeteoProvider({ fetchImpl = fetch } = {}) {
       url.searchParams.set('latitude', String(point.lat))
       url.searchParams.set('longitude', String(point.lon))
       url.searchParams.set('daily', DAILY)
+      url.searchParams.set('hourly', HOURLY)
       url.searchParams.set('timezone', 'auto')
       url.searchParams.set('start_date', fromISO)
       url.searchParams.set('end_date', toISO)
@@ -85,6 +103,7 @@ export function createOpenMeteoProvider({ fetchImpl = fetch } = {}) {
         precipMm: d.precipitation_sum[i],
         weatherCode: d.weather_code[i],
         windMax: d.wind_speed_10m_max[i], // km/h — Open-Meteo default unit
+        hours: hourlyRows(body, date),
         source: 'forecast',
       }))
     },

@@ -584,8 +584,8 @@ body.planner-operate .ui-settings { top: 58px; width: min(360px, calc(100vw - 24
 .ui-overview-map { position: absolute; inset: 0; background: #f4f0e6; }
 .ui-overview .maplibregl-canvas { outline: none; }
 .ui-overview .maplibregl-canvas:focus-visible { outline: 3px solid rgba(255,77,0,.78); outline-offset: -3px; }
-.ui-overview.planner .maplibregl-canvas { cursor: crosshair; }
-.ui-overview.planner .maplibregl-canvas:active { cursor: grabbing; }
+.ui-overview.planner.editing .maplibregl-canvas { cursor: crosshair; }
+.ui-overview.planner.editing .maplibregl-canvas:active { cursor: grabbing; }
 .ui-overview .maplibregl-ctrl-attrib, .ui-map-attribution-floating .maplibregl-ctrl-attrib { max-width: calc(100% - 12px); padding: 1px 4px; background: rgba(255,255,255,.9); color: rgba(23,25,27,.68); font: 8px/1.25 "Segoe UI", sans-serif; white-space: normal; }
 .ui-overview .maplibregl-ctrl-attrib a, .ui-map-attribution-floating .maplibregl-ctrl-attrib a { color: inherit; text-underline-offset: 2px; }
 .ui-overview .maplibregl-ctrl-scale { border-color: #17191b; background: rgba(255,255,255,.88); color: #17191b; font: 8px/1.2 "Cascadia Mono", monospace; }
@@ -966,7 +966,7 @@ body.planner-operate .overlay, body.weather-operate .overlay { display: none; }
 .ui-layer-btn { width: 40px; height: 40px; border: 1px solid transparent; border-radius: 10px; background: transparent; color: rgba(255,255,255,.82); box-shadow: none; transition: background-color 140ms ease-out, border-color 140ms ease-out, color 140ms ease-out, transform 100ms ease-out; }
 .ui-layer-btn:hover, .ui-layer-btn:focus-visible { border-color: rgba(255,255,255,.18); background: rgba(255,255,255,.1); color: #fff; }
 .ui-layer-btn:active { transform: scale(.98); }
-.ui-layer-btn.on { border-color: rgba(255,255,255,.18); background: var(--trip-route); color: #fff; }
+.ui-layer-btn.on { border-color: rgba(240,74,29,.68); background: rgba(255,255,255,.12); color: #fff; box-shadow: inset 0 -2px var(--trip-route); }
 .ui-layer-tip { right: 48px; padding: 6px 8px; border-radius: 8px; background: rgba(24,30,34,.94); color: #fff; font: 12px/1 var(--trip-font); }
 
 .ui-rail {
@@ -1033,6 +1033,7 @@ body.planner-operate .overlay, body.weather-operate .overlay { display: none; }
 .ui-planner-weather span, .ui-planner-layer-toggle span, .ui-planner-more span { display: none; }
 .ui-planner-primary:hover, .ui-planner-weather:hover, .ui-planner-layer-toggle:hover, .ui-planner-more:hover { border-color: rgba(255,255,255,.4); background-color: rgba(255,255,255,.13); }
 .ui-planner-primary:hover { border-color: #ff6a42; background: #df3e14; }
+.settings-open .ui-planner-primary { visibility: hidden; }
 .ui-planner-primary:active, .ui-planner-weather:active, .ui-planner-layer-toggle:active, .ui-planner-more:active { transform: scale(.98); }
 .ui-planner-more-menu { position: fixed; right: 14px; top: 66px; z-index: 48; width: 180px; padding: 6px; border: 1px solid var(--trip-line-strong); border-radius: 12px; background: rgba(250,250,247,.98); box-shadow: var(--trip-shadow); color: var(--trip-ink); pointer-events: auto; }
 .ui-planner-more-menu.hidden { display: none; }
@@ -1063,7 +1064,7 @@ body.weather-operate .ui-map-empty, body.weather-operate .ui-map-footprint-legen
 }
 .ui-panel h2 { min-height: 56px; margin: 0; padding: 0 14px; border-bottom: 1px solid var(--trip-line); font-size: 15px; }
 .ui-panel-hint { font-size: 11px; }
-.ui-panel-body { height: calc(100% - 56px); padding: 12px 14px 18px; overflow-y: auto; overscroll-behavior: contain; }
+.ui-panel-body { min-width: 0; height: calc(100% - 56px); padding: 12px 14px 18px; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; }
 .ui-panel.collapsed { bottom: auto; height: 56px; max-height: 56px; }
 .ui-panel-chev { width: 38px; height: 38px; padding: 0; border: 1px solid var(--trip-line); border-radius: 10px; background: var(--trip-paper-strong); color: var(--trip-ink-soft); font-family: var(--trip-font); }
 .ui-panel-summary { display: flex; min-width: 0; max-width: none; margin-left: auto; color: var(--trip-ink-soft); font: 12px/1.2 var(--trip-font); }
@@ -1081,7 +1082,7 @@ body.planner-operate .ui-panel:not(.collapsed) { left: auto; right: 16px; top: 7
 body.planner-operate .ui-panel:not(.collapsed) .ui-panel-summary { display: none; }
 .ui-sheet-grabber { display: none; }
 
-.pp-root { color: var(--trip-ink); }
+.pp-root { min-width: 0; overflow-x: hidden; color: var(--trip-ink); }
 .pp-root input, .pp-root button, .wx-controls input, .wx-controls button, .settings-native input, .settings-native select, .settings-native button { border-radius: var(--trip-radius-control); }
 .pp-search { gap: 6px; }
 .pp-search input, .ui-panel .name-input { min-height: 42px; padding: 0 12px; border: 1px solid var(--trip-line-strong); background: #fff; }
@@ -1095,6 +1096,18 @@ body.planner-operate .ui-panel:not(.collapsed) .ui-panel-summary { display: none
 .pp-journey-row { display: grid; grid-template-columns: 48px minmax(0,1fr) auto auto; gap: 8px; align-items: center; min-height: 58px; padding: 8px 10px; border: 0; border-bottom: 1px solid var(--trip-line); border-radius: 0 !important; background: #fff; color: var(--trip-ink); text-align: left; cursor: pointer; }
 .pp-journey-row:last-child { border-bottom: 0; }
 .pp-journey-row.selected { background: rgba(240,74,29,.06); box-shadow: inset 1px 0 var(--trip-route); }
+.pp-journey-route, .pp-journey-route b, .pp-tl-body { min-width: 0; overflow-wrap: anywhere; }
+.pp-plan { margin-top: 10px; padding: 10px 0; border: 0; border-top: 1px solid var(--trip-line); border-bottom: 1px solid var(--trip-line); }
+.pp-plan-summary { display: block; color: var(--trip-ink-soft); font: 12px/1.55 var(--trip-font); overflow-wrap: anywhere; }
+.pp-secondary-tools { margin-top: 8px; border: 1px solid var(--trip-line); border-radius: 12px; background: #fff; }
+.pp-secondary-tools > summary { min-height: 40px; display: flex; align-items: center; padding: 0 12px; color: var(--trip-ink-soft); font: 12px var(--trip-font); cursor: pointer; }
+.pp-secondary-tools > summary::marker { color: var(--trip-ink-soft); }
+.pp-secondary-tools[open] { padding-bottom: 10px; }
+.pp-secondary-tools[open] > summary { margin-bottom: 8px; border-bottom: 1px solid var(--trip-line); }
+.pp-secondary-tools .pp-amap-row, .pp-secondary-tools .pp-ops-edit, .pp-secondary-tools .pp-import-gpx { margin-inline: 10px; }
+.pp-ops-edit { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 6px; }
+.pp-ops-edit button { min-width: 0; }
+.pp-import-gpx { width: calc(100% - 20px); min-height: 40px; margin-top: 8px; border: 1px solid var(--trip-line-strong); background: #fff; color: var(--trip-ink); }
 .pp-journey-day b, .pp-journey-day small { display: block; }
 .pp-journey-day b { color: var(--trip-route); font-size: 12px; }
 .pp-journey-day small { margin-top: 2px; color: var(--trip-ink-soft); font-size: 10px; }
@@ -1163,15 +1176,20 @@ body.planner-operate .ui-panel:not(.collapsed) .ui-panel-summary { display: none
 
 .ui-settings { top: 72px; right: 12px; bottom: 12px; width: min(390px, calc(100vw - 24px)); height: auto; border: 1px solid var(--trip-line-strong); border-radius: 16px; background: var(--trip-paper) !important; box-shadow: var(--trip-shadow); }
 .settings-header { min-height: 64px; padding: 0 16px; border-bottom: 1px solid var(--trip-line); }
-.settings-header span:first-child { display: none; }
+.settings-header > div > span:first-child { display: none; }
 .settings-header h2 { font-size: 18px; letter-spacing: -.02em; }
 .settings-close { width: 40px; height: 40px; border: 1px solid var(--trip-line); border-radius: 11px; background: #fff; }
-.settings-body { padding: 4px 14px 20px; }
+.settings-close span { display: block; margin: 0; color: currentColor; font: 24px/1 var(--trip-font); letter-spacing: 0; }
+.settings-native, .settings-native * { box-sizing: border-box; }
+.settings-body { padding: 4px 14px 20px; overflow-x: hidden; }
 .settings-section { padding: 18px 0; border-bottom: 1px solid var(--trip-line); }
 .settings-section-head h3 { font-size: 15px; }
 .settings-section-head p { max-width: 34ch; color: var(--trip-ink-soft); }
 .settings-row { min-height: 48px; border-top: 0; }
-.settings-row input:not([type="checkbox"]), .settings-row select { min-height: 38px; border: 1px solid var(--trip-line-strong); background: #fff; }
+.settings-row { grid-template-columns: minmax(0,1fr) minmax(116px, 46%); }
+.settings-row input:not([type="checkbox"]), .settings-row select { width: 100%; max-width: 100%; min-height: 38px; border: 1px solid var(--trip-line-strong); background: #fff; }
+.settings-range { width: 100%; min-width: 0; }
+.settings-advanced, .settings-advanced .lil-gui { min-width: 0; max-width: 100%; overflow: hidden; }
 .settings-primary { min-height: 42px; border: 0; background: var(--trip-route); color: #fff; font-weight: 650; }
 .settings-secondary { min-height: 40px; padding: 0 13px; border: 1px solid var(--trip-line-strong); background: #fff; color: var(--trip-ink); }
 .settings-summary-list { display: grid; gap: 0; margin: 8px 0 10px; overflow: hidden; border: 1px solid var(--trip-line); border-radius: 12px; background: #fff; }
@@ -1186,6 +1204,24 @@ body.planner-operate .ui-panel:not(.collapsed) .ui-panel-summary { display: none
 .share-panel { gap: 10px; }
 .share-panel button.primary { border-color: var(--trip-route); background: var(--trip-route); color: #fff; }
 .share-summary-text { color: var(--trip-ink); font: 11px/1.6 var(--trip-font); }
+.share-group { padding-top: 12px; border-top: 1px solid var(--trip-line); }
+.share-group h3 { margin: 0; font-size: 14px; }
+.share-group p { margin: 3px 0 9px; color: var(--trip-ink-soft); font-size: 11px; line-height: 1.45; }
+.share-group .ui-btn-row { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 6px; }
+.share-group .ui-btn-row button { width: 100%; min-width: 0; }
+.ui-empty { display: grid; gap: 12px; justify-items: start; padding: 18px 0; color: var(--trip-ink-soft); opacity: 1; }
+.ui-empty p { max-width: 30ch; margin: 0; line-height: 1.6; }
+.ui-empty button { min-height: 40px; padding: 0 16px; border: 0; border-radius: 10px; background: var(--trip-route); color: #fff; font: 600 12px var(--trip-font); }
+.wx-hourly { margin: 12px 0; overflow: hidden; border: 1px solid var(--trip-line); border-radius: 12px; background: #fff; }
+.wx-hourly.hidden { display: none; }
+.wx-hourly header { display: flex; align-items: center; justify-content: space-between; min-height: 48px; padding: 0 12px; border-bottom: 1px solid var(--trip-line); }
+.wx-hourly h3 { margin: 0; font-size: 14px; }
+.wx-hourly header button { width: 36px; height: 36px; border: 0; background: transparent; color: var(--trip-ink-soft); font-size: 20px; }
+.wx-hourly-note, .wx-hourly-empty { margin: 0; padding: 9px 12px; color: var(--trip-ink-soft); font-size: 11px; }
+.wx-hourly-list { max-height: 320px; overflow-y: auto; }
+.wx-hourly-row { display: grid; grid-template-columns: 44px minmax(50px,1fr) auto; gap: 6px 10px; align-items: center; min-height: 48px; padding: 7px 12px; border-top: 1px solid var(--trip-line); font-size: 11px; }
+.wx-hourly-row time, .wx-hourly-row b { font-variant-numeric: tabular-nums; }
+.wx-hourly-row span:nth-last-child(-n+2) { color: var(--trip-ink-soft); }
 .ui-help-card, .ui-sun-panel, .admin-panel, .admin-detail { border: 1px solid var(--trip-line-strong); border-radius: var(--trip-radius-card); background: rgba(250,250,247,.97); color: var(--trip-ink); box-shadow: var(--trip-shadow); font-family: var(--trip-font); backdrop-filter: blur(10px); }
 .ui-help-card .close, .admin-actions button, .admin-inspect { min-height: 40px; border-radius: 10px; font-family: var(--trip-font); }
 .admin-panel { overflow: hidden; }
@@ -1225,6 +1261,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
     left: 0; right: 0; top: auto; bottom: 58px; width: 100%; max-width: none; border-width: 1px 0 0 !important; border-radius: 18px 18px 0 0;
   }
   body.planner-operate .ui-panel { display: flex; flex-direction: column; height: var(--sheet-drag-height, min(47dvh, 470px)); max-height: calc(100dvh - 114px); }
+  body.planner-operate .ui-panel.hidden, body.weather-operate .ui-panel.hidden { display: none; }
   body.planner-operate .ui-panel[data-sheet-state="peek"], body.planner-operate .ui-panel.collapsed { height: 96px; max-height: 96px; }
   body.planner-operate .ui-panel[data-sheet-state="full"] { height: calc(100dvh - 114px); max-height: calc(100dvh - 114px); }
   .ui-sheet-grabber { display: block; }

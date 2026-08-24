@@ -21,6 +21,7 @@ describe('settings drawer focus lifecycle', () => {
     setDrawerOpen(drawer, false, trigger)
     expect(drawer.inert).toBe(true)
     expect(drawer.getAttribute('aria-hidden')).toBe('true')
+    expect(drawer.childElementCount).toBe(0)
     expect(document.activeElement).toBe(trigger)
   })
 })

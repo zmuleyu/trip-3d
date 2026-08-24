@@ -30,6 +30,11 @@ export function createWeatherPanel({ onQuery, onPointFocus }) {
     <div class="wx-index hidden"></div>
     <div class="wx-status">选择日期后查询 — ≤16 天为预报;超窗自动回填去年历史同期(ERA5)</div>
     <div class="wx-points hidden" aria-label="路线天气地点"></div>
+    <section class="wx-hourly hidden" aria-labelledby="wx-hourly-title">
+      <header><h3 id="wx-hourly-title">逐小时预报</h3><button type="button" aria-label="关闭逐小时预报">×</button></header>
+      <p class="wx-hourly-note"></p>
+      <div class="wx-hourly-list"></div>
+    </section>
     <div class="wx-cards"></div>
     <div class="wx-attr">Weather data by <a href="https://open-meteo.com/" target="_blank" rel="noreferrer">Open-Meteo.com</a>(非商用,CC-BY 4.0)</div>`
 
@@ -41,6 +46,12 @@ export function createWeatherPanel({ onQuery, onPointFocus }) {
   const cardsEl = el.querySelector('.wx-cards')
   const pointsEl = el.querySelector('.wx-points')
   const indexEl = el.querySelector('.wx-index')
+  const hourlyEl = el.querySelector('.wx-hourly')
+  const hourlyTitle = hourlyEl.querySelector('h3')
+  const hourlyNote = hourlyEl.querySelector('.wx-hourly-note')
+  const hourlyList = hourlyEl.querySelector('.wx-hourly-list')
+  const hideHourly = () => hourlyEl.classList.add('hidden')
+  hourlyEl.querySelector('button').onclick = hideHourly
 
   const persist = () => localStorage.setItem(LS_KEY, JSON.stringify({ start: dateEl.value, days: +daysEl.value, allPoints: allPtsEl.checked }))
   dateEl.onchange = persist
@@ -67,6 +78,7 @@ export function createWeatherPanel({ onQuery, onPointFocus }) {
     el,
     setLoading(pts) {
       goBtn.disabled = true
+      hideHourly()
       indexEl.classList.add('hidden')
       pointsEl.classList.add('hidden')
       cardsEl.replaceChildren()
@@ -74,10 +86,12 @@ export function createWeatherPanel({ onQuery, onPointFocus }) {
     },
     setError(msg) {
       goBtn.disabled = false
+      hideHourly()
       setStatus(msg, 'error')
     },
     setEmptyRoute() {
       goBtn.disabled = false
+      hideHourly()
       indexEl.classList.add('hidden')
       pointsEl.classList.add('hidden')
       cardsEl.replaceChildren()
@@ -86,6 +100,7 @@ export function createWeatherPanel({ onQuery, onPointFocus }) {
     // agg: aggregateTripDays result; rep: points queried; index: tripIndex result; repLabel: 代表点|途经点
     setResult({ agg, rep, index, repLabel = '代表点', source = 'forecast' }) {
       goBtn.disabled = false
+      hideHourly()
       const srcNote = source === 'archive' ? '历史同期(去年 ERA5 参考)' : '数据为预报,出行前请复核'
       setStatus(`${agg[0].date} ~ ${agg.at(-1).date} · ${rep.length} 个${repLabel} · ${srcNote}`)
       if (index) {
@@ -130,6 +145,38 @@ export function createWeatherPanel({ onQuery, onPointFocus }) {
         card.appendChild(sub)
         cardsEl.appendChild(card)
       }
+    },
+    showHourlyDetails({ point, date, hours = [], source = 'forecast' } = {}) {
+      const role = point?.role ?? point?.name ?? '路线天气点'
+      hourlyTitle.textContent = `${role} · 逐小时预报`
+      hourlyNote.textContent = `${date || '所选日期'} · ${source === 'archive' ? '历史同期参考' : 'Open-Meteo 预报'}`
+      hourlyList.replaceChildren()
+      if (!hours.length) {
+        const empty = document.createElement('p')
+        empty.className = 'wx-hourly-empty'
+        empty.textContent = '该日期暂无逐小时数据，请重新查询天气。'
+        hourlyList.appendChild(empty)
+      } else {
+        for (const hour of hours) {
+          const row = document.createElement('div')
+          row.className = 'wx-hourly-row'
+          const time = document.createElement('time')
+          time.dateTime = hour.time ?? ''
+          time.textContent = hour.time?.slice?.(11, 16) || hour.time || '—'
+          const condition = document.createElement('span')
+          condition.textContent = weatherLabel(hour.weatherCode)
+          const temperature = document.createElement('b')
+          temperature.textContent = Number.isFinite(hour.temperature) ? `${Math.round(hour.temperature)}°C` : '—'
+          const precip = document.createElement('span')
+          precip.textContent = Number.isFinite(hour.precipMm) ? `降水 ${hour.precipMm.toFixed(1)}mm` : '降水未知'
+          const wind = document.createElement('span')
+          wind.textContent = Number.isFinite(hour.windKmh) ? `风 ${Math.round(hour.windKmh)}km/h` : '风速未知'
+          row.append(time, condition, temperature, precip, wind)
+          hourlyList.appendChild(row)
+        }
+      }
+      hourlyEl.classList.remove('hidden')
+      hourlyEl.scrollIntoView?.({ block: 'start', behavior: 'smooth' })
     },
     // trip-day count sync (multi-day segmentation): keep the days input aligned
     // with the itinerary; user edits still win after the sync.

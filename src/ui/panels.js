@@ -17,27 +17,15 @@ export function createPlanningPanel(actions) {
   const el = document.createElement('div')
   el.className = 'pp-root'
 
-  // ---- place search (explicit trigger only — Nominatim policy bans autocomplete)
-  const searchWrap = document.createElement('div')
-  searchWrap.className = 'pp-search'
-  const searchInput = document.createElement('input')
-  searchInput.placeholder = '搜索地点(如 四姑娘山)…'
-  searchInput.setAttribute('aria-label', '搜索地点')
-  const searchBtn = document.createElement('button')
-  searchBtn.textContent = '搜索'
-  searchBtn.className = 'pp-search-btn'
-  searchWrap.append(searchInput, searchBtn)
+  // Search is owned by the command bar. Results stay in the drawer so the map
+  // remains visible while a user chooses where to go or add a point.
   const results = document.createElement('div')
   results.className = 'pp-results hidden'
   const attr = document.createElement('div')
   attr.className = 'pp-attr'
   attr.textContent = '© OpenStreetMap contributors'
   results.appendChild(attr)
-  el.append(searchWrap, results)
-
-  const doSearch = () => actions.onSearch?.(searchInput.value)
-  searchBtn.onclick = doSearch
-  searchInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSearch() })
+  el.appendChild(results)
 
   // ---- route mode: first-class straight / foot / car contract
   const snapRow = document.createElement('div')
@@ -94,7 +82,6 @@ export function createPlanningPanel(actions) {
   amapRow.appendChild(amapBox)
   amapToggle.onclick = () => amapBox.classList.toggle('hidden')
   amapGo.onclick = () => actions.onImportAmap?.(amapInput.value)
-  el.appendChild(amapRow)
 
   const secOf = (label) => {
     const d = document.createElement('div')
@@ -121,7 +108,6 @@ export function createPlanningPanel(actions) {
   wpList.className = 'ui-wp-list pp-tl'
   el.appendChild(wpList)
 
-  el.appendChild(secOf('统计'))
   const stat = document.createElement('div')
   stat.className = 'ui-stat-card pp-plan'
   el.appendChild(stat)
@@ -138,14 +124,23 @@ export function createPlanningPanel(actions) {
   legsBox.append(legsHead, legsList)
   el.appendChild(legsBox)
 
-  const hint = document.createElement('div')
-  hint.className = 'hint'
-  hint.textContent = '点击地形继续加点 · ESC 退出规划'
-  el.appendChild(hint)
+  // Keep one persistent save action. Editing and import tools stay available in
+  // one disclosed group instead of competing with the route itself.
+  const opsMain = document.createElement('div')
+  opsMain.className = 'pp-ops-main'
+  const save = document.createElement('button')
+  save.className = 'primary'
+  save.textContent = '保存线路'
+  save.onclick = actions.onSave
+  opsMain.appendChild(save)
+  el.appendChild(opsMain)
 
-  el.appendChild(secOf('操作'))
-
-  // action rows: compact edit group + main group (share/export exits live in the share tab)
+  const secondary = document.createElement('details')
+  secondary.className = 'pp-secondary-tools'
+  const secondarySummary = document.createElement('summary')
+  secondarySummary.textContent = '编辑与导入'
+  secondary.appendChild(secondarySummary)
+  secondary.appendChild(amapRow)
   const opsEdit = document.createElement('div')
   opsEdit.className = 'pp-ops-edit'
   const mkE = (label, fn, danger = false) => {
@@ -160,19 +155,14 @@ export function createPlanningPanel(actions) {
   mkE('清空', actions.onClear, true)
   mkE('反向', actions.onReverse)
   mkE('闭环', actions.onCloseLoop)
-  el.appendChild(opsEdit)
-  const opsMain = document.createElement('div')
-  opsMain.className = 'pp-ops-main'
-  const mkM = (label, fn, primary = false) => {
-    const b = document.createElement('button')
-    b.textContent = label
-    if (primary) b.classList.add('primary')
-    b.onclick = fn
-    opsMain.appendChild(b)
-  }
-  mkM('保存', actions.onSave, true)
-  mkM('导入GPX', actions.onImportGpx)
-  el.appendChild(opsMain)
+  secondary.appendChild(opsEdit)
+  const importGpx = document.createElement('button')
+  importGpx.type = 'button'
+  importGpx.className = 'pp-import-gpx'
+  importGpx.textContent = '导入 GPX'
+  importGpx.onclick = actions.onImportGpx
+  secondary.appendChild(importGpx)
+  el.appendChild(secondary)
 
   return {
     el,
@@ -190,6 +180,7 @@ export function createPlanningPanel(actions) {
           .filter((index) => index > 0 && index < n - 1)
           .sort((a, b) => a - b)
         const boundaries = [...endIndexes, n - 1]
+        journeyList.classList.toggle('hidden', boundaries.length <= 1)
         let startIndex = 0
         boundaries.forEach((endIndex, dayIndex) => {
           const day = dayIndex + 1
@@ -244,7 +235,7 @@ export function createPlanningPanel(actions) {
           journeyList.appendChild(row)
           startIndex = endIndex
         })
-      }
+      } else journeyList.classList.add('hidden')
       // loop route: last point within ~25m of the first → merged start/end marker
       const wpsArr = route.waypoints
       const isLoop = n > 1 && Math.hypot(wpsArr[0].lon - wpsArr[n - 1].lon, wpsArr[0].lat - wpsArr[n - 1].lat) < 0.0003
@@ -343,26 +334,15 @@ export function createPlanningPanel(actions) {
         return
       }
       const km = stats && stats.distanceM ? (stats.distanceM / 1000).toFixed(1) : '0.0'
-      const bigLabel = document.createElement('div')
-      bigLabel.className = 'pp-plan-big-label'
-      bigLabel.textContent = '总时长'
-      const big = document.createElement('div')
-      big.className = 'pp-plan-big'
       const duration = durationContract({ mode: route.mode, legs: legs ?? [], stats })
-      bigLabel.textContent = duration.label
-      big.textContent = duration.minutes == null ? '—' : fmtDur(duration.minutes)
-      const sub = document.createElement('div')
-      sub.className = 'pp-plan-sub'
-      sub.textContent = `${km} km · ${n} 点`
+      const summary = document.createElement('span')
+      summary.className = 'pp-plan-summary'
+      summary.textContent = `${km} km · ${n} 点 · ${duration.label} ${duration.minutes == null ? '—' : fmtDur(duration.minutes)}`
       if (stats && [stats.ascentM, stats.descentM, stats.maxEle].every(Number.isFinite)) {
-        sub.textContent += ` · ↑${stats.ascentM}m ↓${stats.descentM}m · 最高 ${stats.maxEle}m`
+        summary.textContent += ` · ↑${stats.ascentM}m ↓${stats.descentM}m · 最高 ${stats.maxEle}m`
       }
-      if (weatherIndex != null) sub.textContent += ` · 天气指数 ${weatherIndex}`
-      const d = document.createElement('span')
-      d.className = 'disclaimer'
-      d.textContent = duration.reliable ? '(路网时长,非导航)' : `(${duration.label})`
-      sub.appendChild(d)
-      stat.append(bigLabel, big, sub)
+      if (weatherIndex != null) summary.textContent += ` · 天气指数 ${weatherIndex}`
+      stat.appendChild(summary)
 
       // per-leg details
       if (legs?.length) {
@@ -383,10 +363,7 @@ export function createPlanningPanel(actions) {
     },
 
     // ---- search API (explicit trigger; results rendered with ⊕ add buttons)
-    setSearchBusy(on) {
-      searchBtn.disabled = on
-      searchBtn.textContent = on ? '…' : '搜索'
-    },
+    setSearchBusy(on) { results.setAttribute('aria-busy', String(on)) },
     setSearchResults(list, query) {
       results.classList.remove('hidden')
       results.replaceChildren()
@@ -418,8 +395,7 @@ export function createPlanningPanel(actions) {
     },
     hideSearchResults() { results.classList.add('hidden') },
     search(query) {
-      searchInput.value = query ?? ''
-      actions.onSearch?.(searchInput.value)
+      actions.onSearch?.(query ?? '')
     },
 
     // ---- route-mode API
@@ -447,7 +423,13 @@ export function createLibraryPanel(actions) {
       if (!items.length) {
         const e = document.createElement('div')
         e.className = 'ui-empty'
-        e.textContent = '线路库为空 — 在规划面板保存第一条线路'
+        const copy = document.createElement('p')
+        copy.textContent = '线路库为空。开始规划并保存第一条线路后，它会出现在这里。'
+        const plan = document.createElement('button')
+        plan.type = 'button'
+        plan.textContent = '开始规划'
+        plan.onclick = () => actions.onPlan?.()
+        e.append(copy, plan)
         list.appendChild(e)
         return
       }
