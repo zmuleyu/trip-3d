@@ -2323,7 +2323,6 @@ const plannerTerrainLayer = createTerrainCustomLayer({
       terrain,
       geo,
       dem,
-      demExaggeration: params.demExaggeration,
       baseAltitude: params.source === 'real' ? dem.meanM : 0,
     }
   },

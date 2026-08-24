@@ -16,20 +16,49 @@ function demFixture() {
 }
 
 describe('MapLibre Three terrain custom layer', () => {
-  it('maps the exact DEM footprint corners into mercator space', () => {
+  it('maps the exact DEM footprint corners and base altitude into mercator space', () => {
     const dem = demFixture()
     const geo = makeGeoContext(dem)
-    const matrix = terrainModelMatrix({ geo, dem, demExaggeration: 1.6 })
+    const matrix = terrainModelMatrix({ geo, dem })
     const half = TERRAIN_SIZE / 2
     const nw = new THREE.Vector3(-half, 0, -half).applyMatrix4(matrix)
     const se = new THREE.Vector3(half, 0, half).applyMatrix4(matrix)
+    const base = new THREE.Vector3(0, 0, 0).applyMatrix4(matrix)
     const expectedNw = MercatorCoordinate.fromLngLat(worldToLonLat(geo, -half, -half))
     const expectedSe = MercatorCoordinate.fromLngLat(worldToLonLat(geo, half, half))
+    const expectedBase = MercatorCoordinate.fromLngLat(worldToLonLat(geo, 0, 0), dem.meanM)
 
     expect(nw.x).toBeCloseTo(expectedNw.x, 12)
     expect(nw.y).toBeCloseTo(expectedNw.y, 12)
     expect(se.x).toBeCloseTo(expectedSe.x, 12)
     expect(se.y).toBeCloseTo(expectedSe.y, 12)
+    expect(base.x).toBeCloseTo(expectedBase.x, 12)
+    expect(base.y).toBeCloseTo(expectedBase.y, 12)
+    expect(base.z).toBeCloseTo(expectedBase.z, 12)
+  })
+
+  it('keeps geometry vertical exaggeration visible in mercator space', () => {
+    const dem = demFixture()
+    const geo = makeGeoContext(dem)
+    const matrix = terrainModelMatrix({ geo, dem })
+    const sceneUnitsPerMeter = TERRAIN_SIZE / dem.extentMeters
+    const reliefMeters = 240
+    const base = new THREE.Vector3(0, 0, 0).applyMatrix4(matrix)
+    const oneX = new THREE.Vector3(0, reliefMeters * sceneUnitsPerMeter, 0).applyMatrix4(matrix)
+    const threeX = new THREE.Vector3(0, reliefMeters * sceneUnitsPerMeter * 3, 0).applyMatrix4(matrix)
+    const expectedBase = MercatorCoordinate.fromLngLat(worldToLonLat(geo, 0, 0), dem.meanM)
+    const expectedOneX = MercatorCoordinate.fromLngLat(worldToLonLat(geo, 0, 0), dem.meanM + reliefMeters)
+
+    expect(oneX.z - base.z).toBeCloseTo(expectedOneX.z - expectedBase.z, 12)
+    expect((threeX.z - base.z) / (oneX.z - base.z)).toBeCloseTo(3, 12)
+  })
+
+  it('produces a finite model matrix for the real DEM fixture', () => {
+    const dem = demFixture()
+    const matrix = terrainModelMatrix({ geo: makeGeoContext(dem), dem })
+
+    expect(matrix).toBeTruthy()
+    expect(matrix.elements.every(Number.isFinite)).toBe(true)
   })
 
   it('uses the MapLibre canvas/context and follows rebuilt terrain resources without reparenting', () => {
@@ -49,7 +78,7 @@ describe('MapLibre Three terrain custom layer', () => {
     const material = new THREE.MeshStandardMaterial()
     const firstGeometry = new THREE.PlaneGeometry(1, 1)
     const terrain = { mesh: new THREE.Mesh(firstGeometry, material) }
-    const context = { terrain, geo, dem, demExaggeration: 1.6 }
+    const context = { terrain, geo, dem }
     const layer = createTerrainCustomLayer({ getTerrainContext: () => context, createRenderer })
 
     layer.onAdd(map, gl)

@@ -4,7 +4,7 @@ import { TERRAIN_SIZE, worldToLonLat } from '../lib/geo.js'
 
 const TERRAIN_LAYER_ID = 'trip-three-terrain'
 
-export function terrainModelMatrix({ geo, dem, demExaggeration = 1, baseAltitude = dem?.meanM ?? 0 }) {
+export function terrainModelMatrix({ geo, dem, baseAltitude = dem?.meanM ?? 0 }) {
   if (!geo || !dem || !Number.isFinite(dem.extentMeters) || dem.extentMeters <= 0) return null
 
   const half = TERRAIN_SIZE / 2
@@ -13,7 +13,7 @@ export function terrainModelMatrix({ geo, dem, demExaggeration = 1, baseAltitude
   const nw = MercatorCoordinate.fromLngLat(nwLngLat, baseAltitude)
   const se = MercatorCoordinate.fromLngLat(seLngLat, baseAltitude)
   const center = MercatorCoordinate.fromLngLat(worldToLonLat(geo, 0, 0), baseAltitude)
-  const sceneUnitsPerMeter = (TERRAIN_SIZE / dem.extentMeters) * demExaggeration
+  const sceneUnitsPerMeter = TERRAIN_SIZE / dem.extentMeters
   const verticalScale = center.meterInMercatorCoordinateUnits() / sceneUnitsPerMeter
 
   // Terrain axes are east/up/south (x/y/z). MapLibre's mercator axes are
