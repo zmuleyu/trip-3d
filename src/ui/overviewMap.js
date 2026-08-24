@@ -355,6 +355,7 @@ export function createOverviewMap({
   let lastPoints = null
   let viewportLonLat = null
   let plannerMode = false
+  let editingMode = false
   let plannerView = '2d'
   let styleReady = false
   let fallback2d = false
@@ -789,7 +790,7 @@ export function createOverviewMap({
       return
     }
     const { lng, lat } = event.lngLat
-    if (plannerMode && onPlanAdd) onPlanAdd(lng, lat)
+    if (editingMode && onPlanAdd) onPlanAdd(lng, lat)
     else onJump?.(lng, lat)
   })
 
@@ -804,9 +805,11 @@ export function createOverviewMap({
       const center = map.getCenter()
       return { z: map.getZoom(), lon: center.lng, lat: center.lat }
     },
-    setPlannerMode(on) {
+    setPlannerMode(on, { editing = on } = {}) {
       plannerMode = !!on
+      editingMode = plannerMode && !!editing
       el.classList.toggle('planner', plannerMode)
+      el.classList.toggle('editing', editingMode)
       if (plannerMode) el.classList.remove('hidden')
       if (!plannerMode) plannerView = '2d'
       setInteractionForView({ animate: false })

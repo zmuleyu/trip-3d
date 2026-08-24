@@ -768,6 +768,7 @@ let dem = null
 let demBusy = false
 let demRequestId = 0
 let settingsPanel = null
+let mapWorkspaceActive = false
 let layerBtns = null
 let settingsTerrainReadyText = ''
 // terrain-ready contract: the latest successful load bumps terrainGen; when the
@@ -1877,7 +1878,7 @@ async function runWeatherQuery({ dates, allPoints }) {
     const qFrom = aw?.from ?? from
     const qTo = aw?.to ?? to
     // same-day cache: fingerprint+dates+source → skip the network entirely
-    const cacheKey = `trip3d.wx.${routeFingerprint(route)}.${from}.${to}.${allPoints ? 'all' : 'rep'}.${source}`
+    const cacheKey = `trip3d.wx.h1.${routeFingerprint(route)}.${from}.${to}.${allPoints ? 'all' : 'rep'}.${source}`
     let all = null
     try {
       const hit = localStorage.getItem(cacheKey)
@@ -1887,7 +1888,13 @@ async function runWeatherQuery({ dates, allPoints }) {
       all = []
       for (const p of rep) {
         const days = await provider.daily(p, qFrom, qTo)
-        days.forEach((d, i) => { d.date = dates[i] ?? d.date }) // archive dates → requested trip dates
+        days.forEach((d, i) => {
+          const sourceDate = d.date
+          d.date = dates[i] ?? d.date // archive dates → requested trip dates
+          if (sourceDate !== d.date && Array.isArray(d.hours)) {
+            d.hours = d.hours.map((hour) => ({ ...hour, time: `${d.date}${hour.time.slice(10)}` }))
+          }
+        })
         all.push(...days)
       }
       try {
@@ -1913,6 +1920,23 @@ const weatherPanel = createWeatherPanel({
   onQuery: runWeatherQuery,
   onPointFocus: (role, pinned) => overviewMap?.focusWeatherPoint(role, { pinned }),
 })
+
+function showHourlyWeatherDetails(properties = {}) {
+  if (panelHost.currentId !== 'weather') showTab('weather')
+  const result = weatherState.result && weatherState.revision === route.revision ? weatherState.result : null
+  const point = result?.rep?.find((candidate) => (candidate.role ?? candidate.name ?? '') === properties.role)
+    ?? { role: properties.role ?? '路线天气点' }
+  const day = result?.agg?.flatMap((entry) => entry.points ?? []).find((entry) =>
+    entry.date === properties.date && entry.point?.lon === point.lon && entry.point?.lat === point.lat)
+  weatherPanel.showHourlyDetails({
+    point,
+    date: properties.date ?? day?.date,
+    hours: day?.hours ?? [],
+    source: result?.source ?? properties.source ?? 'forecast',
+  })
+  panelHost.setCollapsed(false)
+  if (globalThis.matchMedia?.('(max-width: 720px)')?.matches) panelHost.setSheetState('full')
+}
 
 // ------------------------------------------------------------------ place search
 // Explicit trigger only (Enter/button) — Nominatim public instance bans
@@ -2409,7 +2433,7 @@ const overviewMap = createOverviewMap({
   onWaypointMove: previewWaypointMove,
   onWaypointMoveEnd: commitWaypointMove,
   onWaypointMoveCancel: cancelWaypointMove,
-  onWeatherDetails: () => showTab('weather'),
+  onWeatherDetails: showHourlyWeatherDetails,
   onPlanAdd: (lon, lat) => {
     if (!params.planning || !geo || !dem) return
     const { x, z } = lonLatToWorld(geo, lon, lat)
@@ -2468,7 +2492,12 @@ plannerWorkspace = createPlannerWorkspace({
     panelHost.setCollapsed(false)
     planningPanel.search(query)
   },
-  onPrimary: () => { mode.enterPlanning(); panelHost.setCollapsed(false) },
+  onPrimary: () => {
+    if (!mode.isPlanning()) { mode.enterPlanning(); return }
+    const nextCollapsed = !panelHost.collapsed
+    panelHost.setCollapsed(nextCollapsed)
+    plannerWorkspace.setPrimaryLabel(nextCollapsed ? '继续规划' : '收起规划')
+  },
   onWeather: () => showTab('weather'),
   onMoreAction: (action) => {
     if (action === 'library') showTab('library')
@@ -2489,6 +2518,7 @@ function currentViewportRect() {
   return { minLon: Math.min(nw.lon, se.lon), maxLon: Math.max(nw.lon, se.lon), minLat: Math.min(nw.lat, se.lat), maxLat: Math.max(nw.lat, se.lat) }
 }
 const libraryPanel = createLibraryPanel({
+  onPlan: () => showTab('planning'),
   onLoad: async (id) => {
     const s = await routeStoreReady
     if (!id || !s) return
@@ -2521,11 +2551,8 @@ const mode = createModeMachine({
   onChange: (m) => {
     const planning = m === MODES.PLANNING
     params.planning = planning
-    if (planning) setWeatherWorkspace(false)
+    setMapWorkspace({ weather: false, editing: planning })
     hud2.setTelemetryVisible(false) // telemetry is developer-only; never compete with planning
-    plannerWorkspace.setVisible(planning)
-    document.body.classList.toggle('planner-operate', planning)
-    overviewMap.setPlannerMode(planning)
     if (planning) {
       applyPlannerView(plannerWorkspace.view)
       if (!dem) loadRealTerrain()
@@ -2534,9 +2561,11 @@ const mode = createModeMachine({
       rail.setActive('planning')
       panelHost.show('planning', '线路规划', 'ESC 退出', planningPanel.el)
       panelHost.setCollapsed(true)
+      plannerWorkspace.setPrimaryLabel('继续规划')
       requestAnimationFrame(() => { overviewMap.resize(); overviewMap.update(route, lastRoutePts, currentViewportRect()) })
     } else {
       document.body.classList.remove('planner-2d', 'planner-3d')
+      plannerWorkspace.setPrimaryLabel('继续规划')
       rail.clearActive()
       panelHost.hide()
       overviewMap.update(route, lastRoutePts, currentViewportRect())
@@ -2578,7 +2607,7 @@ function showTab(id) {
   if (id === 'planning') { setWeatherWorkspace(false); panelHost.setCollapsed(true); mode.enterPlanning(); return }
   if (panelHost.currentId === id) {
     if (id === 'weather') setWeatherWorkspace(false)
-    panelHost.hide(); rail.clearActive(); return
+    panelHost.hide(); rail.clearActive(); setMapWorkspace({ weather: false, editing: false }); return
   }
   if (mode.isPlanning()) mode.exitPlanning()
   setWeatherWorkspace(id === 'weather')
@@ -2589,20 +2618,24 @@ function showTab(id) {
   if (id === 'share') panelHost.show('share', '分享', null, sharePanel.el)
 }
 
-function setWeatherWorkspace(on) {
-  document.body.classList.toggle('weather-operate', !!on)
-  overviewMap.setWeatherMode(!!on, weatherPreferences)
-  if (on) {
-    plannerWorkspace.setVisible(true)
-    overviewMap.setPlannerMode(true)
+function setMapWorkspace({ weather = false, editing = false } = {}) {
+  mapWorkspaceActive = true
+  document.body.classList.add('planner-operate')
+  document.body.classList.toggle('weather-operate', !!weather)
+  plannerWorkspace.setVisible(true)
+  overviewMap.setPlannerMode(true, { editing })
+  overviewMap.setWeatherMode(!!weather, weatherPreferences)
+  if (weather) {
     plannerWorkspace.setView('2d')
     overviewMap.setPlannerView('2d')
-    requestAnimationFrame(() => { overviewMap.resize(); overviewMap.update(route, lastRoutePts, currentViewportRect()) })
-  } else if (!mode.isPlanning()) {
-    plannerWorkspace.setVisible(false)
-    overviewMap.setPlannerMode(false)
-    overviewMap.update(route, lastRoutePts, currentViewportRect())
+  } else {
+    applyPlannerView(plannerWorkspace.view)
   }
+  requestAnimationFrame(() => { overviewMap.resize({ fit: false }); overviewMap.update(route, lastRoutePts, currentViewportRect(), { fit: false }) })
+}
+
+function setWeatherWorkspace(on) {
+  setMapWorkspace({ weather: !!on, editing: mode.isPlanning() && !on })
 }
 
 const rail = createRail({
@@ -2618,6 +2651,7 @@ const rail = createRail({
 // shortcuts help overlay (rail bottom, above settings)
 const helpBtn = document.createElement('button')
 helpBtn.className = 'ui-rail-btn ui-rail-help'
+helpBtn.setAttribute('aria-label', '快捷键')
 helpBtn.innerHTML = `<span class="ico">${iconSvg('help')}</span><span class="lbl">快捷键</span>`
 rail.el.insertBefore(helpBtn, rail.el.lastElementChild)
 const helpOv = document.createElement('div')
@@ -2740,7 +2774,8 @@ function loadCurrentSettingsTerrain() {
   }
 }
 
-// settings drawer: native high-frequency controls + retained legacy experiment controls
+// Mount settings only while the drawer is open. The retained experiment GUI
+// keeps its runtime state but leaves the document and accessibility tree on close.
 const settingsDrawer = document.createElement('div')
 settingsDrawer.className = 'ui-settings'
 settingsDrawer.setAttribute('role', 'dialog')
@@ -2748,31 +2783,39 @@ settingsDrawer.setAttribute('aria-label', '显示与地形设置')
 settingsDrawer.setAttribute('aria-hidden', 'true')
 settingsDrawer.inert = true
 document.body.appendChild(settingsDrawer)
+gui.domElement.remove()
 let settingsReturnFocus = null
-settingsPanel = createSettingsPanel({
-  presets: Object.keys(DEM_PRESETS),
-  advancedEl: gui.domElement,
-  summaryPreferences,
-  weatherPreferences,
-  onClose: () => setSettingsOpen(false),
-  onSetting: applyNativeSetting,
-  onLayer: applyNativeLayer,
-  onLoad: loadCurrentSettingsTerrain,
-  onSummaryPreferences: (next) => {
-    summaryPreferences = saveSummaryPreferences(next)
-    if (routeLayer && geo && dem) refreshRoute({ recordHistory: false, fitOverview: false })
-  },
-  onWeatherPreferences: (next) => {
-    saveWeatherPreferences(next)
-    overviewMap.setWeatherPreferences(weatherPreferences)
-  },
-})
-settingsDrawer.appendChild(settingsPanel.el)
-syncSettingsControls()
+
+function mountSettingsPanel() {
+  if (settingsPanel?.el?.isConnected) return
+  settingsPanel = createSettingsPanel({
+    presets: Object.keys(DEM_PRESETS),
+    advancedEl: gui.domElement,
+    summaryPreferences,
+    weatherPreferences,
+    onClose: () => setSettingsOpen(false),
+    onSetting: applyNativeSetting,
+    onLayer: applyNativeLayer,
+    onLoad: loadCurrentSettingsTerrain,
+    onSummaryPreferences: (next) => {
+      summaryPreferences = saveSummaryPreferences(next)
+      if (routeLayer && geo && dem) refreshRoute({ recordHistory: false, fitOverview: false })
+    },
+    onWeatherPreferences: (next) => {
+      saveWeatherPreferences(next)
+      overviewMap.setWeatherPreferences(weatherPreferences)
+    },
+  })
+  settingsDrawer.appendChild(settingsPanel.el)
+  syncSettingsControls()
+}
 
 function setSettingsOpen(open, { restoreFocus = true } = {}) {
+  document.body.classList.toggle('settings-open', !!open)
   if (open) {
     settingsReturnFocus = document.activeElement
+    mountSettingsPanel()
+    setMapWorkspace({ weather: false, editing: mode.isPlanning() })
     plannerWorkspace.setLayersOpen(false)
     if (!mode.isPlanning() && panelHost.currentId) {
       panelHost.hide()
@@ -2781,6 +2824,7 @@ function setSettingsOpen(open, { restoreFocus = true } = {}) {
     syncSettingsControls()
   }
   setDrawerOpen(settingsDrawer, open, restoreFocus ? settingsReturnFocus : null)
+  if (!open) settingsPanel = null
 }
 
 function toggleSettings() {
@@ -2828,6 +2872,13 @@ if (location.hash.startsWith('#r=')) {
   } catch (err) {
     console.warn('bad share hash', err)
   }
+}
+
+if (params.planning) {
+  params.planning = false
+  mode.enterPlanning()
+} else {
+  setMapWorkspace({ weather: false, editing: false })
 }
 
 // console access for debugging/scripting
@@ -2951,7 +3002,7 @@ function tick() {
     })
   }
 
-  if (!params.planning) composer.render(dt)
+  if ((!params.planning && !mapWorkspaceActive) || flyState.active) composer.render(dt)
 }
 tick()
 

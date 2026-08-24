@@ -37,8 +37,9 @@ export function createPlannerWorkspace({ onView, onExpand, onSearch, onPrimary, 
   const buttons = [...el.querySelectorAll('[data-view]')]
   const search = el.querySelector('.ui-command-search')
   const searchInput = search.querySelector('input')
+  const primary = el.querySelector('.ui-planner-primary')
   search.addEventListener('submit', (event) => { event.preventDefault(); onSearch?.(searchInput.value) })
-  el.querySelector('.ui-planner-primary').addEventListener('click', () => onPrimary?.())
+  primary.addEventListener('click', () => onPrimary?.())
   el.querySelector('.ui-planner-weather').addEventListener('click', () => onWeather?.())
   const more = el.querySelector('.ui-planner-more')
   const moreMenu = el.querySelector('.ui-planner-more-menu')
@@ -79,6 +80,7 @@ export function createPlannerWorkspace({ onView, onExpand, onSearch, onPrimary, 
     setVisible(on) { el.classList.toggle('hidden', !on); if (!on) { setLayersOpen(false); setMoreOpen(false) } },
     setLayersOpen,
     setView(next) { applyView(next) },
+    setPrimaryLabel(label) { primary.textContent = label || '继续规划' },
     updateTrip({ name, dateText, saved } = {}) {
       const identity = el.querySelector('.ui-trip-identity')
       identity.querySelector('b').textContent = name || '未命名线路'

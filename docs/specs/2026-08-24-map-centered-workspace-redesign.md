@@ -36,6 +36,16 @@ The concept is a composition reference, not a literal default-state screenshot:
 the itinerary and weather card are collapsed until invoked, and the refinements
 in this brief outrank visible concept details where they differ.
 
+### Concept provenance exemption
+
+**FORM seed key: exempt for this inherited approved concept.** The existing
+provenance sidecar records that the bitmap was produced with the built-in image
+generation tool from user-selected concepts and crops, not by an Impeccable
+concept-roll with a persisted seed key. No corroborable seed exists in the
+repository, so this brief records the exemption instead of inventing one. Any
+later concept-roll or replacement visual direction must persist its real FORM
+seed key before approval.
+
 ## Default information hierarchy
 
 The default viewport shows only:

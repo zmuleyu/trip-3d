@@ -13,32 +13,41 @@ export function createSharePanel(actions) {
   summary.className = 'share-summary ui-stat-card'
   el.appendChild(summary)
 
-  const mkRow = (label, fn, primary = false, disabled = false) => {
+  const createGroup = (title, description) => {
+    const section = document.createElement('section')
+    section.className = 'share-group'
+    const heading = document.createElement('h3')
+    heading.textContent = title
+    const note = document.createElement('p')
+    note.textContent = description
+    const actions = document.createElement('div')
+    actions.className = 'ui-btn-row'
+    section.append(heading, note, actions)
+    el.appendChild(section)
+    return actions
+  }
+
+  const mkRow = (host, label, fn, primary = false, disabled = false) => {
     const b = document.createElement('button')
     b.textContent = label
     if (primary) b.className = 'primary'
     if (disabled) b.disabled = true
     b.onclick = fn
-    el.appendChild(b)
+    host.appendChild(b)
     return b
   }
 
-  const row1 = document.createElement('div')
-  row1.className = 'ui-btn-row'
-  el.appendChild(row1)
-  const mk = (label, fn) => {
-    const b = document.createElement('button')
-    b.textContent = label
-    b.onclick = fn
-    row1.appendChild(b)
-  }
-  mk('复制链接', actions.onCopyLink)
-  mk('二维码', actions.onQr)
-  mk('导出GPX', actions.onExportGpx)
-  mk('高德链接', actions.onExportAmap)
+  const share = createGroup('发送行程', '链接与二维码会保留当前线路和视图参数。')
+  mkRow(share, '复制分享链接', actions.onCopyLink, true)
+  mkRow(share, '显示二维码', actions.onQr)
 
-  mkRow('下载海报卡 PNG', actions.onDownloadPoster, true)
-  mkRow('录制飞越视频 WebM', actions.onFlyover, true)
+  const exportGroup = createGroup('导出与互通', '下载路线文件，或交给高德地图继续使用。')
+  mkRow(exportGroup, '导出 GPX', actions.onExportGpx)
+  mkRow(exportGroup, '生成高德链接', actions.onExportAmap)
+
+  const media = createGroup('留存画面', '海报是静态记录；飞越视频会按当前地形录制。')
+  mkRow(media, '下载海报 PNG', actions.onDownloadPoster)
+  mkRow(media, '录制飞越视频 WebM', actions.onFlyover)
 
   return {
     el,
