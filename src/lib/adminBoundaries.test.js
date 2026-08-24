@@ -8,6 +8,15 @@ describe('provinceAdcode (address → CN province adcode)', () => {
     expect(provinceAdcode({ state: '广西壮族自治区' })).toBe(450000)
     expect(provinceAdcode({ state: '新疆维吾尔自治区' })).toBe(650000)
   })
+  it('matches city-only Nominatim addresses for direct-admin municipalities', () => {
+    expect(provinceAdcode({ city: '北京市' })).toBe(110000)
+    expect(provinceAdcode({ city: '天津市' })).toBe(120000)
+    expect(provinceAdcode({ city: '上海市' })).toBe(310000)
+    expect(provinceAdcode({ city: '重庆市' })).toBe(500000)
+  })
+  it('does not treat an ordinary city as a province', () => {
+    expect(provinceAdcode({ city: '广州市' })).toBeNull()
+  })
   it('non-CN / unknown → null', () => {
     expect(provinceAdcode({ state: 'Arizona' })).toBeNull()
     expect(provinceAdcode({})).toBeNull()

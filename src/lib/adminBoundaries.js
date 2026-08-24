@@ -14,10 +14,15 @@ const PROVINCES = [
   ['澳门', 820000], ['台湾', 710000],
 ]
 
+const DIRECT_ADMIN_MUNICIPALITIES = PROVINCES.filter(([name]) => (
+  name === '北京' || name === '天津' || name === '上海' || name === '重庆'
+))
+
 export function provinceAdcode(address) {
   const state = address?.state ?? address?.province ?? ''
-  if (!state) return null
   for (const [name, code] of PROVINCES) if (state.startsWith(name)) return code
+  const city = address?.city ?? ''
+  for (const [name, code] of DIRECT_ADMIN_MUNICIPALITIES) if (city.startsWith(name)) return code
   return null
 }
 
