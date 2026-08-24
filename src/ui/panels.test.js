@@ -21,7 +21,17 @@ describe('planning panel route contract', () => {
     expect(names.every(Boolean)).toBe(true)
   })
 
-  it('does not show the old driving heuristic for a straight route', () => {
+  it('orders naming, point sequence, disclosed editing, and one save action', () => {
+    const panel = createPlanningPanel({})
+    const text = panel.el.textContent
+    expect(text.indexOf('命名')).toBeLessThan(text.indexOf('加点'))
+    expect(text.indexOf('加点')).toBeLessThan(text.indexOf('编辑与导入'))
+    expect(text).toContain('保存线路')
+    expect(panel.el.querySelector('.pp-journey-list')).toBeNull()
+    expect(panel.el.querySelector('.pp-plan')).toBeNull()
+  })
+
+  it('keeps live waypoints without a duplicated route summary', () => {
     const panel = createPlanningPanel({})
     const route = {
       name: '直线示意', mode: 'straight', dayEnds: [],
@@ -30,11 +40,13 @@ describe('planning panel route contract', () => {
     panel.update(route, { distanceM: 6100, ascentM: 10, descentM: 0, maxEle: 20, driveMinutes: 10 }, [
       { from: 'A', to: 'B', distanceM: 6100, driveMinutes: 10, real: false },
     ])
-    expect(panel.el.textContent).toContain('直线示意不估时')
-    expect(panel.el.querySelector('.pp-plan-summary').textContent).toContain('直线示意不估时 —')
+    expect(panel.el.textContent).toContain('起点')
+    expect(panel.el.textContent).toContain('终点')
+    expect(panel.el.textContent).toContain('增加途经点')
+    expect(panel.el.querySelector('.pp-plan-summary')).toBeNull()
   })
 
-  it('keeps distance but omits DEM-derived elevation fields while coverage is blocked', () => {
+  it('does not render an elevation card in the planning inspector', () => {
     const panel = createPlanningPanel({})
     const route = {
       name: '超覆盖', mode: 'straight', dayEnds: [],
@@ -43,8 +55,8 @@ describe('planning panel route contract', () => {
     panel.update(route, { distanceM: 57700, ascentM: null, descentM: null, maxEle: null }, [
       { from: 'A', to: 'B', distanceM: 57700, real: false },
     ])
-    expect(panel.el.textContent).toContain('57.7 km')
-    expect(panel.el.textContent).not.toContain('nullm')
+    expect(panel.el.querySelector('.pp-plan')).toBeNull()
+    expect(panel.el.querySelector('.ui-profile')).toBeNull()
   })
 })
 

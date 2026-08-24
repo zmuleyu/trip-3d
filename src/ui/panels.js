@@ -90,18 +90,17 @@ export function createPlanningPanel(actions) {
     return d
   }
 
-  el.appendChild(secOf('线路'))
+  const nameSection = secOf('命名')
   const name = document.createElement('input')
   name.className = 'name-input'
   name.setAttribute('aria-label', '线路名称')
   name.value = '未命名线路'
   name.onchange = () => actions.onNameChange(name.value)
-  el.appendChild(name)
+  const routeSection = secOf('加点')
 
   const journeyList = document.createElement('div')
   journeyList.className = 'pp-journey-list'
   journeyList.setAttribute('aria-label', '按天行程列表')
-  el.appendChild(journeyList)
   let selectedDay = 1
 
   const wpList = document.createElement('div')
@@ -110,8 +109,6 @@ export function createPlanningPanel(actions) {
 
   const stat = document.createElement('div')
   stat.className = 'ui-stat-card pp-plan'
-  el.appendChild(stat)
-  el.insertBefore(stat, journeyList)
 
   // collapsible per-leg details
   const legsBox = document.createElement('div')
@@ -123,7 +120,6 @@ export function createPlanningPanel(actions) {
   legsList.className = 'pp-legs-list'
   legsHead.onclick = () => legsList.classList.toggle('hidden')
   legsBox.append(legsHead, legsList)
-  el.appendChild(legsBox)
 
   // Keep one persistent save action. Editing and import tools stay available in
   // one disclosed group instead of competing with the route itself.
@@ -162,8 +158,9 @@ export function createPlanningPanel(actions) {
   importGpx.textContent = '导入 GPX'
   importGpx.onclick = actions.onImportGpx
   secondary.appendChild(importGpx)
-  el.appendChild(secondary)
-  el.appendChild(opsMain)
+  // The inspector has one task: name the route, add/reorder points, then save.
+  // Route summaries, day cards, and elevation details stay on the map surface.
+  el.replaceChildren(results, nameSection, name, routeSection, snapRow, wpList, secondary, opsMain, mobilePrimary)
 
   return {
     el,
@@ -258,6 +255,9 @@ export function createPlanningPanel(actions) {
 
         const body = document.createElement('div')
         body.className = 'pp-tl-body'
+        const roleLabel = document.createElement('b')
+        roleLabel.className = 'pp-tl-role'
+        roleLabel.textContent = role === 'start' ? '起点' : role === 'end' ? '终点' : '途经点'
         const nm = document.createElement('span')
         nm.className = 'pp-tl-name'
         nm.textContent = isLoop && i === n - 1 ? `${w.name}(环线终点)` : w.name
@@ -303,7 +303,7 @@ export function createPlanningPanel(actions) {
         if (i < n - 1) mkOp('↓', '下移', () => actions.onWpMove?.(i, 1))
         if (i < n - 1) mkOp('☀', '设为/取消此天终点(多日分段)', () => actions.onToggleDayEnd?.(i))
         mkOp('✕', '删除', () => actions.onWpRemove?.(i))
-        body.append(nm, coord, ops)
+        body.append(roleLabel, nm, coord, ops)
         item.append(rail, body)
         // drag-sort: HTML5 DnD between timeline rows
         item.draggable = true
@@ -327,6 +327,13 @@ export function createPlanningPanel(actions) {
           wpList.appendChild(sep)
         }
       })
+
+      const addPoint = document.createElement('button')
+      addPoint.type = 'button'
+      addPoint.className = 'pp-add-waypoint'
+      addPoint.textContent = '＋ 增加途经点'
+      addPoint.onclick = () => actions.onInsertAt?.(n)
+      wpList.appendChild(addPoint)
 
       stat.replaceChildren()
       if (!n) {

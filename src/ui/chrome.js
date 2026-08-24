@@ -54,7 +54,7 @@ export function createRail({ items, settingsItem }) {
 
 // ---------------------------------------------------------------- flyout panel
 // One panel host; content swapped per tab. Returns host + mount API.
-export function createPanelHost({ onSummaryCustomize, onTab } = {}) {
+export function createPanelHost({ onSummaryCustomize } = {}) {
   const el = document.createElement('section')
   el.className = 'ui-panel hidden'
   document.body.appendChild(el)
@@ -76,19 +76,6 @@ export function createPanelHost({ onSummaryCustomize, onTab } = {}) {
   chev.className = 'ui-panel-chev'
   chev.innerHTML = iconSvg('close')
   chev.title = '收起/展开面板'
-  const tabs = document.createElement('nav')
-  tabs.className = 'ui-panel-tabs'
-  tabs.setAttribute('aria-label', '行程检视分类')
-  const tabButtons = new Map()
-  for (const [id, label] of [['planning', '概览'], ['weather', '天气'], ['share', '留存']]) {
-    const button = document.createElement('button')
-    button.type = 'button'
-    button.dataset.panelTab = id
-    button.textContent = label
-    button.onclick = () => onTab?.(id)
-    tabs.appendChild(button)
-    tabButtons.set(id, button)
-  }
   const body = document.createElement('div')
   body.className = 'ui-panel-body'
   body.id = 'ui-panel-body'
@@ -189,14 +176,7 @@ export function createPanelHost({ onSummaryCustomize, onTab } = {}) {
         h.insertBefore(s, summary)
       }
       body.replaceChildren(contentEl)
-      const hasTabs = tabButtons.has(id)
-      tabs.classList.toggle('hidden', !hasTabs)
-      for (const [tabId, button] of tabButtons) {
-        const active = tabId === id
-        button.classList.toggle('active', active)
-        button.setAttribute('aria-pressed', String(active))
-      }
-      el.replaceChildren(grabber, h, tabs, body)
+      el.replaceChildren(grabber, h, body)
       el.classList.remove('hidden')
       sheetState = 'half'
       apply()

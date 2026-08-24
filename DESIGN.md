@@ -198,8 +198,8 @@ Forms are rounded, compact, and repeatable. Ordinary controls use a gently curve
 - **State:** It opens and moves with 130ms opacity/transform feedback, supports dismissal, and switches to an opaque surface for reduced-transparency preferences.
 
 ### Settings and menus
-- **Style:** Every desktop inspector uses a compact near-black header cap, warm-paper body, 12–16px rounded boundary, category tabs, fine dividers, and 40–42px controls. Overflow menus remain small, anchored, and grouped by meaning.
-- **State:** Planning, weather, and retention share `概览 / 天气 / 留存`; settings keeps `地图 / 地形 / 路线`. Advanced options are contained, and nearby map controls shift left while an inspector is open.
+- **Style:** Every desktop inspector uses a compact near-black header cap, warm-paper body, 12–16px rounded boundary, fine dividers, and 40–42px controls. Overflow menus remain small, anchored, and grouped by meaning.
+- **State:** The left rail is the sole destination switcher. Planning, weather, and retention each open a single-purpose inspector with no nested category tabs; settings keeps `地图 / 地形 / 路线`. Planning orders naming, route mode and one continuous waypoint sequence, disclosed import/edit tools, then its save action. Weather reads the live route only, provides Today/Tomorrow/custom-date selection, automatically uses representative route points, and presents truthful forecast or ERA5/archive availability.
 
 ## Do's and Don'ts
 

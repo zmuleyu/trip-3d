@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createWeatherPanel } from './weatherPanel.js'
 
 beforeEach(() => {
@@ -26,5 +26,16 @@ describe('hourly weather detail', () => {
     expect(detail.textContent).toContain('木骡子 · 逐小时预报')
     expect(detail.textContent).toContain('09:00')
     expect(detail.textContent).toContain('12°C')
+  })
+
+  it('queries one chosen date against automatic route representative points', () => {
+    const onQuery = vi.fn()
+    const panel = createWeatherPanel({ onQuery })
+    document.body.appendChild(panel.el)
+    panel.setRouteContext({ route: { waypoints: [{ name: 'P1' }, { name: 'P2' }] }, distanceM: 13800 })
+    panel.el.querySelector('.wx-go').click()
+    expect(onQuery).toHaveBeenCalledWith(expect.objectContaining({ dates: [expect.any(String)] }))
+    expect(panel.el.querySelector('.wx-allpts')).toBeNull()
+    expect(panel.el.textContent).toContain('P1 → P2')
   })
 })

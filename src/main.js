@@ -48,7 +48,7 @@ import { encodeShare, decodeShare } from './lib/share.js'
 import { createModeMachine, MODES } from './ui/mode.js'
 import { createRail, createPanelHost, createLayerButtons, createToast } from './ui/chrome.js'
 import { iconSvg } from './ui/icons.js'
-import { createPlanningPanel, createLibraryPanel, createProfileCard } from './ui/panels.js'
+import { createPlanningPanel, createLibraryPanel } from './ui/panels.js'
 import { createWeatherPanel } from './ui/weatherPanel.js'
 import { createSettingsPanel } from './ui/settingsPanel.js'
 import { formatSummary, loadSummaryPreferences, saveSummaryPreferences } from './ui/summaryPreferences.js'
@@ -1658,9 +1658,7 @@ fLight.close()
 const toast = createToast()
 const panelHost = createPanelHost({
   onSummaryCustomize: () => toggleSettings(),
-  onTab: (id) => showTab(id),
 })
-const profileCard = createProfileCard(params.hudAccent)
 let summaryPreferences = loadSummaryPreferences()
 const WEATHER_UI_LS = 'trip3d.weatherPreferences.v1'
 const normalizeWeatherPreferences = (value = {}) => ({
@@ -1717,6 +1715,7 @@ function updateRouteUI(route, stats, pts, { fitOverview = true } = {}) {
   const wxIndex = weatherState.result && weatherState.revision === route.revision ? weatherState.result.index?.overall : null
   const wxDays = weatherState.result && weatherState.revision === route.revision ? weatherState.result.agg : null
   planningPanel.update(route, stats, legs, wxIndex, snapProfile, wxDays)
+  weatherPanel?.setRouteContext?.({ route, distanceM: stats?.distanceM })
   // share tab summary mirrors the same data block
   const pd = buildPosterData({
     route, stats, legs,
@@ -1761,25 +1760,6 @@ function updateRouteUI(route, stats, pts, { fitOverview = true } = {}) {
     saved: summaryData.saved,
   })
   hud2.root.classList.toggle('has-route', route.waypoints.length > 0)
-  // weather band only when a fresh result matches this route revision
-  // day boundary positions on the profile axis (multi-day segmentation)
-  let dayBounds = null
-  if (route.dayEnds?.length && pts?.length >= 2) {
-    const total = pts[pts.length - 1].cumDistM || 1
-    dayBounds = route.dayEnds.map((id) => {
-      const wi = route.waypoints.findIndex((w) => w.id === id)
-      if (wi < 0) return null
-      const w = route.waypoints[wi]
-      let best = 0
-      let bd = Infinity
-      for (let i = 0; i < pts.length; i++) {
-        const d = (pts[i].lon - w.lon) ** 2 + (pts[i].lat - w.lat) ** 2
-        if (d < bd) { bd = d; best = i }
-      }
-      return { frac: pts[best].cumDistM / total, day: dayNumberAt(route, wi) }
-    }).filter(Boolean)
-  }
-  profileCard.update(stats, pts, wxDays, dayBounds)
   overviewMap?.setWeatherOverlay({ routeRevision: route.revision, weatherRevision: weatherState.revision, result: weatherState.result })
   overviewMap.update(route, pts, currentViewportRect(), { fit: fitOverview })
   overviewMap.setSelectedWaypoint(selectedWaypointId)
@@ -1861,11 +1841,9 @@ const weatherProvider = createOpenMeteoProvider()
 const weatherArchiveProvider = createOpenMeteoArchiveProvider()
 const weatherState = { revision: -1, requestId: 0, result: null }
 
-async function runWeatherQuery({ dates, allPoints }) {
+async function runWeatherQuery({ dates }) {
   if (!route.waypoints.length) { weatherPanel.setEmptyRoute(); return }
-  const rep = allPoints
-    ? route.waypoints.map((w) => ({ ...w, role: w.name }))
-    : pickRepresentativePoints(route.waypoints)
+  const rep = pickRepresentativePoints(route.waypoints)
   const rev = route.revision
   const reqId = ++weatherState.requestId
   weatherPanel.setLoading(rep)
@@ -1883,7 +1861,7 @@ async function runWeatherQuery({ dates, allPoints }) {
     const qFrom = aw?.from ?? from
     const qTo = aw?.to ?? to
     // same-day cache: fingerprint+dates+source → skip the network entirely
-    const cacheKey = `trip3d.wx.h1.${routeFingerprint(route)}.${from}.${to}.${allPoints ? 'all' : 'rep'}.${source}`
+    const cacheKey = `trip3d.wx.h1.${routeFingerprint(route)}.${from}.${to}.rep.${source}`
     let all = null
     try {
       const hit = localStorage.getItem(cacheKey)
@@ -1913,7 +1891,7 @@ async function runWeatherQuery({ dates, allPoints }) {
     const agg = aggregateTripDays(all)
     weatherState.revision = rev
     weatherState.result = { agg, rep, index: tripIndex(all), source }
-    weatherPanel.setResult({ agg, rep, index: tripIndex(all), repLabel: allPoints ? '途经点' : '代表点', source })
+    weatherPanel.setResult({ agg, rep, index: tripIndex(all), source })
     refreshRoute() // re-render profile card with the band bound to this fingerprint
   } catch (err) {
     console.warn('weather query failed', err)
@@ -1924,6 +1902,7 @@ async function runWeatherQuery({ dates, allPoints }) {
 const weatherPanel = createWeatherPanel({
   onQuery: runWeatherQuery,
   onPointFocus: (role, pinned) => overviewMap?.focusWeatherPoint(role, { pinned }),
+  onRecoverRoute: () => showTab('planning'),
 })
 
 function showHourlyWeatherDetails(properties = {}) {
@@ -2283,20 +2262,6 @@ function stopFlyover(finish) {
   flyOverlay.classList.add('hidden')
 }
 
-// profile ↔ 3D sync: hover shows crosshair on the route line; click flies camera
-profileCard.setCallbacks({
-  onHover: (i) => {
-    if (i == null || !lastRoutePts[i]) { routeLayer?.hideCrosshair(); return }
-    routeLayer?.showCrosshair(lastRoutePts[i])
-  },
-  onSelect: (i) => {
-    const p = lastRoutePts[i]
-    if (!p) return
-    const y = terrain.sample(p.x, p.z)
-    flyTo(new THREE.Vector3(p.x + 6, y + 4.5, p.z + 6), new THREE.Vector3(p.x, y, p.z))
-  },
-})
-
 async function refreshLibrary() {
   const s = await routeStoreReady
   if (s) libraryPanel.setItems(await s.list())
@@ -2407,7 +2372,6 @@ const routeActions = {
   },
 }
 const planningPanel = createPlanningPanel(routeActions)
-planningPanel.el.appendChild(profileCard.el)
 planningPanel.setRouteMode(route.mode, snapState.on ? '等待路网吸附' : '仅测距；不估算时长')
 // overview inset map: click → fly the 3D camera to that lon/lat
 const plannerTerrainLayer = createTerrainCustomLayer({
@@ -2576,7 +2540,7 @@ const mode = createModeMachine({
       ensureRouteLayer()
       refreshRoute()
       rail.setActive('planning')
-      panelHost.show('planning', '行程概览', 'ESC 退出', planningPanel.el)
+      panelHost.show('planning', '规划行程', 'ESC 退出', planningPanel.el)
       panelHost.setCollapsed(true)
       plannerWorkspace.setPrimaryLabel(route.waypoints.length ? '编辑路线' : '开始规划')
       requestAnimationFrame(() => { overviewMap.resize(); overviewMap.update(route, lastRoutePts, currentViewportRect()) })
@@ -2637,8 +2601,8 @@ function showTab(id) {
   panelHost.setCollapsed(false)
   rail.setActive(id)
   if (id === 'library') { refreshLibrary(); panelHost.show('library', '线路库', null, libraryPanel.el) }
-  if (id === 'weather') panelHost.show('weather', '行程检视', null, weatherPanel.el)
-  if (id === 'share') panelHost.show('share', '行程检视', null, sharePanel.el)
+  if (id === 'weather') panelHost.show('weather', '沿途天气', 'ESC 退出', weatherPanel.el)
+  if (id === 'share') panelHost.show('share', '留存与分享', null, sharePanel.el)
 }
 
 function setMapWorkspace({ weather = false, editing = false } = {}) {
