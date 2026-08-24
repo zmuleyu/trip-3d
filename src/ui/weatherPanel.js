@@ -14,6 +14,7 @@ const plusDays = (iso, n) => new Date(new Date(`${iso}T00:00:00Z`).getTime() + n
 
 export function createWeatherPanel({ onQuery, onPointFocus }) {
   const el = document.createElement('div')
+  el.className = 'wx-panel'
   const saved = JSON.parse(localStorage.getItem(LS_KEY) ?? '{}')
   const today = todayLocal()
   const maxStart = plusDays(today, MAX_TRIP_DAYS - 1)
@@ -25,10 +26,10 @@ export function createWeatherPanel({ onQuery, onPointFocus }) {
       <label>出发日期 <input type="date" class="wx-date" min="${minStart}" max="${maxFar}" value="${saved.start ?? today}"></label>
       <label>天数 <input type="number" class="wx-days" min="1" max="${MAX_TRIP_DAYS}" value="${saved.days ?? 3}"></label>
       <label class="wx-allpts"><input type="checkbox" class="wx-allpts-cb"${saved.allPoints ? ' checked' : ''}> 全部途经点</label>
-      <button class="wx-go primary">查询天气</button>
+      <button class="wx-go primary">加载沿途天气</button>
     </div>
     <div class="wx-index hidden"></div>
-    <div class="wx-status">选择日期后查询 — ≤16 天为预报;超窗自动回填去年历史同期(ERA5)</div>
+    <div class="wx-status">16 天内使用预报；超出窗口时使用去年历史同期数据(ERA5)</div>
     <div class="wx-points hidden" aria-label="路线天气地点"></div>
     <section class="wx-hourly hidden" aria-labelledby="wx-hourly-title">
       <header><h3 id="wx-hourly-title">逐小时预报</h3><button type="button" aria-label="关闭逐小时预报">×</button></header>

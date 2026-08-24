@@ -20,6 +20,7 @@ const ICONS = {
   search: '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 4.5 4.5"/>',
   more: '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
   save: '<path d="M5 4h12l2 2v14H5Z"/><path d="M8 4v6h8V4M8 20v-6h8v6"/>',
+  close: '<path d="m6 6 12 12M18 6 6 18"/>',
 }
 
 export function iconSvg(name, className = '') {

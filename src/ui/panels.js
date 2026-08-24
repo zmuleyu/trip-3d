@@ -111,6 +111,7 @@ export function createPlanningPanel(actions) {
   const stat = document.createElement('div')
   stat.className = 'ui-stat-card pp-plan'
   el.appendChild(stat)
+  el.insertBefore(stat, journeyList)
 
   // collapsible per-leg details
   const legsBox = document.createElement('div')
@@ -133,7 +134,6 @@ export function createPlanningPanel(actions) {
   save.textContent = '保存线路'
   save.onclick = actions.onSave
   opsMain.appendChild(save)
-  el.appendChild(opsMain)
 
   const secondary = document.createElement('details')
   secondary.className = 'pp-secondary-tools'
@@ -163,6 +163,7 @@ export function createPlanningPanel(actions) {
   importGpx.onclick = actions.onImportGpx
   secondary.appendChild(importGpx)
   el.appendChild(secondary)
+  el.appendChild(opsMain)
 
   return {
     el,
@@ -414,6 +415,7 @@ export function createPlanningPanel(actions) {
 // ---------------------------------------------------------------- library panel
 export function createLibraryPanel(actions) {
   const el = document.createElement('div')
+  el.className = 'route-library-panel'
   const list = document.createElement('div')
   el.appendChild(list)
   return {
@@ -424,12 +426,24 @@ export function createLibraryPanel(actions) {
         const e = document.createElement('div')
         e.className = 'ui-empty'
         const copy = document.createElement('p')
-        copy.textContent = '线路库为空。开始规划并保存第一条线路后，它会出现在这里。'
+        const draft = actions.getCurrent?.()
+        const hasDraft = (draft?.waypoints?.length ?? 0) >= 2
+        copy.textContent = hasDraft
+          ? `当前正在编辑「${draft.name || '未命名线路'}」，尚未保存到本机路线库。`
+          : '线路库为空。开始规划并保存第一条线路后，它会出现在这里。'
         const plan = document.createElement('button')
         plan.type = 'button'
-        plan.textContent = '开始规划'
-        plan.onclick = () => actions.onPlan?.()
+        plan.textContent = hasDraft ? '保存当前路线' : '开始规划'
+        plan.onclick = () => hasDraft ? actions.onSaveCurrent?.() : actions.onPlan?.()
         e.append(copy, plan)
+        if (hasDraft) {
+          const keepEditing = document.createElement('button')
+          keepEditing.type = 'button'
+          keepEditing.className = 'secondary'
+          keepEditing.textContent = '继续编辑'
+          keepEditing.onclick = () => actions.onPlan?.()
+          e.appendChild(keepEditing)
+        }
         list.appendChild(e)
         return
       }

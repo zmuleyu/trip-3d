@@ -58,4 +58,18 @@ describe('route library recovery', () => {
     empty.querySelector('button').click()
     expect(onPlan).toHaveBeenCalledOnce()
   })
+
+  it('distinguishes an unsaved current route from an empty saved library', () => {
+    const onSaveCurrent = vi.fn()
+    const panel = createLibraryPanel({
+      getCurrent: () => ({ name: '双桥沟草稿', waypoints: [{}, {}] }),
+      onSaveCurrent,
+    })
+    panel.setItems([])
+    const empty = panel.el.querySelector('.ui-empty')
+    expect(empty.textContent).toContain('尚未保存到本机路线库')
+    const save = [...empty.querySelectorAll('button')].find((button) => button.textContent === '保存当前路线')
+    save.click()
+    expect(onSaveCurrent).toHaveBeenCalledOnce()
+  })
 })

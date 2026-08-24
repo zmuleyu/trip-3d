@@ -93,7 +93,7 @@ TRIP 3D is a restrained, authored Chinese cartography workspace. A continuous na
 The product feels like a dependable field instrument: compact rounded controls, short Chinese labels, ordered row content, and progressive disclosure let planning, terrain, time, and weather remain facets of one trip. Frosted material is reserved for information anchored to the map, so geographic context survives without turning the interface into glass decoration.
 
 **Key Characteristics:**
-- Map-first operating canvas with slim edge chrome and a single filled route action.
+- Map-first operating canvas with compact corner islands and a single filled route action.
 - Natural, quiet terrain and paper-like information surfaces rather than dashboard-card density.
 - Restrained Chinese system typography with compact metadata and tabular numerical detail.
 - Orange route selection, blue weather information, and direct truthful status colors.
@@ -137,11 +137,11 @@ The palette is terrain-neutral and high-contrast: ink and paper establish operat
 
 ## Layout
 
-The map is the continuous working surface. On desktop, a 60px top command bar, a 52px left tool rail, edge-attached map controls, and a 58px collapsed journey summary leave the map visually dominant. Expanded itinerary and settings occupy a right-side drawer of up to 390px rather than re-centering the map.
+The map is the continuous working surface. On desktop, three deliberately offset floating islands hold brand/search, trip identity, and view/edit actions above the uninterrupted map. A short 48px navigation rail, a 340px inset context inspector, and a centered 62px trip spine establish varied depth without forming a rigid four-edge frame. Inspectors stay at least 22px from the viewport edge; neighboring map controls reflow instead of overlapping them.
 
 At 1080px the secondary weather and layer triggers recede. At 720px and below, the command bar becomes 56px, the left rail becomes a 58px bottom navigation strip, and the itinerary becomes one bottom sheet with peek (96px), working-half, and full states. Mobile preserves the map behind the sheet, surfaces only two summary metrics, and keeps primary map operations reachable above it.
 
-**The Continuous Map Rule.** Chrome attaches to the map edge or collapses into the shared sheet; no open state may fragment the trip into competing dashboard columns.
+**The Continuous Map Rule.** Chrome floats above the map with a visible geographic margin or collapses into the shared sheet; no open state may fragment the trip into competing dashboard columns or close the map inside a four-sided frame.
 
 ## Elevation & Depth
 
@@ -169,33 +169,37 @@ Forms are rounded, compact, and repeatable. Ordinary controls use a gently curve
 - **Secondary and icon actions:** 40px compact transparent controls on dark chrome with a fine translucent border. Hover adds a restrained white veil; focus uses the route-orange 2px outline.
 - **State:** Buttons expose hover, focus-visible, active, disabled, and selected treatment. Motion is limited to color/border at 140ms and press-scale at 100ms.
 
-### Expanding search
-- **Shape:** A 40px search trigger grows into a 270px, 22px-radius text field only while focused.
-- **State:** The field expands from its left origin over 150ms and becomes a near-opaque dark surface on focus; placeholder text remains muted but legible.
+### Search island
+- **Shape:** Desktop combines the brand and a persistent 238px, 12px-radius search field inside one compact dark island. At narrower widths it returns to a 40px trigger and expands only while focused.
+- **State:** Focus strengthens the field boundary without changing its position; placeholder text remains muted but legible.
 
 ### View switch and segmented controls
 - **Style:** Compact 2–3px inner padding inside an 18–20px rounded group; the active segment receives a pale translucent fill and white text.
 - **State:** The active choice is expressed by both fill and text contrast, never color alone.
 
 ### Navigation rail
-- **Style:** Desktop is a 52px dark frosted vertical rail with 40px tools and focus/hover labels; mobile becomes a light 58px bottom strip with persistent text labels.
-- **State:** Active planning uses route orange on desktop and route-orange type plus a restrained pale fill on mobile.
+- **Style:** Desktop is a short 48px inset dark rail with contained 34px marks; active labels appear in a small adjacent dark chip rather than widening the navigation. Mobile becomes a light 58px bottom strip with persistent text labels.
+- **State:** Active work uses a one-pixel Route Ember rule, a quiet translucent fill, and a readable label chip on desktop; mobile uses route-orange type plus a restrained pale fill.
 
 ### Map context and controls
 - **Style:** Map labels use a 10px-radius light frosted context card; map-operation controls sit in a 14px-radius dark frosted group with 40px buttons.
 - **State:** Map control hover adds only a quiet translucent light fill. Context stays anchored at the map edge and never reads as a general card surface.
 
 ### Journey summary and itinerary rows
-- **Style:** The collapsed desktop summary is a 58px, 16px-radius frosted strip; expanded content becomes a 16px-radius opaque right drawer. Itinerary rows are 58px minimum, use 10px padding, and live inside a shared 12px outlined list.
-- **State:** Selected rows use both a thin Route Ember leading rule and a 6% orange fill. Compact tabular metrics make comparison fast; mobile shows a two-metric summary before progressive disclosure.
+- **Style:** Desktop uses a centered 62px floating trip spine that stops before the viewport edges. Day segments share one surface, use internal dividers, and connect time, route, distance, and weather without becoming separate cards. Expanded content appears in a 340px inset inspector. Itinerary rows remain 58px minimum inside one outlined sequence.
+- **State:** The spine expands the inspector, while selected rows use both a thin Route Ember leading rule and a 6% orange fill. Mobile reuses the existing peek/half/full sheet instead of duplicating the desktop spine.
+
+### First-use route guidance
+- **Style:** Guidance follows the map cursor with one short action label while a compact step strip sits above the summary: `设置起点 → 添加途经点 → 确认路线`.
+- **State:** It appears only before the second point, updates immediately after the first click, offers `跳过引导`, and never blocks the central map or impersonates a modal.
 
 ### Weather card
 - **Style:** A marker-anchored 248px card with a 14px radius, 12px blur, fine border, one restrained shadow, and a light 90% surface on 2D maps or dark 82% surface on 3D terrain.
 - **State:** It opens and moves with 130ms opacity/transform feedback, supports dismissal, and switches to an opaque surface for reduced-transparency preferences.
 
 ### Settings and menus
-- **Style:** Opaque paper drawers and menus use 12–16px rounded group boundaries, 14–18px section spacing, fine dividers, and 40–42px editable controls.
-- **State:** Dense settings remain a single ordered drawer; advanced options are contained rather than displayed as a feature-card wall.
+- **Style:** Every desktop inspector uses a compact near-black header cap, warm-paper body, 12–16px rounded boundary, category tabs, fine dividers, and 40–42px controls. Overflow menus remain small, anchored, and grouped by meaning.
+- **State:** Planning, weather, and retention share `概览 / 天气 / 留存`; settings keeps `地图 / 地形 / 路线`. Advanced options are contained, and nearby map controls shift left while an inspector is open.
 
 ## Do's and Don'ts
 

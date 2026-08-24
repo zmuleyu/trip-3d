@@ -48,6 +48,16 @@ describe('rail accessibility', () => {
 })
 
 describe('panel collapse accessibility state', () => {
+  it('uses one inspector tab model for overview, weather, and retention', () => {
+    const onTab = vi.fn()
+    const panel = createPanelHost({ onTab })
+    panel.show('weather', '行程检视', null, document.createElement('div'))
+    const weather = panel.el.querySelector('[data-panel-tab="weather"]')
+    expect(weather.getAttribute('aria-pressed')).toBe('true')
+    panel.el.querySelector('[data-panel-tab="share"]').click()
+    expect(onTab).toHaveBeenCalledWith('share')
+  })
+
   it('keeps aria-expanded synchronized with the panel body', () => {
     const panel = createPanelHost()
     panel.show('planning', '线路规划', null, document.createElement('div'))
