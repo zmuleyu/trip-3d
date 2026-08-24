@@ -311,7 +311,27 @@ export function createOverviewMap({
 
   const emptyHint = document.createElement('div')
   emptyHint.className = 'ui-map-empty'
-  emptyHint.innerHTML = `${iconSvg('pin')}<div><b>在虚线范围内设置起点</b><span>点击可规划区域，开始创建路线</span></div>`
+  emptyHint.setAttribute('role', 'status')
+  emptyHint.innerHTML = `${iconSvg('pin')}<div><b>单击地图设置起点</b><span>随后继续添加途经点</span></div>`
+
+  let onboardingDismissed = false
+  try { onboardingDismissed = sessionStorage.getItem('trip3d.planningGuide.dismissed') === '1' } catch { /* optional session preference */ }
+  const onboarding = document.createElement('div')
+  onboarding.className = 'ui-map-onboarding'
+  onboarding.setAttribute('aria-label', '路线规划步骤')
+  onboarding.innerHTML = `
+    <ol>
+      <li data-guide-step="start"><span>1</span>设置起点</li>
+      <li data-guide-step="via"><span>2</span>添加途经点</li>
+      <li data-guide-step="confirm"><span>3</span>确认路线</li>
+    </ol>
+    <button type="button">跳过引导</button>`
+  onboarding.querySelector('button').onclick = () => {
+    onboardingDismissed = true
+    onboarding.classList.add('hidden')
+    emptyHint.classList.add('hidden')
+    try { sessionStorage.setItem('trip3d.planningGuide.dismissed', '1') } catch { /* optional session preference */ }
+  }
 
   const footprintLegend = document.createElement('div')
   footprintLegend.className = 'ui-map-footprint-legend'
@@ -331,7 +351,7 @@ export function createOverviewMap({
     <dl><div><dt>降水</dt><dd data-weather="precipitation">—</dd></div><div><dt>风速</dt><dd data-weather="wind">—</dd></div></dl>
     <footer><span data-weather="source">预报</span><button type="button" data-weather-action>逐小时预报</button></footer>`
 
-  el.append(mapSurface, mapContext, controls, emptyHint, footprintLegend, mapError, weatherCard)
+  el.append(mapSurface, mapContext, controls, emptyHint, footprintLegend, onboarding, mapError, weatherCard)
 
   const map = new MapLibreMap({
     container: mapSurface,
@@ -577,11 +597,21 @@ export function createOverviewMap({
     const terrain3d = plannerMode && plannerView === '3d'
     mapContextTitle.textContent = terrain3d ? '3D 地形预览' : '2D 路线地图'
     mapContextHint.textContent = count === 0
-      ? '在虚线范围内设置起点'
+      ? editingMode ? '单击地图设置起点' : '选择“开始规划”后设置起点'
       : count === 1
         ? '继续点击，添加终点'
         : `${count} 个途经点 · 点击继续添加`
-    emptyHint.classList.toggle('hidden', !plannerMode || terrain3d || count > 0)
+    const guideVisible = plannerMode && editingMode && !terrain3d && count < 2 && !onboardingDismissed
+    emptyHint.classList.toggle('hidden', !guideVisible)
+    emptyHint.dataset.step = count === 0 ? 'start' : 'via'
+    emptyHint.querySelector('b').textContent = count === 0 ? '单击地图设置起点' : '继续单击，添加途经点'
+    emptyHint.querySelector('span').textContent = count === 0 ? '随后继续添加途经点' : '可拖动标记调整位置 · Esc 取消'
+    onboarding.classList.toggle('hidden', !guideVisible)
+    onboarding.querySelectorAll('[data-guide-step]').forEach((item) => {
+      const step = item.dataset.guideStep
+      item.classList.toggle('active', step === (count === 0 ? 'start' : count === 1 ? 'via' : 'confirm'))
+      item.classList.toggle('done', step === 'start' && count > 0)
+    })
     const hasRoute = count >= 2
     fit.querySelector('span').textContent = hasRoute ? '完整路线' : '地形范围'
     fit.setAttribute('aria-label', hasRoute ? '显示完整路线' : '显示地形范围')
@@ -592,10 +622,14 @@ export function createOverviewMap({
 
   function fitPadding() {
     const mobilePlanner = plannerMode && globalThis.matchMedia?.('(max-width: 720px)').matches
-    if (!mobilePlanner) return plannerMode ? 72 : 28
+    if (!mobilePlanner) {
+      if (!plannerMode) return 28
+      const inspectorOpen = !!document.querySelector('.ui-panel:not(.hidden):not(.collapsed), .ui-settings.open')
+      return { top: 188, right: inspectorOpen ? 412 : 124, bottom: 166, left: 112 }
+    }
     const height = Math.max(0, mapSurface.getBoundingClientRect().height)
     const usableHeight = Math.min(height, Math.max(240, window.innerHeight * 0.4))
-    return { top: 80, right: 40, bottom: Math.max(80, height - usableHeight + 80), left: 40 }
+    return { top: 120, right: 56, bottom: Math.max(80, height - usableHeight + 80), left: 56 }
   }
 
   function fitCurrent() {
@@ -710,6 +744,15 @@ export function createOverviewMap({
     waypointDrag.accepted ||= accepted
   }
 
+  function movePlanningGuide(event) {
+    if (!editingMode || onboardingDismissed || (lastRoute?.waypoints?.length ?? 0) >= 2 || !event.point) return
+    const rect = mapSurface.getBoundingClientRect()
+    const x = Math.max(92, Math.min(rect.width - 92, event.point.x + 18))
+    const y = Math.max(116, Math.min(rect.height - 116, event.point.y - 18))
+    emptyHint.style.setProperty('--guide-x', `${x}px`)
+    emptyHint.style.setProperty('--guide-y', `${y}px`)
+  }
+
   function endWaypointDrag() {
     if (!waypointDrag) return
     const { waypointId, moved, accepted } = waypointDrag
@@ -742,6 +785,7 @@ export function createOverviewMap({
   map.on('mousedown', 'trip-waypoint-circles', startWaypointDrag)
   map.on('touchstart', 'trip-waypoint-circles', startWaypointDrag)
   map.on('mousemove', moveWaypointDrag)
+  map.on('mousemove', movePlanningGuide)
   map.on('touchmove', moveWaypointDrag)
   map.on('mouseup', endWaypointDrag)
   map.on('touchend', endWaypointDrag)
@@ -824,6 +868,7 @@ export function createOverviewMap({
         return false
       }
       plannerView = requested
+      lastFitKey = ''
       setInteractionForView()
       updateChrome()
       decorateCanvas()

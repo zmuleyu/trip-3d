@@ -54,7 +54,7 @@ export function createRail({ items, settingsItem }) {
 
 // ---------------------------------------------------------------- flyout panel
 // One panel host; content swapped per tab. Returns host + mount API.
-export function createPanelHost() {
+export function createPanelHost({ onSummaryCustomize, onTab } = {}) {
   const el = document.createElement('section')
   el.className = 'ui-panel hidden'
   document.body.appendChild(el)
@@ -66,10 +66,29 @@ export function createPanelHost() {
   const h = document.createElement('h2')
   const summary = document.createElement('span')
   summary.className = 'ui-panel-summary'
+  const customize = document.createElement('button')
+  customize.type = 'button'
+  customize.className = 'ui-panel-customize'
+  customize.innerHTML = `${iconSvg('settings')}<span>自定义</span>`
+  customize.setAttribute('aria-label', '自定义行程摘要字段')
+  customize.onclick = () => onSummaryCustomize?.()
   const chev = document.createElement('button')
   chev.className = 'ui-panel-chev'
-  chev.textContent = '▾'
+  chev.innerHTML = iconSvg('close')
   chev.title = '收起/展开面板'
+  const tabs = document.createElement('nav')
+  tabs.className = 'ui-panel-tabs'
+  tabs.setAttribute('aria-label', '行程检视分类')
+  const tabButtons = new Map()
+  for (const [id, label] of [['planning', '概览'], ['weather', '天气'], ['share', '留存']]) {
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.dataset.panelTab = id
+    button.textContent = label
+    button.onclick = () => onTab?.(id)
+    tabs.appendChild(button)
+    tabButtons.set(id, button)
+  }
   const body = document.createElement('div')
   body.className = 'ui-panel-body'
   body.id = 'ui-panel-body'
@@ -92,7 +111,6 @@ export function createPanelHost() {
     el.classList.toggle('collapsed', collapsed)
     el.dataset.sheetState = sheetState
     const mobile = isMobileSheet()
-    chev.textContent = mobile ? (sheetState === 'full' ? '⌄' : '⌃') : (collapsed ? '▸' : '▾')
     chev.setAttribute('aria-expanded', String(mobile ? sheetState !== 'peek' : !collapsed))
     chev.setAttribute('aria-label', mobile ? sheetLabel() : (collapsed ? '展开面板' : '收起面板'))
     grabber.setAttribute('aria-label', `调整面板高度；当前${sheetStateLabel()}`)
@@ -152,7 +170,10 @@ export function createPanelHost() {
     if (dragged) { dragged = false; return }
     if (isMobileSheet()) setSheetState(nextSheetState())
   }
-  mobileQuery?.addEventListener?.('change', apply)
+  mobileQuery?.addEventListener?.('change', () => {
+    if (isMobileSheet() && collapsed) sheetState = 'peek'
+    apply()
+  })
   return {
     el,
     get currentId() { return currentId },
@@ -160,7 +181,7 @@ export function createPanelHost() {
     show(id, title, hint, contentEl) {
       currentId = id
       h.replaceChildren()
-      h.append(document.createTextNode(title), summary, chev)
+      h.append(document.createTextNode(title), summary, customize, chev)
       if (hint) {
         const s = document.createElement('span')
         s.className = 'ui-panel-hint'
@@ -168,7 +189,14 @@ export function createPanelHost() {
         h.insertBefore(s, summary)
       }
       body.replaceChildren(contentEl)
-      el.replaceChildren(grabber, h, body)
+      const hasTabs = tabButtons.has(id)
+      tabs.classList.toggle('hidden', !hasTabs)
+      for (const [tabId, button] of tabButtons) {
+        const active = tabId === id
+        button.classList.toggle('active', active)
+        button.setAttribute('aria-pressed', String(active))
+      }
+      el.replaceChildren(grabber, h, tabs, body)
       el.classList.remove('hidden')
       sheetState = 'half'
       apply()

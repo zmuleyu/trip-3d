@@ -86,6 +86,22 @@ export function createSettingsPanel({
   header.append(headingWrap, close)
   el.appendChild(header)
 
+  const tabs = document.createElement('nav')
+  tabs.className = 'settings-tabs'
+  tabs.setAttribute('aria-label', '设置分类')
+  const tabButtons = new Map()
+  for (const [id, label] of [['display', '地图'], ['terrain', '地形'], ['route', '路线']]) {
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.dataset.settingsTab = id
+    button.textContent = label
+    button.setAttribute('aria-pressed', String(id === 'terrain'))
+    button.classList.toggle('active', id === 'terrain')
+    tabButtons.set(id, button)
+    tabs.appendChild(button)
+  }
+  el.appendChild(tabs)
+
   const body = document.createElement('div')
   body.className = 'settings-body'
   el.appendChild(body)
@@ -155,6 +171,7 @@ export function createSettingsPanel({
   }
 
   const terrain = createSection('地形范围', '选择数据范围与地形比例。经纬度修改后由“加载地形”提交。')
+  terrain.id = 'settings-section-terrain'
   terrain.append(
     createRow(SETTING_LABELS.source, select('source', [['real', '真实地形 DEM'], ['noise', '程序化地形']])),
     createRow(SETTING_LABELS.demLocation, select('demLocation', presets.map((name) => [name, name]))),
@@ -183,6 +200,7 @@ export function createSettingsPanel({
   body.appendChild(terrain)
 
   const route = createSection('路线与地图', '路线表达和常用地图图层保持即时同步。')
+  route.id = 'settings-section-route'
   const routeToggles = document.createElement('div')
   routeToggles.className = 'settings-toggle-list'
   for (const key of ['routeSlopeColors', 'routeArrows', 'routeTicks']) {
@@ -201,6 +219,7 @@ export function createSettingsPanel({
   body.appendChild(route)
 
   const display = createSection('基础显示', '调整画面明暗和雾效，不改变路线数据。')
+  display.id = 'settings-section-display'
   display.append(
     createRow(SETTING_LABELS.exposure, range('exposure', { min: .2, max: 3, step: .02 })),
     createRow(SETTING_LABELS.contrast, range('contrast', { min: -.2, max: .5, step: .01 })),
@@ -321,6 +340,19 @@ export function createSettingsPanel({
   advanced.appendChild(summary)
   if (advancedEl) advanced.appendChild(advancedEl)
   body.appendChild(advanced)
+
+  const sectionTargets = { display, terrain, route }
+  for (const [id, button] of tabButtons) {
+    button.setAttribute('aria-controls', sectionTargets[id].id)
+    button.onclick = () => {
+      for (const [nextId, nextButton] of tabButtons) {
+        const active = nextId === id
+        nextButton.classList.toggle('active', active)
+        nextButton.setAttribute('aria-pressed', String(active))
+      }
+      sectionTargets[id].scrollIntoView?.({ behavior: 'smooth', block: 'start' })
+    }
+  }
 
   return {
     el,

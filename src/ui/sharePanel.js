@@ -13,7 +13,7 @@ export function createSharePanel(actions) {
   summary.className = 'share-summary ui-stat-card'
   el.appendChild(summary)
 
-  const createGroup = (title, description) => {
+  const createGroup = (title, description, host = el) => {
     const section = document.createElement('section')
     section.className = 'share-group'
     const heading = document.createElement('h3')
@@ -23,7 +23,7 @@ export function createSharePanel(actions) {
     const actions = document.createElement('div')
     actions.className = 'ui-btn-row'
     section.append(heading, note, actions)
-    el.appendChild(section)
+    host.appendChild(section)
     return actions
   }
 
@@ -41,11 +41,20 @@ export function createSharePanel(actions) {
   mkRow(share, '复制分享链接', actions.onCopyLink, true)
   mkRow(share, '显示二维码', actions.onQr)
 
-  const exportGroup = createGroup('导出与互通', '下载路线文件，或交给高德地图继续使用。')
+  const more = document.createElement('details')
+  more.className = 'share-more'
+  const moreSummary = document.createElement('summary')
+  moreSummary.textContent = '更多留存方式'
+  const moreBody = document.createElement('div')
+  moreBody.className = 'share-more-body'
+  more.append(moreSummary, moreBody)
+  el.appendChild(more)
+
+  const exportGroup = createGroup('导出与互通', '下载路线文件，或交给高德地图继续使用。', moreBody)
   mkRow(exportGroup, '导出 GPX', actions.onExportGpx)
   mkRow(exportGroup, '生成高德链接', actions.onExportAmap)
 
-  const media = createGroup('留存画面', '海报是静态记录；飞越视频会按当前地形录制。')
+  const media = createGroup('留存画面', '海报是静态记录；飞越视频会按当前地形录制。', moreBody)
   mkRow(media, '下载海报 PNG', actions.onDownloadPoster)
   mkRow(media, '录制飞越视频 WebM', actions.onFlyover)
 

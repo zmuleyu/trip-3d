@@ -53,4 +53,41 @@ describe('planner workspace chrome', () => {
     workspace.el.querySelector('[data-more-action="settings"]').click()
     expect(onMoreAction).toHaveBeenCalledWith('settings')
   })
+
+  it('renders a compact multi-day trip spine and opens details from either edge', () => {
+    const onSpineExpand = vi.fn()
+    const workspace = createPlannerWorkspace({ onSpineExpand })
+    document.body.appendChild(workspace.el)
+    workspace.setJourneySpine({
+      route: {
+        dayEnds: ['b'],
+        waypoints: [
+          { id: 'a', name: '起点' },
+          { id: 'b', name: '盆景滩' },
+          { id: 'c', name: '终点' },
+        ],
+      },
+      legs: [{ distanceM: 4800 }, { distanceM: 3200 }],
+      weatherDays: [
+        { date: '2026-08-24', isRain: false, tempMax: 18 },
+        { date: '2026-08-25', isRain: true, tempMax: 12 },
+      ],
+    })
+    const days = workspace.el.querySelectorAll('.ui-trip-spine-day')
+    expect(days).toHaveLength(2)
+    expect(days[0].textContent).toContain('D1 · 08月24日')
+    expect(days[0].textContent).toContain('起点 → 盆景滩')
+    expect(days[1].textContent).toContain('有雨 12°')
+    workspace.el.querySelector('.ui-trip-spine-title').click()
+    workspace.el.querySelector('.ui-trip-spine-expand').click()
+    expect(onSpineExpand).toHaveBeenCalledTimes(2)
+  })
+
+  it('distinguishes route editing from the first planning action', () => {
+    const workspace = createPlannerWorkspace()
+    workspace.setPrimaryLabel('编辑路线')
+    expect(workspace.el.querySelector('.ui-planner-primary').classList.contains('has-route')).toBe(true)
+    workspace.setPrimaryLabel('开始规划')
+    expect(workspace.el.querySelector('.ui-planner-primary').classList.contains('has-route')).toBe(false)
+  })
 })

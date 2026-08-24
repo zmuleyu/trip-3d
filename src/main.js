@@ -1656,7 +1656,10 @@ fLight.close()
 
 // ------------------------------------------------------------------ ui chrome (rail / panels / mode)
 const toast = createToast()
-const panelHost = createPanelHost()
+const panelHost = createPanelHost({
+  onSummaryCustomize: () => toggleSettings(),
+  onTab: (id) => showTab(id),
+})
 const profileCard = createProfileCard(params.hudAccent)
 let summaryPreferences = loadSummaryPreferences()
 const WEATHER_UI_LS = 'trip3d.weatherPreferences.v1'
@@ -1750,6 +1753,8 @@ function updateRouteUI(route, stats, pts, { fitOverview = true } = {}) {
   panelHost.setSummary(route.waypoints.length
     ? formatSummary(summaryPreferences, summaryData, globalThis.matchMedia?.('(max-width: 720px)').matches ? 2 : 4)
     : '点击地图添加途经点')
+  plannerWorkspace?.setJourneySpine({ route, legs: legs ?? [], weatherDays: wxDays ?? [] })
+  plannerWorkspace?.setPrimaryLabel(route.waypoints.length ? '编辑路线' : '开始规划')
   plannerWorkspace?.updateTrip({
     name: route.name,
     dateText: wxDays?.length ? `${wxDays[0].date} — ${wxDays.at(-1).date}` : null,
@@ -2493,10 +2498,20 @@ plannerWorkspace = createPlannerWorkspace({
     planningPanel.search(query)
   },
   onPrimary: () => {
-    if (!mode.isPlanning()) { mode.enterPlanning(); return }
+    if (!mode.isPlanning()) {
+      mode.enterPlanning()
+      panelHost.setCollapsed(false)
+      requestAnimationFrame(() => overviewMap.fit())
+      return
+    }
     const nextCollapsed = !panelHost.collapsed
     panelHost.setCollapsed(nextCollapsed)
-    plannerWorkspace.setPrimaryLabel(nextCollapsed ? '继续规划' : '收起规划')
+    requestAnimationFrame(() => overviewMap.fit())
+  },
+  onSpineExpand: () => {
+    if (!mode.isPlanning()) mode.enterPlanning()
+    panelHost.setCollapsed(false)
+    requestAnimationFrame(() => overviewMap.fit())
   },
   onWeather: () => showTab('weather'),
   onMoreAction: (action) => {
@@ -2518,6 +2533,8 @@ function currentViewportRect() {
   return { minLon: Math.min(nw.lon, se.lon), maxLon: Math.max(nw.lon, se.lon), minLat: Math.min(nw.lat, se.lat), maxLat: Math.max(nw.lat, se.lat) }
 }
 const libraryPanel = createLibraryPanel({
+  getCurrent: () => route,
+  onSaveCurrent: () => routeActions.onSave?.(),
   onPlan: () => showTab('planning'),
   onLoad: async (id) => {
     const s = await routeStoreReady
@@ -2559,13 +2576,13 @@ const mode = createModeMachine({
       ensureRouteLayer()
       refreshRoute()
       rail.setActive('planning')
-      panelHost.show('planning', '线路规划', 'ESC 退出', planningPanel.el)
+      panelHost.show('planning', '行程概览', 'ESC 退出', planningPanel.el)
       panelHost.setCollapsed(true)
-      plannerWorkspace.setPrimaryLabel('继续规划')
+      plannerWorkspace.setPrimaryLabel(route.waypoints.length ? '编辑路线' : '开始规划')
       requestAnimationFrame(() => { overviewMap.resize(); overviewMap.update(route, lastRoutePts, currentViewportRect()) })
     } else {
       document.body.classList.remove('planner-2d', 'planner-3d')
-      plannerWorkspace.setPrimaryLabel('继续规划')
+      plannerWorkspace.setPrimaryLabel(route.waypoints.length ? '编辑路线' : '开始规划')
       rail.clearActive()
       panelHost.hide()
       overviewMap.update(route, lastRoutePts, currentViewportRect())
@@ -2604,7 +2621,13 @@ window.addEventListener('keydown', (e) => {
 
 function showTab(id) {
   if (settingsDrawer?.classList.contains('open')) setSettingsOpen(false, { restoreFocus: false })
-  if (id === 'planning') { setWeatherWorkspace(false); panelHost.setCollapsed(true); mode.enterPlanning(); return }
+  if (id === 'planning') {
+    setWeatherWorkspace(false)
+    if (!mode.isPlanning()) mode.enterPlanning()
+    panelHost.setCollapsed(false)
+    rail.setActive('planning')
+    return
+  }
   if (panelHost.currentId === id) {
     if (id === 'weather') setWeatherWorkspace(false)
     panelHost.hide(); rail.clearActive(); setMapWorkspace({ weather: false, editing: false }); return
@@ -2613,9 +2636,9 @@ function showTab(id) {
   setWeatherWorkspace(id === 'weather')
   panelHost.setCollapsed(false)
   rail.setActive(id)
-  if (id === 'library') panelHost.show('library', '线路库', null, libraryPanel.el)
-  if (id === 'weather') panelHost.show('weather', '天气推演', null, weatherPanel.el)
-  if (id === 'share') panelHost.show('share', '分享', null, sharePanel.el)
+  if (id === 'library') { refreshLibrary(); panelHost.show('library', '线路库', null, libraryPanel.el) }
+  if (id === 'weather') panelHost.show('weather', '行程检视', null, weatherPanel.el)
+  if (id === 'share') panelHost.show('share', '行程检视', null, sharePanel.el)
 }
 
 function setMapWorkspace({ weather = false, editing = false } = {}) {
@@ -2623,6 +2646,7 @@ function setMapWorkspace({ weather = false, editing = false } = {}) {
   document.body.classList.add('planner-operate')
   document.body.classList.toggle('weather-operate', !!weather)
   plannerWorkspace.setVisible(true)
+  if (!mode.isPlanning()) plannerWorkspace.setPrimaryLabel(route.waypoints.length ? '编辑路线' : '开始规划')
   overviewMap.setPlannerMode(true, { editing })
   overviewMap.setWeatherMode(!!weather, weatherPreferences)
   if (weather) {
@@ -2640,7 +2664,7 @@ function setWeatherWorkspace(on) {
 
 const rail = createRail({
   items: [
-    { id: 'planning', icon: 'planning', label: '规划', onSelect: () => mode.togglePlanning() },
+    { id: 'planning', icon: 'planning', label: '规划', onSelect: () => showTab('planning') },
     { id: 'library', icon: 'library', label: '线路库', onSelect: () => showTab('library') },
     { id: 'weather', icon: 'weather', label: '天气', badge: null, disabled: false, onSelect: () => showTab('weather') },
     { id: 'share', icon: 'share', label: '分享', badge: null, disabled: false, onSelect: () => showTab('share') },
