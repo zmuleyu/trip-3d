@@ -2,8 +2,6 @@
 
 ## Comparison target and evidence
 
-- Source visual target: `C:\Users\Admin\.codex\generated_images\01a033d7-c545-78c1-868e-44b6025590b7\exec-24163e40-7ef1-4743-97a1-39dc6feee42e.png` (1487 × 1058).
-- Combined desktop comparison: `.impeccable/audits/single-purpose-inspectors/desktop-comparison.png`.
 - Desktop implementation: `.impeccable/audits/single-purpose-inspectors/final-desktop-1440x1024.png` at 1440 × 1024, device scale 1.
 - Mobile implementation: `.impeccable/audits/single-purpose-inspectors/final-mobile-390x844.png` at 390 × 844, device scale 1.
 - Comparable state: empty current route, planning or weather inspector open. The source intentionally documents both independent inspector states side by side; the product preserves its existing one-inspector-at-a-time rail interaction.
