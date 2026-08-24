@@ -1,18 +1,26 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>MONOLITH — procedural terrain experiment</title>
+    <title>TRIP 3D — 时间、空间与气候的旅行地图</title>
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
+    <!--
+      THESIS: TRIP 3D keeps one trip and one map at the center; it refuses the feature-wall dashboard.
+      OWN-WORLD: Natural terrain, near-black map chrome, rounded workhorse controls, orange route/action, and selective frosted map cards.
+      STORY: Plan or load a route, inspect the same trip through map, terrain, time, and weather, then save or share it.
+      FIRST VIEWPORT: A slim command bar above a continuous map, compact edge tools, and a collapsed configurable journey summary at the bottom.
+      FORM: Map-centered operate workspace, selected hybrid direction, seed aa94425a.
+      FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
+    -->
     <div id="app"></div>
     <div class="overlay">
-      <span class="title">MONOLITH</span>
-      <span class="sub">procedural terrain &middot; experiment 001</span>
+      <span class="title">TRIP 3D</span>
+      <span class="sub">旅行规划与记录</span>
     </div>
-    <div id="loading" class="hidden">generating terrain&hellip;</div>
+    <div id="loading" class="hidden">正在生成地形&hellip;</div>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

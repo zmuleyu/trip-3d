@@ -30,4 +30,24 @@ describe('MapLibre overlay adapters', () => {
     expect(fresh.features[0].properties).toMatchObject({ risk: 'high', score: 44 })
     expect(fresh.features[1].properties).toMatchObject({ risk: 'unknown', score: null })
   })
+
+  it('carries loaded weather values for local map cards without another request', () => {
+    const point = { lon: 116.1, lat: 39.8, role: '木骡子' }
+    const fresh = weatherOverlayGeoJSON({
+      routeRevision: 3,
+      weatherRevision: 3,
+      result: {
+        source: 'forecast',
+        rep: [point],
+        agg: [{ points: [{
+          point, date: '2026-08-24', tempMin: 2, tempMax: 18,
+          precipMm: 5.2, windMax: 18, weatherCode: 71,
+        }] }],
+      },
+    })
+    expect(fresh.features[0].properties).toMatchObject({
+      role: '木骡子', date: '2026-08-24', tempMin: 2, tempMax: 18,
+      precipMm: 5.2, windMax: 18, weatherCode: 71, source: 'forecast',
+    })
+  })
 })

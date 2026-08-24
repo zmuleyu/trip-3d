@@ -48,6 +48,9 @@ export function createTerrainCustomLayer({
     _canvas: null,
     _onContextLost: null,
     _stats: { frames: 0, totalMs: 0, maxMs: 0 },
+    _prewarmHandle: null,
+    _prewarmState: 'idle',
+    _prewarmMs: 0,
 
     setFailureHandler(handler) {
       failureHandler = typeof handler === 'function' ? handler : null
@@ -65,6 +68,8 @@ export function createTerrainCustomLayer({
         frames,
         averageMs: frames ? totalMs / frames : 0,
         maxMs,
+        prewarmState: this._prewarmState,
+        prewarmMs: this._prewarmMs,
       }
     },
 
@@ -89,6 +94,8 @@ export function createTerrainCustomLayer({
       this.map = map
       this.failed = null
       this._stats = { frames: 0, totalMs: 0, maxMs: 0 }
+      this._prewarmState = 'idle'
+      this._prewarmMs = 0
       try {
         this.camera = new THREE.Camera()
         this.scene = new THREE.Scene()
@@ -135,8 +142,48 @@ export function createTerrainCustomLayer({
       return this.terrainProxy
     },
 
+    _schedulePrewarm(args) {
+      if (this._prewarmState !== 'idle' || !this.available || !this.renderer?.compileAsync) return
+      const matrix = args?.defaultProjectionData?.mainMatrix
+      if (!matrix) return
+      this._prewarmState = 'scheduled'
+      const run = async () => {
+        this._prewarmHandle = null
+        if (this.enabled || !this.available || this.failed || !this.renderer) { this._prewarmState = 'idle'; return }
+        const context = getTerrainContext?.()
+        const model = terrainModelMatrix(context ?? {})
+        if (!model || !this._syncTerrainProxy(context?.terrain)) { this._prewarmState = 'idle'; return }
+        try {
+          const started = performance.now()
+          const mapProjection = new THREE.Matrix4().fromArray(matrix)
+          this.camera.projectionMatrix.copy(mapProjection).multiply(model)
+          this.camera.projectionMatrixInverse.copy(this.camera.projectionMatrix).invert()
+          await this.renderer.compileAsync(this.scene, this.camera)
+          const target = new THREE.WebGLRenderTarget(1, 1, { depthBuffer: true, stencilBuffer: false })
+          try {
+            this.renderer.resetState()
+            this.renderer.setRenderTarget(target)
+            this.renderer.render(this.scene, this.camera)
+          } finally {
+            this.renderer.setRenderTarget(null)
+            this.renderer.resetState()
+            target.dispose()
+          }
+          this._prewarmMs = performance.now() - started
+          this._prewarmState = 'ready'
+        } catch {
+          // Prewarming is an optimization only. The normal render path remains
+          // authoritative and will surface a real rendering failure.
+          this._prewarmState = 'idle'
+        }
+      }
+      const idle = globalThis.requestIdleCallback
+      this._prewarmHandle = idle ? idle(run, { timeout: 1200 }) : setTimeout(run, 240)
+    },
+
     render(gl, args) {
-      if (!this.enabled || !this.available || this.failed || !this.renderer) return
+      if (!this.enabled) { this._schedulePrewarm(args); return }
+      if (!this.available || this.failed || !this.renderer) return
       const context = getTerrainContext?.()
       const model = terrainModelMatrix(context ?? {})
       if (!model || !this._syncTerrainProxy(context?.terrain)) return
@@ -159,6 +206,11 @@ export function createTerrainCustomLayer({
     },
 
     onRemove() {
+      if (this._prewarmHandle != null) {
+        if (globalThis.cancelIdleCallback) globalThis.cancelIdleCallback(this._prewarmHandle)
+        else clearTimeout(this._prewarmHandle)
+      }
+      this._prewarmHandle = null
       this._detachCanvasEvents()
       if (this.terrainProxy && this.scene) this.scene.remove(this.terrainProxy)
       this.terrainProxy = null

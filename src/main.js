@@ -51,6 +51,7 @@ import { iconSvg } from './ui/icons.js'
 import { createPlanningPanel, createLibraryPanel, createProfileCard } from './ui/panels.js'
 import { createWeatherPanel } from './ui/weatherPanel.js'
 import { createSettingsPanel } from './ui/settingsPanel.js'
+import { formatSummary, loadSummaryPreferences, saveSummaryPreferences } from './ui/summaryPreferences.js'
 import { createOpenMeteoProvider, createOpenMeteoArchiveProvider } from './providers/openmeteo.js'
 import { createGeocodeProvider } from './providers/geocode.js'
 import { createRoutingProvider } from './providers/routing.js'
@@ -64,6 +65,7 @@ import { fitDemToCoordinates, normalizeRouteMode, routeCoverage, routeDistanceMe
 // ------------------------------------------------------------------ params
 
 const DEM_PRESETS = {
+  '四姑娘山 / 双桥沟': [31.108, 102.884],
   'Monument Valley': [36.998, -110.0984],
   'Grand Canyon': [36.0997, -112.1124],
   Matterhorn: [45.9766, 7.6585],
@@ -77,9 +79,9 @@ const DEM_PRESETS = {
 const params = {
   // terrain source
   source: 'real',
-  demLocation: 'Monument Valley',
-  demLat: 36.998,
-  demLon: -110.0984,
+  demLocation: '四姑娘山 / 双桥沟',
+  demLat: 31.108,
+  demLon: 102.884,
   demZoom: 12,
   tilesAcross: 3,
   demExaggeration: 1.6,
@@ -135,7 +137,7 @@ const params = {
   labels: true,
 
   // HUD
-  hud: true,
+  hud: false,
   hudOpacity: 1,
   uiBlur: 9,
   uiBgOpacity: 0.4,
@@ -1655,6 +1657,22 @@ fLight.close()
 const toast = createToast()
 const panelHost = createPanelHost()
 const profileCard = createProfileCard(params.hudAccent)
+let summaryPreferences = loadSummaryPreferences()
+const WEATHER_UI_LS = 'trip3d.weatherPreferences.v1'
+const normalizeWeatherPreferences = (value = {}) => ({
+  hoverCards: value.hoverCards !== false,
+  pinCards: value.pinCards !== false,
+  temperatureLabels: ['auto', 'always', 'off'].includes(value.temperatureLabels) ? value.temperatureLabels : 'auto',
+  transparency: ['system', 'frosted', 'opaque'].includes(value.transparency) ? value.transparency : 'system',
+})
+let weatherPreferences
+try { weatherPreferences = normalizeWeatherPreferences(JSON.parse(localStorage.getItem(WEATHER_UI_LS) ?? '{}')) } catch { weatherPreferences = normalizeWeatherPreferences() }
+const saveWeatherPreferences = (value) => {
+  weatherPreferences = normalizeWeatherPreferences(value)
+  try { localStorage.setItem(WEATHER_UI_LS, JSON.stringify(weatherPreferences)) } catch { /* optional preference */ }
+  return weatherPreferences
+}
+let lastSavedRouteVersion = null
 
 let lastSyncedTripDays = 0 // itinerary→weather days sync guard
 
@@ -1693,7 +1711,8 @@ function updateRouteUI(route, stats, pts, { fitOverview = true } = {}) {
     })
   }
   const wxIndex = weatherState.result && weatherState.revision === route.revision ? weatherState.result.index?.overall : null
-  planningPanel.update(route, stats, legs, wxIndex, snapProfile)
+  const wxDays = weatherState.result && weatherState.revision === route.revision ? weatherState.result.agg : null
+  planningPanel.update(route, stats, legs, wxIndex, snapProfile, wxDays)
   // share tab summary mirrors the same data block
   const pd = buildPosterData({
     route, stats, legs,
@@ -1709,10 +1728,34 @@ function updateRouteUI(route, stats, pts, { fitOverview = true } = {}) {
     weatherPanel.setTripDays?.(tripDays)
   }
   // collapsed panel header still shows live route state; POI tags dim under a route
-  panelHost.setSummary(route.waypoints.length ? `${route.name} · ${((stats?.distanceM ?? 0) / 1000).toFixed(1)}km · ${route.waypoints.length}点` : '点击地图添加途经点')
+  const realLegs = legs?.length && legs.every((leg) => leg.real && Number.isFinite(leg.durationS)) ? legs : null
+  const wxFlat = wxDays?.flatMap((day) => day?.points ?? []) ?? []
+  const summaryData = {
+    days: (route.dayEnds?.length ?? 0) + 1,
+    distanceM: stats?.distanceM,
+    durationMinutes: realLegs ? realLegs.reduce((sum, leg) => sum + leg.durationS, 0) / 60 : null,
+    ascentM: stats?.ascentM,
+    descentM: stats?.descentM,
+    maxElevationM: stats?.maxEle,
+    waypointCount: route.waypoints.length,
+    segmentCount: Math.max(0, route.waypoints.length - 1),
+    temperatureMin: wxFlat.length ? Math.min(...wxFlat.map((point) => point.tempMin).filter(Number.isFinite)) : null,
+    temperatureMax: wxFlat.length ? Math.max(...wxFlat.map((point) => point.tempMax).filter(Number.isFinite)) : null,
+    precipitationMm: wxFlat.length ? wxFlat.reduce((sum, point) => sum + (Number(point.precipMm) || 0), 0) : null,
+    maxWindKmh: wxFlat.length ? Math.max(...wxFlat.map((point) => point.windMax).filter(Number.isFinite)) : null,
+    weatherRiskCount: wxDays?.filter((day) => day.isRain || day.windMax >= 30).length ?? null,
+    saved: route.waypoints.length >= 2 ? lastSavedRouteVersion === `${route.id}:${route.revision}` : null,
+  }
+  panelHost.setSummary(route.waypoints.length
+    ? formatSummary(summaryPreferences, summaryData, globalThis.matchMedia?.('(max-width: 720px)').matches ? 2 : 4)
+    : '点击地图添加途经点')
+  plannerWorkspace?.updateTrip({
+    name: route.name,
+    dateText: wxDays?.length ? `${wxDays[0].date} — ${wxDays.at(-1).date}` : null,
+    saved: summaryData.saved,
+  })
   hud2.root.classList.toggle('has-route', route.waypoints.length > 0)
   // weather band only when a fresh result matches this route revision
-  const wxDays = weatherState.result && weatherState.revision === route.revision ? weatherState.result.agg : null
   // day boundary positions on the profile axis (multi-day segmentation)
   let dayBounds = null
   if (route.dayEnds?.length && pts?.length >= 2) {
@@ -1866,7 +1909,10 @@ async function runWeatherQuery({ dates, allPoints }) {
   }
 }
 
-const weatherPanel = createWeatherPanel({ onQuery: runWeatherQuery })
+const weatherPanel = createWeatherPanel({
+  onQuery: runWeatherQuery,
+  onPointFocus: (role, pinned) => overviewMap?.focusWeatherPoint(role, { pinned }),
+})
 
 // ------------------------------------------------------------------ place search
 // Explicit trigger only (Enter/button) — Nominatim public instance bans
@@ -2152,7 +2198,7 @@ let flyPrevCam = null
 
 const flyOverlay = document.createElement('div')
 flyOverlay.className = 'ui-fly-overlay hidden'
-flyOverlay.innerHTML = '<div class="fly-card"><div class="ttl">🎬 正在录制飞越视频</div><div class="bar"><div class="fill"></div></div><button class="fly-cancel">取消</button></div>'
+flyOverlay.innerHTML = '<div class="fly-card"><div class="ttl">正在录制飞越视频</div><div class="bar"><div class="fill"></div></div><button class="fly-cancel">取消</button></div>'
 document.body.appendChild(flyOverlay)
 flyOverlay.querySelector('.fly-cancel').onclick = () => stopFlyover(false)
 
@@ -2248,7 +2294,13 @@ function applyRouteModeState(nextMode, { persist = true, refresh = true } = {}) 
 
 const routeActions = {
   onMapFocus: () => { panelHost.setSheetState('peek'); overviewMap.focusPlanner?.() },
-  onNameChange: (v) => { route.name = v; params.routeName = v },
+  onNameChange: (v) => {
+    route.name = v
+    params.routeName = v
+    lastSavedRouteVersion = null
+    refreshRoute({ recordHistory: false, fitOverview: false })
+  },
+  onDaySelect: ({ startIndex }) => setSelectedWaypoint(route.waypoints[startIndex]?.id),
   onUndo: () => { if (routeHistory.undo(route)) applyRouteModeState(route.mode) },
   onRedo: () => { if (routeHistory.redo(route)) applyRouteModeState(route.mode) },
   onClear: () => { route.waypoints = []; route.dayEnds = []; waypointMoveDraft = null; route.revision++; route.geometryRevision++; refreshRoute(); scheduleSnap() },
@@ -2281,6 +2333,8 @@ const routeActions = {
     const s = await routeStoreReady
     if (!s) { toast.show('本地存储不可用,保存失败'); return }
     await s.save(route)
+    lastSavedRouteVersion = `${route.id}:${route.revision}`
+    refreshRoute({ recordHistory: false, fitOverview: false })
     await refreshLibrary()
     toast.show(`已保存「${route.name}」`)
     showTab('library')
@@ -2324,6 +2378,7 @@ const routeActions = {
   },
 }
 const planningPanel = createPlanningPanel(routeActions)
+planningPanel.el.appendChild(profileCard.el)
 planningPanel.setRouteMode(route.mode, snapState.on ? '等待路网吸附' : '仅测距；不估算时长')
 // overview inset map: click → fly the 3D camera to that lon/lat
 const plannerTerrainLayer = createTerrainCustomLayer({
@@ -2354,6 +2409,7 @@ const overviewMap = createOverviewMap({
   onWaypointMove: previewWaypointMove,
   onWaypointMoveEnd: commitWaypointMove,
   onWaypointMoveCancel: cancelWaypointMove,
+  onWeatherDetails: () => showTab('weather'),
   onPlanAdd: (lon, lat) => {
     if (!params.planning || !geo || !dem) return
     const { x, z } = lonLatToWorld(geo, lon, lat)
@@ -2372,6 +2428,7 @@ const overviewMap = createOverviewMap({
   },
 })
 document.body.appendChild(overviewMap.el)
+overviewMap.setWeatherPreferences(weatherPreferences)
 overviewMap.setAdminOverlay({ enabled: adminState.on, rings: filterAdminRings(adminState.rings, adminInteraction.level), selected: adminInteraction.selected })
 overviewMap.setWeatherOverlay({ routeRevision: route.revision, weatherRevision: weatherState.revision, result: weatherState.result })
 
@@ -2406,6 +2463,20 @@ function applyPlannerView(view) {
 plannerWorkspace = createPlannerWorkspace({
   onView: applyPlannerView,
   onExpand: expandTerrainToRoute,
+  onSearch: (query) => {
+    mode.enterPlanning()
+    panelHost.setCollapsed(false)
+    planningPanel.search(query)
+  },
+  onPrimary: () => { mode.enterPlanning(); panelHost.setCollapsed(false) },
+  onWeather: () => showTab('weather'),
+  onMoreAction: (action) => {
+    if (action === 'library') showTab('library')
+    if (action === 'share') showTab('share')
+    if (action === 'import') routeActions.onImportGpx()
+    if (action === 'export') routeActions.onExportGpx()
+    if (action === 'settings') toggleSettings()
+  },
 })
 document.body.appendChild(plannerWorkspace.el)
 
@@ -2424,6 +2495,7 @@ const libraryPanel = createLibraryPanel({
     const r = await s.load(id)
     if (!r) return
     route = r
+    lastSavedRouteVersion = `${r.id}:${r.revision}`
     selectedWaypointId = null
     waypointPreviewing = false
     waypointMoveDraft = null
@@ -2449,6 +2521,7 @@ const mode = createModeMachine({
   onChange: (m) => {
     const planning = m === MODES.PLANNING
     params.planning = planning
+    if (planning) setWeatherWorkspace(false)
     hud2.setTelemetryVisible(false) // telemetry is developer-only; never compete with planning
     plannerWorkspace.setVisible(planning)
     document.body.classList.toggle('planner-operate', planning)
@@ -2460,6 +2533,7 @@ const mode = createModeMachine({
       refreshRoute()
       rail.setActive('planning')
       panelHost.show('planning', '线路规划', 'ESC 退出', planningPanel.el)
+      panelHost.setCollapsed(true)
       requestAnimationFrame(() => { overviewMap.resize(); overviewMap.update(route, lastRoutePts, currentViewportRect()) })
     } else {
       document.body.classList.remove('planner-2d', 'planner-3d')
@@ -2501,14 +2575,34 @@ window.addEventListener('keydown', (e) => {
 
 function showTab(id) {
   if (settingsDrawer?.classList.contains('open')) setSettingsOpen(false, { restoreFocus: false })
-  if (id === 'planning') { panelHost.setCollapsed(false); mode.enterPlanning(); return }
-  if (panelHost.currentId === id) { panelHost.hide(); rail.clearActive(); return }
+  if (id === 'planning') { setWeatherWorkspace(false); panelHost.setCollapsed(true); mode.enterPlanning(); return }
+  if (panelHost.currentId === id) {
+    if (id === 'weather') setWeatherWorkspace(false)
+    panelHost.hide(); rail.clearActive(); return
+  }
   if (mode.isPlanning()) mode.exitPlanning()
+  setWeatherWorkspace(id === 'weather')
   panelHost.setCollapsed(false)
   rail.setActive(id)
   if (id === 'library') panelHost.show('library', '线路库', null, libraryPanel.el)
   if (id === 'weather') panelHost.show('weather', '天气推演', null, weatherPanel.el)
   if (id === 'share') panelHost.show('share', '分享', null, sharePanel.el)
+}
+
+function setWeatherWorkspace(on) {
+  document.body.classList.toggle('weather-operate', !!on)
+  overviewMap.setWeatherMode(!!on, weatherPreferences)
+  if (on) {
+    plannerWorkspace.setVisible(true)
+    overviewMap.setPlannerMode(true)
+    plannerWorkspace.setView('2d')
+    overviewMap.setPlannerView('2d')
+    requestAnimationFrame(() => { overviewMap.resize(); overviewMap.update(route, lastRoutePts, currentViewportRect()) })
+  } else if (!mode.isPlanning()) {
+    plannerWorkspace.setVisible(false)
+    overviewMap.setPlannerMode(false)
+    overviewMap.update(route, lastRoutePts, currentViewportRect())
+  }
 }
 
 const rail = createRail({
@@ -2658,10 +2752,20 @@ let settingsReturnFocus = null
 settingsPanel = createSettingsPanel({
   presets: Object.keys(DEM_PRESETS),
   advancedEl: gui.domElement,
+  summaryPreferences,
+  weatherPreferences,
   onClose: () => setSettingsOpen(false),
   onSetting: applyNativeSetting,
   onLayer: applyNativeLayer,
   onLoad: loadCurrentSettingsTerrain,
+  onSummaryPreferences: (next) => {
+    summaryPreferences = saveSummaryPreferences(next)
+    if (routeLayer && geo && dem) refreshRoute({ recordHistory: false, fitOverview: false })
+  },
+  onWeatherPreferences: (next) => {
+    saveWeatherPreferences(next)
+    overviewMap.setWeatherPreferences(weatherPreferences)
+  },
 })
 settingsDrawer.appendChild(settingsPanel.el)
 syncSettingsControls()
@@ -2760,7 +2864,7 @@ function tick() {
     camera.up.set(0, 1, 0)
     camera.lookAt(f.target.x, f.target.y, f.target.z)
     controls.target.set(f.target.x, f.target.y, f.target.z)
-    flyOverlay.querySelector('.fill').style.width = `${(frac * 100).toFixed(0)}%`
+    flyOverlay.querySelector('.fill').style.transform = `scaleX(${frac.toFixed(3)})`
     if (frac >= 1) stopFlyover(true)
   } else if (tour.active) {
     tour.t = Math.min(1, tour.t + dt / params.tourDuration)

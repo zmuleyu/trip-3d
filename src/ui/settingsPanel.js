@@ -1,4 +1,5 @@
 import { iconSvg } from './icons.js'
+import { DEFAULT_SUMMARY_PREFERENCES, SUMMARY_FIELDS, normalizeSummaryPreferences } from './summaryPreferences.js'
 
 const SETTING_LABELS = {
   source: '地形来源',
@@ -61,7 +62,10 @@ function createSection(title, description = '') {
   return section
 }
 
-export function createSettingsPanel({ presets = [], advancedEl, onClose, onSetting, onLayer, onLoad } = {}) {
+export function createSettingsPanel({
+  presets = [], advancedEl, onClose, onSetting, onLayer, onLoad,
+  summaryPreferences, onSummaryPreferences, weatherPreferences, onWeatherPreferences,
+} = {}) {
   const el = document.createElement('div')
   el.className = 'settings-native'
 
@@ -205,6 +209,110 @@ export function createSettingsPanel({ presets = [], advancedEl, onClose, onSetti
     createRow(SETTING_LABELS.fogFar, range('fogFar', { min: 15, max: 90, step: .5, digits: 1 })),
   )
   body.appendChild(display)
+
+  let summaryDraft = normalizeSummaryPreferences(summaryPreferences)
+  const summarySection = createSection('摘要显示', '自动根据有效数据选择字段，或固定最多四项。')
+  const summaryMode = document.createElement('select')
+  summaryMode.setAttribute('aria-label', '摘要字段模式')
+  summaryMode.append(new Option('自动', 'auto'), new Option('自定义', 'custom'))
+  summaryMode.value = summaryDraft.mode
+  summarySection.appendChild(createRow('字段模式', summaryMode))
+  const summaryList = document.createElement('div')
+  summaryList.className = 'settings-summary-list'
+  summarySection.appendChild(summaryList)
+  const resetSummary = document.createElement('button')
+  resetSummary.type = 'button'
+  resetSummary.className = 'settings-secondary'
+  resetSummary.textContent = '恢复推荐'
+  summarySection.appendChild(resetSummary)
+
+  const emitSummary = (next) => {
+    summaryDraft = normalizeSummaryPreferences(next)
+    summaryMode.value = summaryDraft.mode
+    renderSummaryFields()
+    onSummaryPreferences?.(summaryDraft)
+  }
+  const renderSummaryFields = () => {
+    summaryList.replaceChildren()
+    const labels = new Map(SUMMARY_FIELDS)
+    const selected = summaryDraft.fields
+    const ordered = summaryDraft.mode === 'auto'
+      ? [...selected]
+      : [...selected, ...SUMMARY_FIELDS.map(([id]) => id).filter((id) => !selected.includes(id))]
+    ordered.forEach((id) => {
+      const row = document.createElement('div')
+      row.className = 'settings-summary-row'
+      const input = document.createElement('input')
+      input.type = 'checkbox'
+      input.checked = selected.includes(id)
+      input.disabled = summaryDraft.mode !== 'custom'
+      input.setAttribute('aria-label', `摘要显示${labels.get(id)}`)
+      const label = document.createElement('span')
+      label.textContent = labels.get(id)
+      const actions = document.createElement('span')
+      actions.className = 'settings-summary-actions'
+      const index = selected.indexOf(id)
+      for (const [text, delta] of [['上移', -1], ['下移', 1]]) {
+        const button = document.createElement('button')
+        button.type = 'button'
+        button.textContent = text
+        button.disabled = summaryDraft.mode !== 'custom' || index < 0 || index + delta < 0 || index + delta >= selected.length
+        button.onclick = () => {
+          const fields = [...summaryDraft.fields]
+          const target = index + delta
+          ;[fields[index], fields[target]] = [fields[target], fields[index]]
+          emitSummary({ ...summaryDraft, fields })
+        }
+        actions.appendChild(button)
+      }
+      input.onchange = () => {
+        let fields = [...summaryDraft.fields]
+        if (input.checked) {
+          if (fields.length >= 4) { input.checked = false; return }
+          fields.push(id)
+        } else {
+          fields = fields.filter((field) => field !== id)
+        }
+        emitSummary({ mode: 'custom', fields })
+      }
+      row.append(input, label, actions)
+      summaryList.appendChild(row)
+    })
+  }
+  summaryMode.onchange = () => emitSummary({ ...summaryDraft, mode: summaryMode.value })
+  resetSummary.onclick = () => emitSummary(DEFAULT_SUMMARY_PREFERENCES)
+  renderSummaryFields()
+  body.appendChild(summarySection)
+
+  let weatherDraft = {
+    hoverCards: weatherPreferences?.hoverCards !== false,
+    pinCards: weatherPreferences?.pinCards !== false,
+    temperatureLabels: weatherPreferences?.temperatureLabels ?? 'auto',
+    transparency: weatherPreferences?.transparency ?? 'system',
+  }
+  const weather = createSection('天气交互', '控制地图天气点和信息卡的显示方式。')
+  const emitWeather = () => onWeatherPreferences?.({ ...weatherDraft })
+  const hoverCards = toggle('weatherHoverCards', '悬停显示天气卡')
+  hoverCards.checked = weatherDraft.hoverCards
+  hoverCards.onchange = () => { weatherDraft.hoverCards = hoverCards.checked; emitWeather() }
+  weather.appendChild(createRow('悬停显示天气卡', hoverCards, '仅鼠标或触控板等精细指针设备生效'))
+  const pinCards = toggle('weatherPinCards', '点击固定天气卡')
+  pinCards.checked = weatherDraft.pinCards
+  pinCards.onchange = () => { weatherDraft.pinCards = pinCards.checked; emitWeather() }
+  weather.appendChild(createRow('点击固定天气卡', pinCards))
+  const temperatureLabels = document.createElement('select')
+  temperatureLabels.setAttribute('aria-label', '地图温度标签')
+  temperatureLabels.append(new Option('自动', 'auto'), new Option('始终显示', 'always'), new Option('关闭', 'off'))
+  temperatureLabels.value = weatherDraft.temperatureLabels
+  temperatureLabels.onchange = () => { weatherDraft.temperatureLabels = temperatureLabels.value; emitWeather() }
+  weather.appendChild(createRow('地图温度标签', temperatureLabels))
+  const transparency = document.createElement('select')
+  transparency.setAttribute('aria-label', '天气卡透明度')
+  transparency.append(new Option('跟随系统', 'system'), new Option('磨砂', 'frosted'), new Option('实色', 'opaque'))
+  transparency.value = weatherDraft.transparency
+  transparency.onchange = () => { weatherDraft.transparency = transparency.value; emitWeather() }
+  weather.appendChild(createRow('天气卡材质', transparency))
+  body.appendChild(weather)
 
   const advanced = document.createElement('details')
   advanced.className = 'settings-advanced'
