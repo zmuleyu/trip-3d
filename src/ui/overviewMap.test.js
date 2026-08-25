@@ -147,10 +147,10 @@ describe('overview MapLibre planner map', () => {
     expect(instance.options.touchPitch).toBe(false)
     expect(instance.options.canvasContextAttributes).toEqual({ antialias: true })
     expect(instance.controls[0].control.options.compact).toBe(false)
-    expect(instance.canvas.getAttribute('aria-label')).toBe('二维路线地图')
+    expect(instance.canvas.getAttribute('aria-label')).toBe('路线规划地图')
   })
 
-  it('uses the same map and canvas for immediate 2D/3D planner views', () => {
+  it('uses the same map, route, selection, and camera context across Plan → Analyze → Plan', () => {
     const terrainLayer = {
       id: 'trip-three-terrain',
       type: 'custom',
@@ -206,6 +206,18 @@ describe('overview MapLibre planner map', () => {
     expect(instance.getPitch()).toBe(46)
     expect(instance.getBearing()).toBe(-90)
     expect(instance.dragPan.enable).not.toHaveBeenCalled()
+  })
+
+  it('fits mobile Analyze without reserving space for the Plan bottom sheet', () => {
+    vi.stubGlobal('matchMedia', (query) => ({ matches: query === '(max-width: 720px)' }))
+    const terrainLayer = { id: 'trip-three-terrain', type: 'custom', setFailureHandler: vi.fn(), setEnabled: vi.fn(() => true) }
+    const { overview, instance } = setup({ terrainLayer })
+    overview.setPlannerMode(true, { editing: false })
+    overview.update({ waypoints: [{ id: 'a', lon: 113, lat: 41.2 }, { id: 'b', lon: 113.2, lat: 41.4 }] }, null, VIEWPORT)
+    overview.setPlannerView('3d')
+    overview.fit()
+
+    expect(instance.fitCalls.at(-1).options.padding).toEqual({ top: 96, right: 48, bottom: 88, left: 48 })
   })
 
   it('switches immediately for reduced-motion users without changing the map instance', () => {
@@ -372,6 +384,52 @@ describe('overview MapLibre planner map', () => {
     expect(instance.dragPan.enable).toHaveBeenCalledOnce()
     expect(onWaypointMoveEnd).not.toHaveBeenCalled()
     expect(onWaypointMoveCancel).toHaveBeenCalledWith('a', 113, 41.2)
+  })
+
+  it('keeps Analyze waypoint selection readable while disabling all edit events', () => {
+    const onPlanAdd = vi.fn()
+    const onJump = vi.fn()
+    const onWaypointSelect = vi.fn()
+    const onWaypointMoveStart = vi.fn()
+    const onWaypointMove = vi.fn(() => true)
+    const onWaypointMoveEnd = vi.fn()
+    const terrainLayer = {
+      id: 'trip-three-terrain',
+      type: 'custom',
+      failed: null,
+      setFailureHandler: vi.fn(),
+      setEnabled: vi.fn(() => true),
+    }
+    const { overview, instance } = setup({
+      terrainLayer,
+      onPlanAdd,
+      onJump,
+      onWaypointSelect,
+      onWaypointMoveStart,
+      onWaypointMove,
+      onWaypointMoveEnd,
+    })
+    overview.setPlannerMode(true, { editing: false })
+    overview.update({ waypoints: [{ id: 'a', lon: 113, lat: 41.2 }, { id: 'b', lon: 113.2, lat: 41.4 }] }, null, VIEWPORT)
+    overview.setPlannerView('3d')
+    const marker = { layer: { id: 'trip-waypoint-circles', source: 'trip-route-waypoints' }, properties: { waypointId: 'a' } }
+
+    instance.emit('mousedown', { features: [marker], point: { x: 10, y: 10 }, lngLat: { lng: 113, lat: 41.2 }, preventDefault: vi.fn() })
+    instance.emit('mousemove', { point: { x: 30, y: 20 }, lngLat: { lng: 113.04, lat: 41.24 } })
+    instance.emit('mouseup')
+
+    expect(onWaypointMoveStart).not.toHaveBeenCalled()
+    expect(onWaypointMove).not.toHaveBeenCalled()
+    expect(onWaypointMoveEnd).not.toHaveBeenCalled()
+    expect(instance.dragPan.disable).not.toHaveBeenCalled()
+
+    instance.emit('click', { features: [marker], lngLat: { lng: 113, lat: 41.2 } })
+    expect(onWaypointSelect).toHaveBeenCalledWith('a')
+    instance.emit('click', { lngLat: { lng: 113.3, lat: 41.5 } })
+    expect(onPlanAdd).not.toHaveBeenCalled()
+    expect(onJump).toHaveBeenCalledWith(113.3, 41.5)
+    expect(overview.el.querySelector('.ui-map-context').textContent).toContain('路线只读')
+    expect(instance.canvas.getAttribute('aria-label')).toBe('地形分析地图')
   })
 
   it('preserves zoom, fit, focus, resize, and non-planner jump controls', () => {

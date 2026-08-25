@@ -335,7 +335,7 @@ export function createOverviewMap({
 
   const footprintLegend = document.createElement('div')
   footprintLegend.className = 'ui-map-footprint-legend'
-  footprintLegend.innerHTML = '<i></i><span>虚线范围：3D 地形覆盖</span>'
+  footprintLegend.innerHTML = '<i></i><span>虚线范围：地形数据覆盖</span>'
 
   const mapError = document.createElement('div')
   mapError.className = 'ui-map-error hidden'
@@ -476,7 +476,7 @@ export function createOverviewMap({
     moveCameraForView(terrain3d, { animate })
   }
 
-  function degradeTo2d(error, message = '3D 地形暂时不可用；已保留 2D 路线规划') {
+  function degradeTo2d(error, message = '地形分析暂时不可用；已保留路线规划') {
     plannerView = '2d'
     setInteractionForView({ animate: false })
     setTerrainError(message)
@@ -595,12 +595,14 @@ export function createOverviewMap({
   function updateChrome() {
     const count = lastRoute?.waypoints?.length ?? 0
     const terrain3d = plannerMode && plannerView === '3d'
-    mapContextTitle.textContent = terrain3d ? '3D 地形预览' : '2D 路线地图'
-    mapContextHint.textContent = count === 0
-      ? editingMode ? '单击地图设置起点' : '选择“开始规划”后设置起点'
-      : count === 1
-        ? '继续点击，添加终点'
-        : `${count} 个途经点 · 点击继续添加`
+    mapContextTitle.textContent = terrain3d ? '分析地形' : '规划路线'
+    mapContextHint.textContent = terrain3d && !editingMode
+      ? '路线只读 · 返回规划后可继续编辑'
+      : count === 0
+        ? editingMode ? '单击地图设置起点' : '选择“开始规划”后设置起点'
+        : count === 1
+          ? '继续点击，添加终点'
+          : `${count} 个途经点 · 点击继续添加`
     const guideVisible = plannerMode && editingMode && !terrain3d && count < 2 && !onboardingDismissed
     emptyHint.classList.toggle('hidden', !guideVisible)
     emptyHint.dataset.step = count === 0 ? 'start' : 'via'
@@ -622,6 +624,9 @@ export function createOverviewMap({
 
   function fitPadding() {
     const mobilePlanner = plannerMode && globalThis.matchMedia?.('(max-width: 720px)').matches
+    if (mobilePlanner && plannerView === '3d' && !editingMode) {
+      return { top: 96, right: 48, bottom: 88, left: 48 }
+    }
     if (!mobilePlanner) {
       if (!plannerMode) return 28
       const inspectorOpen = !!document.querySelector('.ui-panel:not(.hidden):not(.collapsed), .ui-settings.open')
@@ -665,7 +670,7 @@ export function createOverviewMap({
   function decorateCanvas() {
     const canvas = map.getCanvas()
     canvas.tabIndex = 0
-    canvas.setAttribute('aria-label', plannerView === '3d' ? '三维地形预览地图' : '二维路线地图')
+    canvas.setAttribute('aria-label', plannerView === '3d' ? '地形分析地图' : '路线规划地图')
     canvas.setAttribute('aria-describedby', 'ui-map-instructions')
   }
 
@@ -697,7 +702,7 @@ export function createOverviewMap({
     if (styleReady || fallbackRequested) return
     fallbackRequested = true
     fallback2d = true
-    degradeTo2d(event?.error, '底图暂时不可用；已切换为 2D 路线规划')
+      degradeTo2d(event?.error, '底图暂时不可用；已保留路线规划')
     try {
       map.setStyle(FALLBACK_STYLE)
     } catch {
@@ -715,7 +720,7 @@ export function createOverviewMap({
   }
 
   function startWaypointDrag(event) {
-    if (!plannerMode || event.originalEvent?.button > 0) return
+    if (!plannerMode || !editingMode || event.originalEvent?.button > 0) return
     const feature = waypointFeature(event)
     const waypointId = feature?.properties?.waypointId
     if (!waypointId) return
@@ -790,7 +795,7 @@ export function createOverviewMap({
   map.on('mouseup', endWaypointDrag)
   map.on('touchend', endWaypointDrag)
   map.on('touchcancel', cancelWaypointDrag)
-  map.on('mouseenter', 'trip-waypoint-circles', () => { map.getCanvas().style.cursor = 'grab' })
+  map.on('mouseenter', 'trip-waypoint-circles', () => { map.getCanvas().style.cursor = editingMode ? 'grab' : 'pointer' })
   map.on('mouseleave', 'trip-waypoint-circles', () => {
     if (!waypointDrag) map.getCanvas().style.cursor = ''
   })
@@ -850,8 +855,10 @@ export function createOverviewMap({
       return { z: map.getZoom(), lon: center.lng, lat: center.lat }
     },
     setPlannerMode(on, { editing = on } = {}) {
+      const wasEditing = editingMode
       plannerMode = !!on
       editingMode = plannerMode && !!editing
+      if (wasEditing && !editingMode && waypointDrag) cancelWaypointDrag()
       el.classList.toggle('planner', plannerMode)
       el.classList.toggle('editing', editingMode)
       if (plannerMode) el.classList.remove('hidden')

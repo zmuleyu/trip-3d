@@ -3,14 +3,21 @@ import { describe, expect, it, vi } from 'vitest'
 import { createPlannerWorkspace } from './plannerWorkspace.js'
 
 describe('planner workspace chrome', () => {
-  it('switches between a 2D planning surface and the 3D preview', () => {
-    const onView = vi.fn()
-    const workspace = createPlannerWorkspace({ onView })
+  it('switches between Plan and Analyze only after a route is available', () => {
+    const onStage = vi.fn()
+    const workspace = createPlannerWorkspace({ onStage })
+    const analyze = workspace.el.querySelector('[data-stage="analyze"]')
+    expect(workspace.stage).toBe('plan')
     expect(workspace.view).toBe('2d')
-    workspace.el.querySelector('[data-view="3d"]').click()
+    expect(analyze.disabled).toBe(true)
+    expect(analyze.getAttribute('aria-label')).toContain('至少添加起点和终点')
+
+    workspace.setAnalyzeAvailable(true)
+    analyze.click()
+    expect(workspace.stage).toBe('analyze')
     expect(workspace.view).toBe('3d')
-    expect(onView).toHaveBeenCalledWith('3d')
-    expect(workspace.el.querySelector('[data-view="3d"]').getAttribute('aria-pressed')).toBe('true')
+    expect(onStage).toHaveBeenCalledWith('analyze')
+    expect(analyze.getAttribute('aria-selected')).toBe('true')
     expect(workspace.el.querySelector('canvas')).toBeNull()
   })
 
@@ -83,11 +90,24 @@ describe('planner workspace chrome', () => {
     expect(onSpineExpand).toHaveBeenCalledTimes(2)
   })
 
-  it('distinguishes route editing from the first planning action', () => {
-    const workspace = createPlannerWorkspace()
-    workspace.setPrimaryLabel('编辑路线')
+  it('uses the primary action to enter Analyze and to return to Plan', () => {
+    const onPrimary = vi.fn()
+    const workspace = createPlannerWorkspace({ onPrimary })
+    const primary = workspace.el.querySelector('.ui-planner-primary')
+
+    expect(primary.textContent).toBe('开始规划')
+    primary.click()
+    expect(onPrimary).toHaveBeenLastCalledWith({ stage: 'plan', analyzeAvailable: false })
+
+    workspace.setAnalyzeAvailable(true)
+    expect(primary.textContent).toBe('分析地形')
     expect(workspace.el.querySelector('.ui-planner-primary').classList.contains('has-route')).toBe(true)
-    workspace.setPrimaryLabel('开始规划')
-    expect(workspace.el.querySelector('.ui-planner-primary').classList.contains('has-route')).toBe(false)
+    primary.click()
+    expect(onPrimary).toHaveBeenLastCalledWith({ stage: 'plan', analyzeAvailable: true })
+
+    workspace.setStage('analyze')
+    expect(primary.textContent).toBe('返回规划')
+    primary.click()
+    expect(onPrimary).toHaveBeenLastCalledWith({ stage: 'analyze', analyzeAvailable: true })
   })
 })
