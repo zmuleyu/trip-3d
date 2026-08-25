@@ -62,6 +62,8 @@ import { pickRepresentativePoints, aggregateTripDays, archiveWindow } from './li
 import { tripIndex } from './lib/tripIndex.js'
 import { fitDemToCoordinates, normalizeRouteMode, routeCoverage, routeDistanceMeters } from './lib/routePlanning.js'
 import { createFrameScheduler } from './lib/frameScheduler.js'
+import { createWorkflowStage, routeCanBeAnalyzed, WORKFLOW_STAGES } from './ui/workflowStage.js'
+import { runRouteMutationInPlan } from './ui/routeMutationGuard.js'
 
 // ------------------------------------------------------------------ params
 
@@ -1771,7 +1773,8 @@ function updateRouteUI(route, stats, pts, { fitOverview = true } = {}) {
     ? formatSummary(summaryPreferences, summaryData, globalThis.matchMedia?.('(max-width: 720px)').matches ? 2 : 4)
     : '点击地图添加途经点')
   plannerWorkspace?.setJourneySpine({ route, legs: legs ?? [], weatherDays: wxDays ?? [] })
-  plannerWorkspace?.setPrimaryLabel(route.waypoints.length ? '编辑路线' : '开始规划')
+  plannerWorkspace?.setAnalyzeAvailable(routeCanBeAnalyzed(route))
+  workflowStage?.reconcile()
   plannerWorkspace?.updateTrip({
     name: route.name,
     dateText: wxDays?.length ? `${wxDays[0].date} — ${wxDays.at(-1).date}` : null,
@@ -2314,8 +2317,8 @@ const routeActions = {
     refreshRoute({ recordHistory: false, fitOverview: false })
   },
   onDaySelect: ({ startIndex }) => setSelectedWaypoint(route.waypoints[startIndex]?.id),
-  onUndo: () => { if (routeHistory.undo(route)) applyRouteModeState(route.mode) },
-  onRedo: () => { if (routeHistory.redo(route)) applyRouteModeState(route.mode) },
+  onUndo: () => runPlanRouteMutation(() => { if (routeHistory.undo(route)) applyRouteModeState(route.mode) }),
+  onRedo: () => runPlanRouteMutation(() => { if (routeHistory.redo(route)) applyRouteModeState(route.mode) }),
   onClear: () => { route.waypoints = []; route.dayEnds = []; waypointMoveDraft = null; route.revision++; route.geometryRevision++; refreshRoute(); scheduleSnap() },
   onReverse: () => { if (reverseWaypoints(route)) { refreshRoute(); scheduleSnap(); toast.show('已反向') } },
   onCloseLoop: () => { if (closeLoop(route)) { refreshRoute(); scheduleSnap(); toast.show('已闭环') } else toast.show('已是环线或点位不足') },
@@ -2374,17 +2377,20 @@ const routeActions = {
     inp.accept = '.gpx'
     inp.onchange = async () => {
       try {
-        route = gpxToRoute(await inp.files[0].text())
-        selectedWaypointId = null
-        waypointPreviewing = false
-        waypointMoveDraft = null
-        applyRouteModeState('straight', { refresh: false })
-        params.routeName = route.name
-        ensureRouteLayer()
-        routeHistory.reset(route)
-        refreshRoute()
-        scheduleSnap()
-        toast.show(route.downsampled ? `GPX 已导入(抽稀 ${route.originalPointCount}→${route.waypoints.length} 点)` : 'GPX 已导入')
+        const importedRoute = gpxToRoute(await inp.files[0].text())
+        runPlanRouteMutation(() => {
+          route = importedRoute
+          selectedWaypointId = null
+          waypointPreviewing = false
+          waypointMoveDraft = null
+          applyRouteModeState('straight', { refresh: false })
+          params.routeName = route.name
+          ensureRouteLayer()
+          routeHistory.reset(route)
+          refreshRoute()
+          scheduleSnap()
+          toast.show(route.downsampled ? `GPX 已导入(抽稀 ${route.originalPointCount}→${route.waypoints.length} 点)` : 'GPX 已导入')
+        })
       } catch (err) { toast.show(`GPX 导入失败: ${err.message}`, 3200) }
     }
     inp.click()
@@ -2406,15 +2412,17 @@ const plannerTerrainLayer = createTerrainCustomLayer({
 })
 
 let plannerWorkspace
+let workflowStage
 const overviewMap = createOverviewMap({
   terrainLayer: plannerTerrainLayer,
   onTerrainUnavailable: (error) => {
-    plannerWorkspace?.setView('2d')
+    plannerWorkspace?.setStage(WORKFLOW_STAGES.PLAN)
     setLegacyFrameModeActive(false)
-    if (params.planning) applyPlannerView('2d')
+    workflowStage?.fallback('terrain-unavailable')
+    if (!workflowStage && params.planning) applyPlannerView('2d')
     toast.show(error?.message === 'WebGL context lost'
-      ? '3D 图形上下文已中断；已返回 2D 路线规划'
-      : '3D 地形暂时不可用；已返回 2D 路线规划')
+      ? '地形显示已中断；已返回路线规划'
+      : '地形分析暂时不可用；已返回路线规划')
   },
   onJump: (lon, lat) => { if (geo && dem) flyToLonLat(lon, lat, 10) },
   onWaypointSelect: setSelectedWaypoint,
@@ -2465,26 +2473,79 @@ function applyPlannerView(view) {
   const requested = view === '3d' ? '3d' : '2d'
   const accepted = overviewMap.setPlannerView(requested)
   const actual = accepted ? requested : '2d'
-  plannerWorkspace?.setView(actual)
+  plannerWorkspace?.setStage(actual === '3d' ? WORKFLOW_STAGES.ANALYZE : WORKFLOW_STAGES.PLAN)
   setLegacyFrameModeActive(actual === '3d')
-  const planning = params.planning
-  document.body.classList.toggle('planner-2d', planning && actual === '2d')
-  document.body.classList.toggle('planner-3d', planning && actual === '3d')
+  document.body.classList.toggle('planner-2d', workflowStage?.stage !== WORKFLOW_STAGES.ANALYZE && actual === '2d')
+  document.body.classList.toggle('planner-3d', actual === '3d')
   overviewMap.update(route, lastRoutePts, currentViewportRect())
-  if (planning) overviewMap.resize({ fit: false })
+  if (mapWorkspaceActive) overviewMap.resize({ fit: false })
+  return actual
+}
+
+function enterPlanForEditing() {
+  if (workflowStage?.stage === WORKFLOW_STAGES.ANALYZE) workflowStage.setStage(WORKFLOW_STAGES.PLAN)
+  else if (!mode?.isPlanning()) mode?.enterPlanning()
+}
+
+function runPlanRouteMutation(mutate) {
+  return runRouteMutationInPlan({
+    enterPlanForEditing,
+    isPlanEditing: () => workflowStage?.stage === WORKFLOW_STAGES.PLAN && mode?.isPlanning() === true,
+    mutate,
+  })
+}
+
+function fitWorkflowStage() {
+  requestAnimationFrame(() => overviewMap.resize())
+}
+
+function applyWorkflowStage(stage) {
+  const analyze = stage === WORKFLOW_STAGES.ANALYZE
+  document.body.classList.toggle('analyze-operate', analyze)
+  if (analyze) {
+    if (mode?.isPlanning()) mode.exitPlanning()
+    else setMapWorkspace({ weather: false, editing: false })
+    plannerWorkspace?.setStage(stage)
+    panelHost.hide()
+    rail.clearActive()
+    overviewMap.setPlannerMode(true, { editing: false })
+    if (applyPlannerView('3d') !== '3d') workflowStage?.fallback('terrain-unavailable')
+    else fitWorkflowStage()
+    return
+  }
+  plannerWorkspace?.setStage(stage)
+  if (mode && !mode.isPlanning()) {
+    mode.enterPlanning()
+    fitWorkflowStage()
+  }
+  else {
+    setMapWorkspace({ weather: false, editing: true })
+    applyPlannerView('2d')
+    fitWorkflowStage()
+  }
 }
 
 plannerWorkspace = createPlannerWorkspace({
-  onView: applyPlannerView,
+  onStage: (stage) => {
+    if (!workflowStage?.setStage(stage)) plannerWorkspace.setStage(workflowStage?.stage ?? WORKFLOW_STAGES.PLAN)
+  },
   onExpand: expandTerrainToRoute,
   onSearch: (query) => {
-    mode.enterPlanning()
+    enterPlanForEditing()
     panelHost.setCollapsed(false)
     planningPanel.search(query)
   },
-  onPrimary: () => {
+  onPrimary: ({ stage, analyzeAvailable }) => {
+    if (stage === WORKFLOW_STAGES.ANALYZE) {
+      workflowStage?.setStage(WORKFLOW_STAGES.PLAN)
+      return
+    }
+    if (analyzeAvailable) {
+      workflowStage?.setStage(WORKFLOW_STAGES.ANALYZE)
+      return
+    }
     if (!mode.isPlanning()) {
-      mode.enterPlanning()
+      enterPlanForEditing()
       panelHost.setCollapsed(false)
       requestAnimationFrame(() => overviewMap.fit())
       return
@@ -2494,7 +2555,7 @@ plannerWorkspace = createPlannerWorkspace({
     requestAnimationFrame(() => overviewMap.fit())
   },
   onSpineExpand: () => {
-    if (!mode.isPlanning()) mode.enterPlanning()
+    enterPlanForEditing()
     panelHost.setCollapsed(false)
     requestAnimationFrame(() => overviewMap.fit())
   },
@@ -2526,18 +2587,20 @@ const libraryPanel = createLibraryPanel({
     if (!id || !s) return
     const r = await s.load(id)
     if (!r) return
-    route = r
-    lastSavedRouteVersion = `${r.id}:${r.revision}`
-    selectedWaypointId = null
-    waypointPreviewing = false
-    waypointMoveDraft = null
-    applyRouteModeState(route.mode, { refresh: false })
-    params.routeName = r.name
-    ensureRouteLayer()
-    routeHistory.reset(route)
-    refreshRoute()
-    scheduleSnap()
-    toast.show(`已加载「${r.name}」`)
+    runPlanRouteMutation(() => {
+      route = r
+      lastSavedRouteVersion = `${r.id}:${r.revision}`
+      selectedWaypointId = null
+      waypointPreviewing = false
+      waypointMoveDraft = null
+      applyRouteModeState(route.mode, { refresh: false })
+      params.routeName = r.name
+      ensureRouteLayer()
+      routeHistory.reset(route)
+      refreshRoute()
+      scheduleSnap()
+      toast.show(`已加载「${r.name}」`)
+    })
   },
   onDelete: async (id) => {
     const s = await routeStoreReady
@@ -2563,17 +2626,21 @@ const mode = createModeMachine({
       rail.setActive('planning')
       panelHost.show('planning', '规划行程', 'ESC 退出', planningPanel.el)
       panelHost.setCollapsed(true)
-      plannerWorkspace.setPrimaryLabel(route.waypoints.length ? '编辑路线' : '开始规划')
       requestAnimationFrame(() => { overviewMap.resize(); overviewMap.update(route, lastRoutePts, currentViewportRect()) })
     } else {
       document.body.classList.remove('planner-2d', 'planner-3d')
-      plannerWorkspace.setPrimaryLabel(route.waypoints.length ? '编辑路线' : '开始规划')
       rail.clearActive()
       panelHost.hide()
       overviewMap.update(route, lastRoutePts, currentViewportRect())
     }
   },
 })
+workflowStage = createWorkflowStage({
+  getRoute: () => route,
+  onChange: applyWorkflowStage,
+  onBlocked: (message) => toast.show(message),
+})
+plannerWorkspace.setAnalyzeAvailable(routeCanBeAnalyzed(route))
 window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && settingsDrawer?.classList.contains('open')) {
     toggleSettings()
@@ -2583,12 +2650,16 @@ window.addEventListener('keydown', (e) => {
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return // don't hijack form editing
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
     e.preventDefault()
-    if (routeHistory.undo(route)) { applyRouteModeState(route.mode); toast.show('撤销') }
+    runPlanRouteMutation(() => {
+      if (routeHistory.undo(route)) { applyRouteModeState(route.mode); toast.show('撤销') }
+    })
     return
   }
   if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey))) {
     e.preventDefault()
-    if (routeHistory.redo(route)) { applyRouteModeState(route.mode); toast.show('重做') }
+    runPlanRouteMutation(() => {
+      if (routeHistory.redo(route)) { applyRouteModeState(route.mode); toast.show('重做') }
+    })
     return
   }
   if (e.key === 'Escape' && insertIndex != null) {
@@ -2608,7 +2679,7 @@ function showTab(id) {
   if (settingsDrawer?.classList.contains('open')) setSettingsOpen(false, { restoreFocus: false })
   if (id === 'planning') {
     setWeatherWorkspace(false)
-    if (!mode.isPlanning()) mode.enterPlanning()
+    enterPlanForEditing()
     panelHost.setCollapsed(false)
     rail.setActive('planning')
     return
@@ -2631,11 +2702,9 @@ function setMapWorkspace({ weather = false, editing = false } = {}) {
   document.body.classList.add('planner-operate')
   document.body.classList.toggle('weather-operate', !!weather)
   plannerWorkspace.setVisible(true)
-  if (!mode.isPlanning()) plannerWorkspace.setPrimaryLabel(route.waypoints.length ? '编辑路线' : '开始规划')
   overviewMap.setPlannerMode(true, { editing })
   overviewMap.setWeatherMode(!!weather, weatherPreferences)
   if (weather) {
-    plannerWorkspace.setView('2d')
     overviewMap.setPlannerView('2d')
     setLegacyFrameModeActive(false)
   } else {

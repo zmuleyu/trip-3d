@@ -1,6 +1,6 @@
 import { iconSvg } from './icons.js'
 
-export function createPlannerWorkspace({ onView, onExpand, onSearch, onPrimary, onWeather, onMoreAction, onSpineExpand } = {}) {
+export function createPlannerWorkspace({ onStage, onExpand, onSearch, onPrimary, onWeather, onMoreAction, onSpineExpand } = {}) {
   const el = document.createElement('div')
   el.className = 'ui-planner-workspace hidden'
   el.innerHTML = `
@@ -14,9 +14,9 @@ export function createPlannerWorkspace({ onView, onExpand, onSearch, onPrimary, 
       </div>
       <div class="ui-trip-identity"><b>未命名线路</b><span>尚未设置日期</span></div>
       <div class="ui-planner-action-island">
-        <div class="ui-view-switch" role="group" aria-label="规划视图">
-          <button type="button" data-view="2d">2D 地图</button>
-          <button type="button" data-view="3d">3D 地形</button>
+        <div class="ui-view-switch" role="tablist" aria-label="工作阶段">
+          <button type="button" role="tab" data-stage="plan">规划</button>
+          <button type="button" role="tab" data-stage="analyze" title="至少添加起点和终点" aria-label="分析地形（至少添加起点和终点）" disabled>分析地形</button>
         </div>
         <button type="button" class="ui-planner-primary">开始规划</button>
         <button type="button" class="ui-planner-more" aria-label="更多和进阶设置">${iconSvg('more')}<span>更多</span></button>
@@ -44,15 +44,16 @@ export function createPlannerWorkspace({ onView, onExpand, onSearch, onPrimary, 
       <button type="button" class="ui-trip-spine-expand">展开详情</button>
     </section>
   `
-  let view = '2d'
-  const buttons = [...el.querySelectorAll('[data-view]')]
+  let stage = 'plan'
+  let analyzeAvailable = false
+  const buttons = [...el.querySelectorAll('[data-stage]')]
   const search = el.querySelector('.ui-command-search')
   const searchInput = search.querySelector('input')
   const primary = el.querySelector('.ui-planner-primary')
   const spine = el.querySelector('.ui-trip-spine')
   const spineDays = spine.querySelector('.ui-trip-spine-days')
   search.addEventListener('submit', (event) => { event.preventDefault(); onSearch?.(searchInput.value) })
-  primary.addEventListener('click', () => onPrimary?.())
+  primary.addEventListener('click', () => onPrimary?.({ stage, analyzeAvailable }))
   spine.querySelector('.ui-trip-spine-title').addEventListener('click', () => onSpineExpand?.())
   spine.querySelector('.ui-trip-spine-expand').addEventListener('click', () => onSpineExpand?.())
   el.querySelector('.ui-planner-weather').addEventListener('click', () => onWeather?.())
@@ -76,28 +77,47 @@ export function createPlannerWorkspace({ onView, onExpand, onSearch, onPrimary, 
     layerToggle.setAttribute('aria-label', open ? '关闭图层工具' : '打开图层工具')
   }
   layerToggle.addEventListener('click', () => setLayersOpen(layerToggle.getAttribute('aria-expanded') !== 'true'))
-  const applyView = (next, notify = false) => {
-    view = next === '3d' ? '3d' : '2d'
-    for (const button of buttons) {
-      const active = button.dataset.view === view
-      button.classList.toggle('active', active)
-      button.setAttribute('aria-pressed', String(active))
-    }
-    el.classList.toggle('view-3d', view === '3d')
-    if (notify) onView?.(view)
+  const syncPrimary = () => {
+    primary.textContent = stage === 'analyze'
+      ? '返回规划'
+      : analyzeAvailable
+        ? '分析地形'
+        : '开始规划'
+    primary.classList.toggle('has-route', analyzeAvailable)
   }
-  buttons.forEach((button) => button.addEventListener('click', () => applyView(button.dataset.view, true)))
+  const applyStage = (next, notify = false) => {
+    const requested = next === 'analyze' ? 'analyze' : 'plan'
+    if (requested === 'analyze' && !analyzeAvailable) return false
+    stage = requested
+    for (const button of buttons) {
+      const active = button.dataset.stage === stage
+      button.classList.toggle('active', active)
+      button.setAttribute('aria-selected', String(active))
+      button.tabIndex = active ? 0 : -1
+    }
+    el.classList.toggle('stage-analyze', stage === 'analyze')
+    syncPrimary()
+    if (notify) onStage?.(stage)
+    return true
+  }
+  buttons.forEach((button) => button.addEventListener('click', () => applyStage(button.dataset.stage, true)))
   el.querySelector('.ui-route-coverage button').addEventListener('click', () => onExpand?.())
-  applyView('2d')
+  applyStage('plan')
   return {
     el,
-    get view() { return view },
+    get stage() { return stage },
+    get view() { return stage === 'analyze' ? '3d' : '2d' },
     setVisible(on) { el.classList.toggle('hidden', !on); if (!on) { setLayersOpen(false); setMoreOpen(false) } },
     setLayersOpen,
-    setView(next) { applyView(next) },
-    setPrimaryLabel(label) {
-      primary.textContent = label || '编辑路线'
-      primary.classList.toggle('has-route', primary.textContent === '编辑路线')
+    setStage(next) { return applyStage(next) },
+    setView(next) { return applyStage(next === '3d' ? 'analyze' : 'plan') },
+    setAnalyzeAvailable(available, message = '至少添加起点和终点') {
+      analyzeAvailable = !!available
+      const analyze = el.querySelector('[data-stage="analyze"]')
+      analyze.disabled = !analyzeAvailable
+      analyze.title = analyzeAvailable ? '分析当前路线地形' : message
+      analyze.setAttribute('aria-label', analyzeAvailable ? '分析地形' : `分析地形（${message}）`)
+      syncPrimary()
     },
     setJourneySpine({ route, legs = [], weatherDays = [] } = {}) {
       spineDays.replaceChildren()
