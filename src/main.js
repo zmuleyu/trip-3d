@@ -61,6 +61,7 @@ import qrcode from 'qrcode-generator'
 import { pickRepresentativePoints, aggregateTripDays, archiveWindow } from './lib/weather.js'
 import { tripIndex } from './lib/tripIndex.js'
 import { fitDemToCoordinates, normalizeRouteMode, routeCoverage, routeDistanceMeters } from './lib/routePlanning.js'
+import { createFrameScheduler } from './lib/frameScheduler.js'
 
 // ------------------------------------------------------------------ params
 
@@ -318,6 +319,20 @@ const tween = {
 let selectedPoi = -1
 let fps = 60
 let scanStart = -1
+let legacyFrameLoop = null
+let legacyFrameModeActive = false
+let legacyFrameStartPending = false
+
+function requestLegacyFrames() {
+  if (legacyFrameLoop) legacyFrameLoop.start()
+  else legacyFrameStartPending = true
+}
+
+function setLegacyFrameModeActive(on) {
+  legacyFrameModeActive = !!on
+  if (legacyFrameModeActive) requestLegacyFrames()
+  else if (!hasLegacyFrameWork()) legacyFrameLoop?.stop()
+}
 
 const poiFeet = (h) => terrain.heightToFeet(h)
 let pois = findPois(terrain.sample, params.seed, poiFeet)
@@ -334,6 +349,7 @@ function flyTo(pos, target) {
   tween.t1.copy(target)
   tween.t = 0
   tween.active = true
+  requestLegacyFrames()
 }
 
 // pose to restore when a selection is closed: wherever the camera was pre-click
@@ -459,6 +475,7 @@ function startTour() {
   tour.t = 0
   tour.active = true
   tween.active = false
+  requestLegacyFrames()
 }
 
 // gaze target along the flight: frame the FROM poi on approach, then look
@@ -516,6 +533,7 @@ const hud2 = createHud2D({
   onScan() {
     scanStart = performance.now() / 1000
     cone.kick(3)
+    requestLegacyFrames()
   },
 })
 hud2.setPois(pois)
@@ -1573,7 +1591,7 @@ fHud
   .add(params, 'scanDispFalloff', 0.1, 6, 0.05)
   .name('wave falloff')
   .onChange((v) => (terrain.mapUniforms.uScanDispW.value = v))
-fHud.add({ scan: () => (scanStart = performance.now() / 1000) }, 'scan').name('trigger scan')
+fHud.add({ scan: () => { scanStart = performance.now() / 1000; requestLegacyFrames() } }, 'scan').name('trigger scan')
 
 const fMotion = gui.addFolder('Motion')
 fMotion.add(params, 'coneSpin', 0, 3, 0.05).name('cone spin')
@@ -2246,6 +2264,7 @@ function startFlyover() {
   controls.enabled = false
   flyOverlay.classList.remove('hidden')
   rec.start(250)
+  requestLegacyFrames()
   toast.show(`录制中(${Math.round(dur)}s),可取消`)
 }
 
@@ -2391,6 +2410,7 @@ const overviewMap = createOverviewMap({
   terrainLayer: plannerTerrainLayer,
   onTerrainUnavailable: (error) => {
     plannerWorkspace?.setView('2d')
+    setLegacyFrameModeActive(false)
     if (params.planning) applyPlannerView('2d')
     toast.show(error?.message === 'WebGL context lost'
       ? '3D 图形上下文已中断；已返回 2D 路线规划'
@@ -2446,6 +2466,7 @@ function applyPlannerView(view) {
   const accepted = overviewMap.setPlannerView(requested)
   const actual = accepted ? requested : '2d'
   plannerWorkspace?.setView(actual)
+  setLegacyFrameModeActive(actual === '3d')
   const planning = params.planning
   document.body.classList.toggle('planner-2d', planning && actual === '2d')
   document.body.classList.toggle('planner-3d', planning && actual === '3d')
@@ -2616,6 +2637,7 @@ function setMapWorkspace({ weather = false, editing = false } = {}) {
   if (weather) {
     plannerWorkspace.setView('2d')
     overviewMap.setPlannerView('2d')
+    setLegacyFrameModeActive(false)
   } else {
     applyPlannerView(plannerWorkspace.view)
   }
@@ -2870,7 +2892,7 @@ if (params.planning) {
 }
 
 // console access for debugging/scripting
-window.__exp = { scene, camera, controls, params, terrain, loadRealTerrain, loadAdminBoundaries, expandTerrainToRoute, plannerWorkspace, overviewMap, plannerTerrainLayer, get renderStats() { return { legacyFps: fps, plannerTerrain: overviewMap.terrainStats } }, get routeCoverage() { return lastRouteCoverage }, get terrainState() { return { demBusy, demRequestId, rebuildPending, rebuildQueued, terrainGen } }, get routingState() { return { on: snapState.on, profile: snapProfile, version: snapState.version, demKey: snapState.demKey } }, get adminState() { return adminState }, get adminInteraction() { return adminInteraction }, get adminLayer() { return adminLayer }, get labels() { return labels }, get route() { return route }, get geo() { return geo }, get dem() { return dem } }
+window.__exp = { scene, camera, controls, params, terrain, loadRealTerrain, loadAdminBoundaries, expandTerrainToRoute, plannerWorkspace, overviewMap, plannerTerrainLayer, get renderStats() { return { legacyFps: fps, legacyFrames: legacyFrameLoop?.frameCount ?? 0, legacyFrameLoopRunning: legacyFrameLoop?.running ?? false, plannerTerrain: overviewMap.terrainStats } }, get routeCoverage() { return lastRouteCoverage }, get terrainState() { return { demBusy, demRequestId, rebuildPending, rebuildQueued, terrainGen } }, get routingState() { return { on: snapState.on, profile: snapProfile, version: snapState.version, demKey: snapState.demKey } }, get adminState() { return adminState }, get adminInteraction() { return adminInteraction }, get adminLayer() { return adminLayer }, get labels() { return labels }, get route() { return route }, get geo() { return geo }, get dem() { return dem } }
 
 // real world is the default source — fetch its tiles on startup
 if (params.source === 'real') loadRealTerrain()
@@ -2885,8 +2907,11 @@ whenTerrainBuilt(1).then(() => {
 
 const clock = new THREE.Clock()
 
+function hasLegacyFrameWork() {
+  return flyState.active || tour.active || tween.active || scanStart >= 0
+}
+
 function tick() {
-  requestAnimationFrame(tick)
   const dt = Math.min(clock.getDelta(), 0.05)
   const t = clock.elapsedTime
 
@@ -2991,8 +3016,13 @@ function tick() {
   }
 
   if ((!params.planning && !mapWorkspaceActive) || flyState.active) composer.render(dt)
+  if (!legacyFrameModeActive && !hasLegacyFrameWork()) legacyFrameLoop.stop()
 }
-tick()
+
+legacyFrameLoop = createFrameScheduler({ onFrame: tick })
+const startLegacyFrames = legacyFrameStartPending || legacyFrameModeActive || hasLegacyFrameWork()
+legacyFrameStartPending = false
+if (startLegacyFrames) legacyFrameLoop.start()
 
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight
