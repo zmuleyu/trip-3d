@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from 'vitest'
-import { createLibraryPanel, createPlanningPanel } from './panels.js'
+import { createLibraryPanel, createPlanningPanel, createProfileCard } from './panels.js'
 
 describe('planning panel route contract', () => {
   it('uses an explicit straight/foot/car mode control', () => {
@@ -83,5 +83,58 @@ describe('route library recovery', () => {
     const save = [...empty.querySelectorAll('button')].find((button) => button.textContent === '保存当前路线')
     save.click()
     expect(onSaveCurrent).toHaveBeenCalledOnce()
+  })
+})
+
+describe('Analyze elevation profile', () => {
+  const canvasContext = () => ({
+    beginPath: vi.fn(), clearRect: vi.fn(), fillText: vi.fn(), lineTo: vi.fn(), moveTo: vi.fn(), stroke: vi.fn(),
+  })
+
+  it('shows raw DEM range only in Analyze and supports keyboard-native folding', () => {
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(canvasContext())
+    const card = createProfileCard()
+    const analysis = {
+      status: 'ready',
+      points: [
+        { ele: 1180, cumDistM: 0 },
+        { ele: 1360, cumDistM: 4200 },
+      ],
+      profile: { distanceM: 4200, minElevationM: 1180, maxElevationM: 1360 },
+      stats: { distanceM: 4200, minEle: 1180, maxEle: 1360 },
+    }
+
+    card.update(analysis)
+    expect(card.el.classList.contains('hidden')).toBe(true)
+    card.setStage('analyze')
+    expect(card.el.classList.contains('hidden')).toBe(false)
+    expect(card.el.textContent).toContain('最低 1,180 m')
+    expect(card.el.textContent).toContain('最高 1,360 m')
+    expect(card.el.textContent).toContain('Terrarium')
+
+    const toggle = card.el.querySelector('.head')
+    expect(toggle.tagName).toBe('BUTTON')
+    toggle.click()
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    expect(card.el.classList.contains('folded')).toBe(true)
+
+    card.setStage('plan')
+    expect(card.el.classList.contains('hidden')).toBe(true)
+  })
+
+  it.each([
+    ['dem-unavailable', '高程数据暂不可用'],
+    ['outside-coverage', '扩展地形范围后重试'],
+    ['incomplete', '至少添加起点和终点'],
+  ])('renders a truthful %s state without zero or inferred values', (status, message) => {
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(canvasContext())
+    const card = createProfileCard()
+    card.setStage('analyze')
+    card.update({ status, points: [], profile: null, stats: null })
+
+    expect(card.el.classList.contains('hidden')).toBe(false)
+    expect(card.el.dataset.status).toBe(status)
+    expect(card.el.textContent).toContain(message)
+    expect(card.el.textContent).not.toContain('0 m')
   })
 })

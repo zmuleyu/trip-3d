@@ -125,6 +125,10 @@ export class RouteLayer {
     this.crosshair = null
   }
 
+  clear() {
+    this._clear()
+  }
+
   setResolution(w, h) {
     this._res = { w, h }
     for (const ch of this.group.children) {
