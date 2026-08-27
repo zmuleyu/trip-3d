@@ -172,6 +172,7 @@ export function createPlanningPanel(actions) {
       wpList.replaceChildren()
       const n = route.waypoints.length
       mobileSave.disabled = n < 2
+      save.disabled = n < 2
       journeyList.replaceChildren()
       if (n >= 2) {
         const endIndexes = (route.dayEnds ?? [])
