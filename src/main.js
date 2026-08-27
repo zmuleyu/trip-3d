@@ -2470,7 +2470,7 @@ function initializeAnalysisCursor(points = lastRouteAnalysis?.points) {
   setAnalysisCursor(distanceM)
   return true
 }
-profileCard.setCallbacks({ onCursorDistance: setAnalysisCursor })
+profileCard.setCallbacks({ onCursorDistance: setAnalysisCursor, onExpand: expandTerrainToRoute })
 const overviewMap = createOverviewMap({
   terrainExaggeration: params.demExaggeration,
   onTerrainUnavailable: (error) => {
@@ -2524,7 +2524,7 @@ function expandTerrainToRoute() {
   params.tilesAcross = fit.tilesAcross
   params.demLocation = 'Custom'
   gui.controllersRecursive().forEach((controller) => controller.updateDisplay())
-  toast.show(`扩展地形：Z${fit.zoom} · ${fit.tilesAcross}×${fit.tilesAcross} tiles`)
+  toast.show('已扩展路线地形范围')
   loadRealTerrain()
 }
 
@@ -2593,7 +2593,6 @@ plannerWorkspace = createPlannerWorkspace({
   onStage: (stage) => {
     if (!workflowStage?.setStage(stage)) plannerWorkspace.setStage(workflowStage?.stage ?? WORKFLOW_STAGES.PLAN)
   },
-  onExpand: expandTerrainToRoute,
   onSearch: (query) => {
     enterPlanForEditing()
     panelHost.setCollapsed(false)
@@ -2626,9 +2625,14 @@ plannerWorkspace = createPlannerWorkspace({
   onWeather: () => showTab('weather'),
   onMoreAction: (action) => {
     if (action === 'library') showTab('library')
+    if (action === 'save') routeActions.onSave()
     if (action === 'share') showTab('share')
     if (action === 'import') routeActions.onImportGpx()
     if (action === 'export') routeActions.onExportGpx()
+    if (action === 'admin') {
+      if (!adminState.on) setAdminEnabled(true)
+      setAdminPanelOpen(true)
+    }
     if (action === 'settings') toggleSettings()
   },
 })

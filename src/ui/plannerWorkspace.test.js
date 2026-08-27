@@ -21,17 +21,10 @@ describe('planner workspace chrome', () => {
     expect(workspace.el.querySelector('canvas')).toBeNull()
   })
 
-  it('shows a persistent coverage alert with a recovery action', () => {
-    const onExpand = vi.fn()
-    const workspace = createPlannerWorkspace({ onExpand })
+  it('keeps route-coverage internals out of the workspace chrome', () => {
+    const workspace = createPlannerWorkspace()
     workspace.setCoverage({ covered: false, outsideCount: 18, total: 240 })
-    const alert = workspace.el.querySelector('[role="alert"]')
-    expect(alert.classList.contains('hidden')).toBe(false)
-    expect(alert.textContent).toContain('18/240')
-    alert.querySelector('button').click()
-    expect(onExpand).toHaveBeenCalledOnce()
-    workspace.setCoverage({ covered: true, outsideCount: 0, total: 240 })
-    expect(alert.classList.contains('hidden')).toBe(true)
+    expect(workspace.el.querySelector('.ui-route-coverage')).toBeNull()
   })
 
   it('opens planner layer tools on demand and closes them with the workspace', () => {
@@ -59,6 +52,16 @@ describe('planner workspace chrome', () => {
     expect(workspace.el.querySelector('.ui-planner-more-menu').classList.contains('hidden')).toBe(false)
     workspace.el.querySelector('[data-more-action="settings"]').click()
     expect(onMoreAction).toHaveBeenCalledWith('settings')
+  })
+
+  it('keeps secondary destinations discoverable inside the overflow menu', () => {
+    const onMoreAction = vi.fn()
+    const workspace = createPlannerWorkspace({ onMoreAction })
+    for (const action of ['library', 'save', 'share', 'import', 'export', 'admin', 'settings']) {
+      expect(workspace.el.querySelector(`[data-more-action="${action}"]`)).not.toBeNull()
+    }
+    workspace.el.querySelector('[data-more-action="admin"]').click()
+    expect(onMoreAction).toHaveBeenCalledWith('admin')
   })
 
   it('renders a compact multi-day trip spine and opens details from either edge', () => {

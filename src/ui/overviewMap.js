@@ -23,7 +23,6 @@ const MOBILE_TRANSITION_MS = 380
 const BASE_LABELS_TO_HIDE = /poi|housenumber|airport|aeroway|transit|neighbourhood|suburb/i
 const SOURCE_IDS = {
   terrain: 'trip-native-terrain',
-  coverage: 'trip-terrain-coverage',
   admin: 'trip-admin-boundaries',
   route: 'trip-planned-route',
   weather: 'trip-route-weather',
@@ -35,25 +34,6 @@ const EMPTY_FEATURE_COLLECTION = Object.freeze({ type: 'FeatureCollection', feat
 
 function featureCollection(features = []) {
   return { type: 'FeatureCollection', features }
-}
-
-function footprintFeature(viewport) {
-  if (!viewport) return null
-  const { minLon, minLat, maxLon, maxLat } = viewport
-  return {
-    type: 'Feature',
-    properties: {},
-    geometry: {
-      type: 'Polygon',
-      coordinates: [[
-        [minLon, minLat],
-        [maxLon, minLat],
-        [maxLon, maxLat],
-        [minLon, maxLat],
-        [minLon, minLat],
-      ]],
-    },
-  }
 }
 
 function routeCoordinates(route, points) {
@@ -137,31 +117,13 @@ function tuneBaseStyle(map) {
 }
 
 function addPlannerLayers(map) {
-  if (map.getSource(SOURCE_IDS.coverage)) return
-  map.addSource(SOURCE_IDS.coverage, { type: 'geojson', data: EMPTY_FEATURE_COLLECTION })
+  if (map.getSource(SOURCE_IDS.route)) return
   map.addSource(SOURCE_IDS.admin, { type: 'geojson', data: EMPTY_FEATURE_COLLECTION })
   map.addSource(SOURCE_IDS.route, { type: 'geojson', data: EMPTY_FEATURE_COLLECTION })
   map.addSource(SOURCE_IDS.weather, { type: 'geojson', data: EMPTY_FEATURE_COLLECTION })
   map.addSource(SOURCE_IDS.waypoints, { type: 'geojson', data: EMPTY_FEATURE_COLLECTION })
   map.addSource(SOURCE_IDS.cursor, { type: 'geojson', data: EMPTY_FEATURE_COLLECTION })
 
-  map.addLayer({
-    id: 'trip-terrain-coverage-fill',
-    type: 'fill',
-    source: SOURCE_IDS.coverage,
-    paint: { 'fill-color': '#17191b', 'fill-opacity': 0.035 },
-  })
-  map.addLayer({
-    id: 'trip-terrain-coverage-line',
-    type: 'line',
-    source: SOURCE_IDS.coverage,
-    paint: {
-      'line-color': '#17191b',
-      'line-opacity': 0.56,
-      'line-width': 1.25,
-      'line-dasharray': [4, 3],
-    },
-  })
   map.addLayer({
     id: 'trip-admin-boundary-line',
     type: 'line',
@@ -319,9 +281,9 @@ export function createOverviewMap({
   zoomOut.innerHTML = iconSvg('zoomOut')
   const fit = document.createElement('button')
   fit.type = 'button'
-  fit.className = 'ui-map-fit'
-  fit.setAttribute('aria-label', '显示地形范围')
-  fit.innerHTML = `${iconSvg('fit')}<span>地形范围</span>`
+  fit.className = 'ui-map-fit hidden'
+  fit.setAttribute('aria-label', '显示完整路线')
+  fit.innerHTML = `${iconSvg('fit')}<span>完整路线</span>`
   controls.append(zoomIn, zoomOut, fit)
 
   const emptyHint = document.createElement('div')
@@ -348,10 +310,6 @@ export function createOverviewMap({
     try { sessionStorage.setItem('trip3d.planningGuide.dismissed', '1') } catch { /* optional session preference */ }
   }
 
-  const footprintLegend = document.createElement('div')
-  footprintLegend.className = 'ui-map-footprint-legend'
-  footprintLegend.innerHTML = '<i></i><span>虚线范围：地形数据覆盖</span>'
-
   const mapError = document.createElement('div')
   mapError.className = 'ui-map-error hidden'
   mapError.textContent = '底图暂时不可用；路线数据仍已保留'
@@ -366,7 +324,7 @@ export function createOverviewMap({
     <dl><div><dt>降水</dt><dd data-weather="precipitation">—</dd></div><div><dt>风速</dt><dd data-weather="wind">—</dd></div></dl>
     <footer><span data-weather="source">预报</span><button type="button" data-weather-action>逐小时预报</button></footer>`
 
-  el.append(mapSurface, mapContext, controls, emptyHint, footprintLegend, onboarding, mapError, weatherCard)
+  el.append(mapSurface, mapContext, controls, emptyHint, onboarding, mapError, weatherCard)
 
   const map = new MapLibreMap({
     container: mapSurface,
@@ -602,9 +560,7 @@ export function createOverviewMap({
 
   function syncPlannerData() {
     if (!styleReady) return
-    const footprint = footprintFeature(viewportLonLat)
     const route = routeFeature(lastRoute, lastPoints)
-    map.getSource(SOURCE_IDS.coverage)?.setData(footprint ? featureCollection([footprint]) : EMPTY_FEATURE_COLLECTION)
     map.getSource(SOURCE_IDS.admin)?.setData(adminOverlayGeoJSON(adminOverlay))
     map.getSource(SOURCE_IDS.route)?.setData(route ? featureCollection([route]) : EMPTY_FEATURE_COLLECTION)
     weatherData = weatherOverlayGeoJSON(weatherOverlay)
@@ -725,8 +681,7 @@ export function createOverviewMap({
       item.classList.toggle('done', step === 'start' && count > 0)
     })
     const hasRoute = count >= 2
-    fit.querySelector('span').textContent = hasRoute ? '完整路线' : '地形范围'
-    fit.setAttribute('aria-label', hasRoute ? '显示完整路线' : '显示地形范围')
+    fit.classList.toggle('hidden', !hasRoute)
     const zoom = map.getZoom()
     zoomIn.disabled = zoom >= 14
     zoomOut.disabled = zoom <= 3
@@ -791,7 +746,7 @@ export function createOverviewMap({
   }
 
   function installPlannerStyle() {
-    if (map.getSource(SOURCE_IDS.coverage)) return
+    if (map.getSource(SOURCE_IDS.route)) return
     styleReady = true
     tuneBaseStyle(map)
     addPlannerLayers(map)
