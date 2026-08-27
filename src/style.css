@@ -619,7 +619,7 @@ body.planner-operate .ui-settings { top: 58px; width: min(360px, calc(100vw - 24
 .ui-overview.hidden { display: none; }
 .ui-overview-map { position: absolute; inset: 0; background: #f4f0e6; }
 .ui-overview .maplibregl-canvas { outline: none; }
-.ui-overview .maplibregl-canvas:focus-visible { outline: 3px solid rgba(255,77,0,.78); outline-offset: -3px; }
+.ui-overview .maplibregl-canvas:focus-visible { outline: 2px solid rgba(31,36,40,.66); outline-offset: -2px; }
 .ui-overview.planner.editing .maplibregl-canvas { cursor: crosshair; }
 .ui-overview.planner.editing .maplibregl-canvas:active { cursor: grabbing; }
 .ui-overview .maplibregl-ctrl-attrib, .ui-map-attribution-floating .maplibregl-ctrl-attrib { max-width: calc(100% - 12px); padding: 1px 4px; background: rgba(255,255,255,.9); color: rgba(23,25,27,.68); font: 8px/1.25 "Segoe UI", sans-serif; white-space: normal; }
@@ -970,6 +970,26 @@ body.planner-operate.planner-layers-open .ui-layer-tip { display: none; }
 
 /* ------------------------------------------------------------------ TRIP 3D map-centered redesign */
 :root {
+  --terrain-surface: #f2eee4;
+  --instrument-900: #171c1f;
+  --instrument-850: #1c2225;
+  --instrument-800: #22282b;
+  --panel-surface: #f6f4ee;
+  --trip-orange: #ff4f17;
+  --trip-orange-hover: #e94712;
+  --text-light-primary: rgba(255, 255, 255, .92);
+  --text-light-secondary: rgba(255, 255, 255, .6);
+  --text-light-muted: rgba(255, 255, 255, .38);
+  --text-dark-primary: #252521;
+  --text-dark-secondary: rgba(37, 37, 33, .62);
+  --text-dark-muted: rgba(37, 37, 33, .42);
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --radius-panel: 14px;
+  --control-h-sm: 36px;
+  --control-h-md: 42px;
+  --toolbar-h: 50px;
   --trip-ink: #1f2428;
   --trip-ink-soft: #5f696f;
   --trip-paper: #f7f7f4;
@@ -1082,7 +1102,7 @@ body.planner-operate .ui-overview.planner, body.weather-operate .ui-overview.pla
 }
 body.weather-operate .ui-overview.planner .maplibregl-canvas { cursor: default; }
 body.weather-operate .ui-map-empty, body.weather-operate .ui-map-footprint-legend { display: none; }
-.ui-overview.planner .ui-map-context { left: 78px; top: 14px; min-width: 0; padding: 8px 11px; border: 1px solid var(--trip-line); border-radius: 10px; background: rgba(247,247,244,.9); box-shadow: 0 5px 16px rgba(18,24,28,.11); color: var(--trip-ink); backdrop-filter: blur(10px); }
+.ui-overview.planner .ui-map-context { display: none; }
 .ui-overview.planner .ui-map-context b { font-size: 12px; }
 .ui-overview.planner .ui-map-context span { font-size: 10px; }
 .ui-overview.planner .ui-map-controls { right: 14px; top: 14px; gap: 4px; padding: 4px; border: 1px solid rgba(255,255,255,.18); border-radius: 14px; background: rgba(24,30,34,.78); box-shadow: 0 7px 20px rgba(0,0,0,.2); backdrop-filter: blur(12px); }
@@ -1529,12 +1549,12 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
 /* Final single-responsibility inspector pass. The map stays continuous while
    each rail destination owns its own focused panel instead of nested tabs. */
 body.planner-operate .ui-panel {
-  width: min(410px, calc(100vw - 96px));
+  width: min(336px, calc(100vw - 72px));
   background: var(--trip-paper) !important;
 }
 body.planner-operate .ui-panel h2 {
-  min-height: 76px;
-  padding: 0 26px;
+  min-height: 58px;
+  padding: 0 18px;
   border-bottom: 0;
   border-radius: 15px 15px 0 0;
   background: #172126;
@@ -1545,44 +1565,46 @@ body.planner-operate .ui-panel h2 {
 }
 body.planner-operate .ui-panel-hint { color: rgba(255,255,255,.58); font-size: 12px; font-weight: 400; letter-spacing: 0; }
 body.planner-operate .ui-panel-chev { border: 0; background: transparent; color: #fff; }
-body.planner-operate .ui-panel-body { height: calc(100% - 76px); padding: 28px 26px 30px; }
+body.planner-operate .ui-panel-body { height: calc(100% - 58px); padding: 18px 16px 22px; }
 .pp-mobile-primary, .pp-journey-list, .pp-plan, .pp-legs, .pp-root .ui-profile { display: none !important; }
-.pp-root .pp-section { margin: 0 0 8px; padding: 0; border: 0; color: var(--trip-ink); font-size: 14px; font-weight: 650; }
-.pp-root .pp-section + .name-input { margin: 0 0 28px; }
-.pp-root .name-input { min-height: 56px; border-radius: 12px; font-size: 16px; }
-.pp-root .pp-snap-row { margin: 0 0 20px; }
-.pp-root .pp-route-mode { border-radius: 14px; }
-.pp-root .pp-route-mode button { min-height: 48px; font-size: 15px; }
+.pp-root .pp-section { margin: 0 0 8px; padding: 0; border: 0; color: var(--text-dark-primary); font-size: 13px; font-weight: 650; }
+.pp-root .pp-section + .name-input { margin: 0 0 18px; }
+.pp-root .name-input { min-height: 42px; border-radius: var(--radius-sm); font-size: 14px; }
+.pp-root .pp-snap-row { margin: 0 0 16px; }
+.pp-root .pp-route-mode { border-radius: var(--radius-md); }
+.pp-root .pp-route-mode button { min-height: var(--control-h-md); font-size: 13px; }
 .pp-root .ui-wp-list { overflow: hidden; border: 1px solid var(--trip-line); border-radius: 12px; background: #fff; }
-.pp-root .pp-tl-item { min-height: 58px; padding: 0 12px; }
+.pp-root .pp-tl-item { min-height: 52px; padding: 0 12px; }
 .pp-root .pp-tl-body { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; align-items: center; gap: 8px; width: 100%; }
 .pp-root .pp-tl-role { font-size: 14px; font-weight: 650; }
 .pp-root .pp-tl-name { font-size: 14px; color: var(--trip-ink-soft); }
 .pp-root .pp-tl-coord { display: none; }
 .pp-root .pp-day-badge { display: none; }
-.pp-add-waypoint { display: block; width: 100%; min-height: 54px; border: 0; border-top: 1px solid var(--trip-line); background: #fff; color: var(--trip-ink-soft); font: 14px var(--trip-font); text-align: left; padding: 0 16px; cursor: pointer; }
-.pp-add-waypoint:hover, .pp-add-waypoint:focus-visible { color: var(--trip-route); background: rgba(240,74,29,.05); }
-.pp-root .pp-secondary-tools { margin-top: 22px; border-radius: 12px; }
-.pp-root .pp-secondary-tools > summary { min-height: 64px; color: var(--trip-ink); font-size: 15px; font-weight: 650; }
+.pp-add-waypoint { display: block; width: 100%; min-height: 40px; border: 0; border-top: 1px solid var(--trip-line); background: transparent; color: var(--text-dark-secondary); font: 13px var(--trip-font); text-align: left; padding: 0 12px; cursor: pointer; }
+.pp-add-waypoint:hover, .pp-add-waypoint:focus-visible { color: var(--trip-route); background: rgba(240,74,29,.04); }
+.pp-root .pp-secondary-tools { margin-top: 16px; border-radius: var(--radius-md); }
+.pp-root .pp-secondary-tools > summary { min-height: 46px; color: var(--text-dark-primary); font-size: 13px; font-weight: 650; }
 .pp-root .pp-secondary-tools > summary::after { content: '›'; margin-left: auto; color: var(--trip-ink-soft); font-size: 25px; font-weight: 400; }
 .pp-root .pp-secondary-tools[open] > summary::after { transform: rotate(90deg); }
-.pp-root .pp-ops-main { margin-top: 28px; }
-.pp-root .pp-ops-main button.primary, .wx-go { min-height: 64px; border-radius: 12px; background: var(--trip-route); color: #fff; font: 700 17px var(--trip-font); }
+.pp-root .pp-ops-main { margin-top: 16px; }
+.pp-root .pp-ops-main button.primary, .wx-go { min-height: var(--control-h-md); border-radius: var(--radius-sm); background: var(--trip-route); color: #fff; font: 650 13px var(--trip-font); }
 
-.wx-panel { display: grid; gap: 20px; }
-.wx-route-context { display: grid; gap: 5px; width: 100%; min-height: 60px; padding: 12px 16px; border: 1px solid var(--trip-line-strong); border-radius: 12px; background: #fff; color: var(--trip-ink); text-align: left; }
-.wx-route-context b { font-size: 16px; font-weight: 650; }
-.wx-route-context span { color: var(--trip-ink-soft); font-size: 13px; }
-.wx-route-context.is-empty { border-style: dashed; cursor: pointer; }
-.wx-date-section { display: grid; gap: 12px; }
-.wx-date-section h3 { margin: 0; font-size: 14px; font-weight: 650; }
-.wx-date-shortcuts { display: grid; grid-template-columns: repeat(3, 1fr); padding: 3px; border: 1px solid var(--trip-line-strong); border-radius: 14px; background: #fff; }
-.wx-date-shortcuts button { min-height: 42px; border: 0; border-radius: 11px; background: transparent; color: var(--trip-ink-soft); font: 14px var(--trip-font); }
+.wx-panel { display: grid; gap: 16px; }
+.wx-route-context { display: grid; gap: 4px; width: 100%; min-height: 44px; padding: 2px 0; border: 0; border-radius: 0; background: transparent; color: var(--text-dark-primary); text-align: left; }
+.wx-route-context b { font-size: 13px; font-weight: 650; }
+.wx-route-context span { color: var(--text-dark-secondary); font-size: 12px; }
+.wx-route-context.is-empty { cursor: pointer; }
+.wx-date-section { display: grid; gap: 8px; }
+.wx-date-section h3 { margin: 0; font-size: 13px; font-weight: 650; }
+.wx-date-shortcuts { display: grid; grid-template-columns: repeat(3, 1fr); padding: 3px; border: 1px solid rgba(37,37,33,.1); border-radius: var(--radius-md); background: rgba(255,255,255,.4); }
+.wx-date-shortcuts button { min-height: var(--control-h-sm); border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-dark-secondary); font: 600 12px var(--trip-font); }
 .wx-date-shortcuts button.active { background: var(--trip-ink); color: #fff; }
-.wx-date-input { display: flex; align-items: center; justify-content: space-between; min-height: 56px; padding: 0 15px; border: 1px solid var(--trip-line-strong); border-radius: 12px; background: #fff; color: var(--trip-ink-soft); font-size: 14px; }
-.wx-date-input input { border: 0; background: transparent; color: var(--trip-ink); font: 16px var(--trip-font); }
-.wx-preflight { min-height: 56px; display: flex; align-items: center; padding: 0 15px; border: 1px solid var(--trip-line); border-radius: 12px; color: var(--trip-ink-soft); font-size: 14px; }
-.wx-status { margin: 0; font-size: 13px; line-height: 1.55; }
+.wx-date-input { display: flex; align-items: center; justify-content: flex-end; min-height: var(--control-h-md); padding: 0 12px; border: 1px solid rgba(37,37,33,.13); border-radius: var(--radius-sm); background: rgba(255,255,255,.55); color: var(--text-dark-secondary); font-size: 13px; }
+.wx-date-input > span { display: none; }
+.wx-date-input input { border: 0; background: transparent; color: var(--text-dark-primary); font: 13px var(--trip-font); }
+.wx-preflight { min-height: 0; display: block; padding: 0; border: 0; color: var(--text-dark-secondary); font-size: 12px; line-height: 1.5; }
+.wx-status { margin: 0; font-size: 12px; line-height: 1.5; }
+.wx-go:disabled { border: 0; background: rgba(37,37,33,.08); color: var(--text-dark-muted); cursor: not-allowed; }
 .wx-attr { margin-top: -8px; color: var(--trip-ink-soft); }
 
 @media (max-width: 720px) {
@@ -1770,11 +1792,11 @@ body.planner-operate.analyze-operate .ui-profile {
 
 /* Plan / Analyze instrument parity ---------------------------------------- */
 body.planner-operate {
-  --instrument-surface: rgba(22, 27, 30, .96);
+  --instrument-surface: rgba(23, 28, 31, .96);
   --instrument-surface-hover: rgba(255, 255, 255, .09);
-  --instrument-line: rgba(255, 255, 255, .1);
-  --instrument-text: rgba(255, 255, 255, .92);
-  --instrument-muted: rgba(255, 255, 255, .58);
+  --instrument-line: rgba(255, 255, 255, .08);
+  --instrument-text: var(--text-light-primary);
+  --instrument-muted: var(--text-light-secondary);
   --instrument-shadow: 0 6px 18px rgba(0, 0, 0, .2);
 }
 
@@ -1784,7 +1806,7 @@ body.planner-operate {
 .ui-planner-context-tools,
 .ui-rail,
 .ui-overview.planner .ui-map-controls {
-  border: 1px solid var(--instrument-line);
+  border: 0;
   background: var(--instrument-surface);
   box-shadow: var(--instrument-shadow);
   color: var(--instrument-text);
@@ -1797,8 +1819,8 @@ body.planner-operate {
 .ui-planner-layer-toggle {
   display: grid;
   place-items: center;
-  width: 40px;
-  height: 40px;
+  width: var(--control-h-md);
+  height: var(--control-h-md);
   padding: 0;
   border: 0;
   border-radius: 8px;
@@ -1815,6 +1837,12 @@ body.planner-operate {
 .ui-planner-layer-toggle:hover {
   background: var(--instrument-surface-hover);
 }
+
+.ui-planner-save:disabled {
+  color: var(--text-light-muted);
+  cursor: not-allowed;
+}
+.ui-planner-save:disabled:hover { background: transparent; }
 
 .ui-planner-save:active,
 .ui-planner-share:active,
@@ -1875,13 +1903,14 @@ body.planner-operate {
 .ui-view-switch button:disabled { cursor: not-allowed; opacity: .38; }
 
 .ui-overview.planner .ui-map-empty {
-  gap: 7px;
+  gap: 6px;
   max-width: none;
-  padding: 8px 10px;
-  border: 1px solid rgba(30, 30, 30, .1);
-  border-radius: 10px;
-  background: rgba(247, 245, 239, .95);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, .12);
+  min-height: 36px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: rgba(247, 245, 239, .92);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, .1);
 }
 
 .ui-overview.planner .ui-map-empty > svg { width: 17px; height: 17px; color: var(--trip-route); }
@@ -1889,18 +1918,18 @@ body.planner-operate {
 .ui-overview.planner .ui-map-empty span { display: none; }
 
 .ui-map-onboarding {
-  min-height: 44px;
-  padding: 4px 6px 4px 12px;
-  border: 1px solid rgba(30, 30, 30, .1);
-  border-radius: 11px;
+  min-height: 42px;
+  padding: 3px 6px 3px 12px;
+  border: 0;
+  border-radius: var(--radius-lg);
   background: rgba(247, 245, 239, .9);
   box-shadow: 0 4px 14px rgba(0, 0, 0, .11);
   backdrop-filter: blur(10px) saturate(106%);
 }
 
-.ui-map-onboarding ol { gap: 13px; }
+.ui-map-onboarding ol { gap: 12px; }
 .ui-map-onboarding li { gap: 6px; color: rgba(31, 36, 40, .52); font-size: 11px; }
-.ui-map-onboarding li + li::before { opacity: .28; }
+.ui-map-onboarding li + li::before { display: none; }
 .ui-map-onboarding li span {
   width: 19px;
   height: 19px;
@@ -1916,20 +1945,13 @@ body.planner-operate {
   border-radius: 12px;
   background: var(--instrument-surface);
   color: var(--instrument-text);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, .2);
+  min-height: 62px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .18);
   backdrop-filter: blur(14px) saturate(108%);
 }
 
-.ui-trip-spine::after {
-  content: '';
-  position: absolute;
-  left: 18px;
-  right: 18px;
-  bottom: 0;
-  height: 2px;
-  background: var(--trip-route);
-  opacity: .82;
-}
+.ui-trip-spine::after { display: none; }
+.ui-trip-spine:has(.ui-trip-spine-days:not(:empty)) { min-height: 78px; }
 
 .ui-trip-spine-title,
 .ui-trip-spine-expand { color: var(--instrument-text); }
@@ -1965,8 +1987,9 @@ body.planner-operate .ui-panel:not(.collapsed),
 body.weather-operate .ui-panel:not(.collapsed) {
   border-color: rgba(30, 30, 30, .1) !important;
   border-radius: 14px;
-  background: #f7f5ef !important;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, .16);
+  background: var(--panel-surface) !important;
+  box-shadow: 0 18px 50px rgba(25, 24, 20, .18);
+  transition: opacity 180ms cubic-bezier(.2, .8, .2, 1), transform 180ms cubic-bezier(.2, .8, .2, 1);
 }
 body.planner-operate .ui-panel h2,
 body.weather-operate .ui-panel h2 {
@@ -1981,21 +2004,22 @@ body.weather-operate .ui-panel-body { padding: 18px 16px 22px; }
 .pp-root .pp-section + .name-input { margin-bottom: 18px; }
 .pp-root .name-input { min-height: 44px; border-radius: 8px; font-size: 14px; }
 .pp-root .pp-route-mode { border-radius: 9px; }
-.pp-root .pp-route-mode button { min-height: 40px; font-size: 13px; }
-.pp-root .pp-route-mode button.active { background: var(--trip-route); color: #fff; }
+.pp-root .pp-route-mode button { min-height: var(--control-h-md); font-size: 13px; }
+.pp-root .pp-route-mode button.active { background: var(--instrument-850); color: #fff; }
 .pp-root .ui-wp-list,
 .pp-root .pp-secondary-tools { border-radius: 9px; }
 .pp-root .pp-tl-item { min-height: 52px; }
-.pp-add-waypoint { min-height: 46px; font-size: 13px; }
-.pp-root .pp-secondary-tools > summary { min-height: 50px; font-size: 13px; }
-.pp-root .pp-ops-main { margin-top: 18px; }
-.pp-root .pp-ops-main button.primary { min-height: 44px; border-radius: 8px; font-size: 14px; }
+.pp-add-waypoint { min-height: 40px; font-size: 13px; }
+.pp-root .pp-secondary-tools > summary { min-height: 46px; font-size: 13px; }
+.pp-root .pp-ops-main { margin-top: 16px; }
+.pp-root .pp-ops-main button.primary { min-height: var(--control-h-md); border-radius: var(--radius-sm); font-size: 13px; }
+.pp-root .pp-ops-main button.primary:disabled { background: rgba(37, 37, 33, .08); color: var(--text-dark-muted); cursor: not-allowed; }
 
 @media (min-width: 721px) {
   .ui-planner-brand-island {
-    left: 30px;
-    top: 30px;
-    height: 52px;
+    left: 24px;
+    top: 24px;
+    height: var(--toolbar-h);
     padding: 0 6px 0 16px;
     gap: 12px;
     border-radius: 12px;
@@ -2009,10 +2033,10 @@ body.weather-operate .ui-panel-body { padding: 18px 16px 22px; }
   .ui-planner-mode-island {
     position: absolute;
     left: 50%;
-    top: 30px;
+    top: 24px;
     display: flex;
     align-items: center;
-    height: 52px;
+    height: 48px;
     padding: 0 3px;
     transform: translateX(-50%);
     border-radius: 12px;
@@ -2020,14 +2044,14 @@ body.weather-operate .ui-panel-body { padding: 18px 16px 22px; }
   }
 
   .ui-planner-action-island {
-    right: 30px;
-    top: 30px;
-    height: 52px;
+    right: 24px;
+    top: 24px;
+    height: var(--toolbar-h);
     gap: 2px;
     padding: 0 5px;
     border-radius: 12px;
   }
-  .ui-planner-action-island > button + button { border-left: 1px solid var(--instrument-line); border-radius: 0 8px 8px 0; }
+  .ui-planner-action-island > button + button { border-left: 1px solid rgba(255,255,255,.1); border-radius: 0 8px 8px 0; }
 
   .ui-planner-primary {
     position: absolute;
@@ -2059,7 +2083,7 @@ body.weather-operate .ui-panel-body { padding: 18px 16px 22px; }
   .ui-planner-layer-toggle { width: 40px; padding: 0; }
 
   .ui-planner-more-menu { right: 30px; top: 88px; }
-  .ui-rail { left: 30px; top: 176px; width: 48px; padding: 4px; border-radius: 12px; }
+  .ui-rail { left: 24px; top: 160px; width: 48px; padding: 4px; border-radius: var(--radius-lg); }
   .ui-rail-btn,
   .ui-rail-gear { width: 38px; height: 38px; min-height: 38px; border-radius: 8px; }
   .ui-rail-btn.active {
@@ -2069,16 +2093,16 @@ body.weather-operate .ui-panel-body { padding: 18px 16px 22px; }
     background: rgba(255, 255, 255, .08);
     color: var(--trip-route);
   }
-  .ui-rail-btn.active::before { left: -5px; top: 8px; bottom: 8px; display: block; width: 1px; background: var(--trip-route); }
+  .ui-rail-btn.active::before { left: -5px; top: 8px; bottom: 8px; display: block; width: 2px; background: var(--trip-route); }
   .ui-rail-btn.active .lbl { display: none; }
   .ui-rail-btn:hover .lbl,
   .ui-rail-btn.active:hover .lbl,
   .ui-rail-btn:focus-visible .lbl { display: block; }
 
-  .ui-overview.planner .ui-map-context { left: 94px; top: 102px; }
+  .ui-overview.planner .ui-map-context { display: none; }
   .ui-overview.planner .ui-map-controls {
-    right: 30px;
-    top: 176px;
+    right: 24px;
+    top: 160px;
     gap: 0;
     padding: 4px;
     border-radius: 10px;
@@ -2087,11 +2111,11 @@ body.weather-operate .ui-panel-body { padding: 18px 16px 22px; }
   .ui-overview.planner .ui-map-controls button + button { border-top: 1px solid var(--instrument-line); }
 
   .ui-trip-spine {
-    left: 30px;
-    right: 30px;
-    bottom: 28px;
+    left: 24px;
+    right: 24px;
+    bottom: 24px;
     width: auto;
-    min-height: 70px;
+    min-height: 62px;
     grid-template-columns: auto minmax(150px, 230px) minmax(0, 1fr) auto;
     transform: none;
   }
@@ -2101,18 +2125,18 @@ body.weather-operate .ui-panel-body { padding: 18px 16px 22px; }
   body.planner-operate .ui-panel:not(.collapsed),
   body.weather-operate .ui-panel:not(.collapsed),
   .ui-panel:not(.collapsed) {
-    right: 30px;
-    top: 108px;
-    bottom: 122px;
-    width: 340px;
+    right: 24px;
+    top: 112px;
+    bottom: 110px;
+    width: 328px;
   }
   body.planner-operate .ui-panel:not(.collapsed):has(.pp-root) {
     bottom: auto;
-    height: min(530px, calc(100vh - 230px));
+    height: min(508px, calc(100vh - 222px));
   }
   body:has(.ui-panel:not(.hidden):not(.collapsed)) .ui-overview.planner .ui-map-controls,
-  .settings-open .ui-overview.planner .ui-map-controls { right: 390px; }
-  body:has(.ui-panel:not(.hidden):not(.collapsed)) .ui-overview.planner .ui-map-footprint-legend { right: 390px; }
+  .settings-open .ui-overview.planner .ui-map-controls { right: 376px; }
+  body:has(.ui-panel:not(.hidden):not(.collapsed)) .ui-overview.planner .ui-map-footprint-legend { right: 376px; }
 }
 
 @media (max-width: 720px) {

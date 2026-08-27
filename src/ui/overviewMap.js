@@ -312,7 +312,7 @@ export function createOverviewMap({
   const emptyHint = document.createElement('div')
   emptyHint.className = 'ui-map-empty'
   emptyHint.setAttribute('role', 'status')
-  emptyHint.innerHTML = `${iconSvg('pin')}<div><b>单击地图设置起点</b><span aria-hidden="true"></span></div>`
+  emptyHint.innerHTML = `${iconSvg('pin')}<div><b>设置起点</b><span aria-hidden="true"></span></div>`
 
   let onboardingDismissed = false
   try { onboardingDismissed = sessionStorage.getItem('trip3d.planningGuide.dismissed') === '1' } catch { /* optional session preference */ }
@@ -699,8 +699,8 @@ export function createOverviewMap({
     const guideVisible = plannerMode && editingMode && !terrain3d && count < 2 && !onboardingDismissed
     emptyHint.classList.toggle('hidden', !guideVisible)
     emptyHint.dataset.step = count === 0 ? 'start' : 'via'
-    emptyHint.querySelector('b').textContent = count === 0 ? '单击地图设置起点' : '继续单击，添加途经点'
-    emptyHint.querySelector('span').textContent = count === 0 ? '随后继续添加途经点' : '可拖动标记调整位置 · Esc 取消'
+    emptyHint.querySelector('b').textContent = count === 0 ? '设置起点' : '添加途经点'
+    emptyHint.querySelector('span').textContent = ''
     onboarding.classList.toggle('hidden', !guideVisible)
     onboarding.querySelectorAll('[data-guide-step]').forEach((item) => {
       const step = item.dataset.guideStep
@@ -726,7 +726,7 @@ export function createOverviewMap({
     }
     const height = Math.max(0, mapSurface.getBoundingClientRect().height)
     const usableHeight = Math.min(height, Math.max(240, window.innerHeight * 0.4))
-    return { top: 120, right: 56, bottom: Math.max(80, height - usableHeight + 80), left: 56 }
+    return { top: 120, right: 72, bottom: Math.max(80, height - usableHeight + 80), left: 56 }
   }
 
   function fitCurrent() {

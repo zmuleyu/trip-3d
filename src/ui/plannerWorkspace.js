@@ -54,11 +54,12 @@ export function createPlannerWorkspace({ onStage, onSearch, onPrimary, onWeather
   const search = el.querySelector('.ui-command-search')
   const searchInput = search.querySelector('input')
   const primary = el.querySelector('.ui-planner-primary')
+  const save = el.querySelector('.ui-planner-save')
   const spine = el.querySelector('.ui-trip-spine')
   const spineDays = spine.querySelector('.ui-trip-spine-days')
   search.addEventListener('submit', (event) => { event.preventDefault(); onSearch?.(searchInput.value) })
   primary.addEventListener('click', () => onPrimary?.({ stage, analyzeAvailable }))
-  el.querySelector('.ui-planner-save').addEventListener('click', () => onMoreAction?.('save'))
+  save.addEventListener('click', () => onMoreAction?.('save'))
   el.querySelector('.ui-planner-share').addEventListener('click', () => onMoreAction?.('share'))
   spine.querySelector('.ui-trip-spine-title').addEventListener('click', () => onSpineExpand?.())
   spine.querySelector('.ui-trip-spine-expand').addEventListener('click', () => onSpineExpand?.())
@@ -84,6 +85,8 @@ export function createPlannerWorkspace({ onStage, onSearch, onPrimary, onWeather
   }
   layerToggle.addEventListener('click', () => setLayersOpen(layerToggle.getAttribute('aria-expanded') !== 'true'))
   const syncPrimary = () => {
+    save.disabled = !analyzeAvailable
+    save.setAttribute('aria-disabled', String(!analyzeAvailable))
     primary.textContent = stage === 'analyze'
       ? '返回规划'
       : analyzeAvailable
