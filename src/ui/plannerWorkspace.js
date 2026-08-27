@@ -12,15 +12,18 @@ export function createPlannerWorkspace({ onStage, onSearch, onPrimary, onWeather
           <button type="submit" aria-label="搜索">${iconSvg('search')}</button>
         </form>
       </div>
-      <div class="ui-trip-identity"><b>未命名线路</b><span>尚未设置日期</span></div>
-      <div class="ui-planner-action-island">
+      <div class="ui-planner-mode-island">
         <div class="ui-view-switch" role="tablist" aria-label="工作阶段">
           <button type="button" role="tab" data-stage="plan">规划</button>
-          <button type="button" role="tab" data-stage="analyze" title="至少添加起点和终点" aria-label="分析地形（至少添加起点和终点）" disabled>分析地形</button>
+          <button type="button" role="tab" data-stage="analyze" title="至少添加起点和终点" aria-label="分析地形（至少添加起点和终点）" disabled>分析</button>
         </div>
-        <button type="button" class="ui-planner-primary">开始规划</button>
+      </div>
+      <div class="ui-planner-action-island" aria-label="线路操作">
+        <button type="button" class="ui-planner-save" aria-label="保存线路">${iconSvg('save')}<span>保存</span></button>
+        <button type="button" class="ui-planner-share" aria-label="分享线路">${iconSvg('share')}<span>分享</span></button>
         <button type="button" class="ui-planner-more" aria-label="更多和进阶设置">${iconSvg('more')}<span>更多</span></button>
       </div>
+      <button type="button" class="ui-planner-primary">开始规划</button>
       <div class="ui-planner-context-tools" aria-label="地图快捷工具">
         <button type="button" class="ui-planner-weather" aria-label="天气">${iconSvg('weather')}<span>天气</span></button>
         <button type="button" class="ui-planner-layer-toggle" aria-controls="ui-layer-tools" aria-expanded="false" aria-label="打开图层工具">${iconSvg('layers')}<span>图层</span></button>
@@ -38,8 +41,9 @@ export function createPlannerWorkspace({ onStage, onSearch, onPrimary, onWeather
       <button type="button" role="menuitem" data-more-action="admin">行政区划</button>
       <button type="button" role="menuitem" data-more-action="settings">进阶设置</button>
     </div>
-    <section class="ui-trip-spine" aria-label="行程记录">
-      <button type="button" class="ui-trip-spine-title">${iconSvg('planning')}<span>行程记录</span></button>
+    <section class="ui-trip-spine" aria-label="路线摘要">
+      <button type="button" class="ui-trip-spine-title">${iconSvg('planning')}<span>路线摘要</span></button>
+      <div class="ui-trip-identity"><b>未命名线路</b><span>尚未设置日期</span></div>
       <div class="ui-trip-spine-days"></div>
       <button type="button" class="ui-trip-spine-expand">展开详情</button>
     </section>
@@ -54,6 +58,8 @@ export function createPlannerWorkspace({ onStage, onSearch, onPrimary, onWeather
   const spineDays = spine.querySelector('.ui-trip-spine-days')
   search.addEventListener('submit', (event) => { event.preventDefault(); onSearch?.(searchInput.value) })
   primary.addEventListener('click', () => onPrimary?.({ stage, analyzeAvailable }))
+  el.querySelector('.ui-planner-save').addEventListener('click', () => onMoreAction?.('save'))
+  el.querySelector('.ui-planner-share').addEventListener('click', () => onMoreAction?.('share'))
   spine.querySelector('.ui-trip-spine-title').addEventListener('click', () => onSpineExpand?.())
   spine.querySelector('.ui-trip-spine-expand').addEventListener('click', () => onSpineExpand?.())
   el.querySelector('.ui-planner-weather').addEventListener('click', () => onWeather?.())
@@ -115,7 +121,7 @@ export function createPlannerWorkspace({ onStage, onSearch, onPrimary, onWeather
       const analyze = el.querySelector('[data-stage="analyze"]')
       analyze.disabled = !analyzeAvailable
       analyze.title = analyzeAvailable ? '分析当前路线地形' : message
-      analyze.setAttribute('aria-label', analyzeAvailable ? '分析地形' : `分析地形（${message}）`)
+      analyze.setAttribute('aria-label', analyzeAvailable ? '分析当前路线地形' : `分析地形（${message}）`)
       syncPrimary()
     },
     setJourneySpine({ route, legs = [], weatherDays = [] } = {}) {
@@ -124,7 +130,7 @@ export function createPlannerWorkspace({ onStage, onSearch, onPrimary, onWeather
       if (points.length < 2) {
         const empty = document.createElement('span')
         empty.className = 'ui-trip-spine-empty'
-        empty.textContent = '在地图设置起点，开始记录行程'
+        empty.textContent = '设置起点以开始规划'
         spineDays.appendChild(empty)
         return
       }

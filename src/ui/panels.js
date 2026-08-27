@@ -619,13 +619,25 @@ export function createProfileCard(accent = '#ff4d00') {
     const max = Math.max(...lastPts.map((point) => point.ele))
     const span = Math.max(max - min, 1)
     const { width: W, height: H } = canvas
+    const chartPoints = lastPts.map((point, index) => ({
+      x: (index / (lastPts.length - 1)) * (W - 24) + 12,
+      y: 8 + (1 - (point.ele - min) / span) * (H - 18),
+    }))
+    ctx.globalAlpha = .22
+    ctx.fillStyle = accent
+    ctx.beginPath()
+    chartPoints.forEach((point, index) => {
+      index ? ctx.lineTo(point.x, point.y) : ctx.moveTo(point.x, point.y)
+    })
+    ctx.lineTo(chartPoints.at(-1).x, H - 5)
+    ctx.lineTo(chartPoints[0].x, H - 5)
+    ctx.fill()
+    ctx.globalAlpha = 1
     ctx.strokeStyle = accent
     ctx.lineWidth = 2
     ctx.beginPath()
-    lastPts.forEach((point, index) => {
-      const x = (index / (lastPts.length - 1)) * (W - 24) + 12
-      const yy = 8 + (1 - (point.ele - min) / span) * (H - 18)
-      index ? ctx.lineTo(x, yy) : ctx.moveTo(x, yy)
+    chartPoints.forEach((point, index) => {
+      index ? ctx.lineTo(point.x, point.y) : ctx.moveTo(point.x, point.y)
     })
     ctx.stroke()
     const sample = sampleAnalysisAtDistance(lastPts, lastCursorDistanceM)
@@ -642,7 +654,7 @@ export function createProfileCard(accent = '#ff4d00') {
     const fraction = totalDistanceM > 0 ? (sample.distanceM - startDistanceM) / totalDistanceM : 0
     const x = 12 + fraction * (W - 24)
     const y = 8 + (1 - (sample.ele - min) / span) * (H - 18)
-    ctx.strokeStyle = 'rgba(31,36,40,.62)'
+    ctx.strokeStyle = 'rgba(255,255,255,.62)'
     ctx.lineWidth = 1
     ctx.beginPath(); ctx.moveTo(x, 5); ctx.lineTo(x, H - 5); ctx.stroke()
     ctx.fillStyle = accent

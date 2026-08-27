@@ -1,12 +1,15 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-08-24T00:00:00+08:00",
+  "generatedAt": "2026-08-27T16:14:38.8494338Z",
   "title": "Design System: TRIP 3D",
   "extensions": {
     "colorMeta": {
       "ink": { "role": "neutral", "displayName": "Cartographic Ink", "canonical": "#1f2428", "tonalRamp": ["#111416", "#1f2428", "#343c42", "#4b555c", "#657077", "#818b91", "#aeb5b9", "#edf0f1"] },
       "ink-soft": { "role": "neutral", "displayName": "Quiet Ink", "canonical": "#5f696f", "tonalRamp": ["#172022", "#313b3f", "#5f696f", "#7b858b", "#9aa2a6", "#b8bec1", "#d5d9da", "#f2f4f4"] },
+      "instrument": { "role": "neutral", "displayName": "Instrument Charcoal", "canonical": "#161b1e", "tonalRamp": ["#080b0c", "#161b1e", "#293136", "#6a7478", "#eef0ef"] },
       "paper": { "role": "neutral", "displayName": "Map Paper", "canonical": "#f7f7f4", "tonalRamp": ["#252522", "#4b4b46", "#71716b", "#97978f", "#b8b8b0", "#d5d5cd", "#e9e9e3", "#f7f7f4"] },
+      "terrain-paper": { "role": "neutral", "displayName": "Terrain Paper", "canonical": "#f4f0e6", "tonalRamp": ["#5a554a", "#958d7c", "#cfc7b6", "#e9e3d8", "#f4f0e6"] },
+      "context-paper": { "role": "neutral", "displayName": "Warm Context Paper", "canonical": "#f7f5ef", "tonalRamp": ["#5b584f", "#938f84", "#cbc6ba", "#eae7df", "#f7f5ef"] },
       "paper-strong": { "role": "neutral", "displayName": "Strong Paper", "canonical": "#ffffff", "tonalRamp": ["#242424", "#494949", "#707070", "#969696", "#b8b8b8", "#d5d5d5", "#ebebeb", "#ffffff"] },
       "line": { "role": "neutral", "displayName": "Fine Boundary", "canonical": "rgba(31, 36, 40, 0.16)", "tonalRamp": ["#121618", "#293034", "#4a5358", "#6d777c", "#949ca0", "#babfc2", "#d8dcde", "#f3f5f5"] },
       "line-strong": { "role": "neutral", "displayName": "Strong Boundary", "canonical": "rgba(31, 36, 40, 0.28)", "tonalRamp": ["#121618", "#293034", "#4a5358", "#6d777c", "#949ca0", "#babfc2", "#d8dcde", "#f3f5f5"] },
@@ -22,11 +25,13 @@
     },
     "shadows": [
       { "name": "floating-map-context", "value": "0 10px 30px rgba(18, 24, 28, 0.16)", "purpose": "Used by drawers and elevated map-anchored context only." },
-      { "name": "dark-edge-control-lift", "value": "0 8px 24px rgba(8,12,14,.22)", "purpose": "Separates compact dark controls from variable terrain." },
+      { "name": "instrument-lift", "value": "0 6px 18px rgba(0,0,0,.2)", "purpose": "Separates #161b1e instruments from variable terrain." },
+      { "name": "lower-analysis-lift", "value": "0 12px 32px rgba(0,0,0,.2)", "purpose": "Keeps Route Summary or Elevation Profile at the lower edge." },
       { "name": "weather-card-lift", "value": "0 12px 32px rgba(6,10,12,.22)", "purpose": "Keeps the marker-anchored weather outlet readable without theatrical depth." }
     ],
     "motion": [
       { "name": "control-color", "value": "140ms ease-out", "purpose": "Default color and border feedback for high-frequency controls." },
+      { "name": "stage-feedback", "value": "180ms ease-out", "purpose": "Plan/Analyze segment fill and label change." },
       { "name": "press-scale", "value": "100ms ease-out", "purpose": "Compact pressed feedback at scale(.98)." },
       { "name": "search-expand", "value": "150ms ease-out", "purpose": "Focused command search expansion from its left origin." },
       { "name": "weather-context", "value": "130ms ease-out", "purpose": "Opacity and transform feedback for the weather card." }
@@ -70,12 +75,20 @@
       "css": ".ds-switch{display:inline-flex;gap:2px;padding:3px;border:1px solid rgba(255,255,255,.18);border-radius:20px;background:rgba(255,255,255,.06)}.ds-switch button{min-width:58px;height:32px;border:0;border-radius:16px;background:transparent;color:rgba(255,255,255,.68);font:600 13px Segoe UI,PingFang SC,Microsoft YaHei,Noto Sans CJK SC,system-ui,sans-serif;cursor:pointer}.ds-switch button:hover{color:#fff}.ds-switch button:focus-visible{outline:2px solid #f04a1d;outline-offset:2px}.ds-switch .ds-active{background:rgba(255,255,255,.16);color:#fff}"
     },
     {
+      "name": "Plan / Analyze stage switch",
+      "kind": "chip",
+      "refersTo": "stage-switch",
+      "description": "The centered state instrument; Route Ember is reserved for the active trip state.",
+      "html": "<div class=\"ds-stage\" role=\"tablist\"><button>规划</button><button class=\"is-active\">分析</button></div>",
+      "css": ".ds-stage{display:flex;gap:3px;height:52px;padding:3px;border:1px solid rgba(255,255,255,.1);border-radius:12px;background:#161b1e;box-shadow:0 6px 18px rgba(0,0,0,.2)}.ds-stage button{min-width:76px;border:0;border-radius:8px;background:transparent;color:rgba(255,255,255,.58);font:650 14px/1 Segoe UI,PingFang SC,Microsoft YaHei,system-ui,sans-serif}.ds-stage .is-active{background:#f04a1d;color:#fff}.ds-stage button:focus-visible{outline:2px solid #f04a1d;outline-offset:2px}"
+    },
+    {
       "name": "Map tool rail",
       "kind": "nav",
       "refersTo": "navigation-rail",
-      "description": "High-frequency planning navigation: dark and frosted on desktop, light and labeled on mobile.",
+      "description": "High-frequency planning navigation: a narrow #161b1e desktop instrument that reflows into mobile controls.",
       "html": "<nav class=\"ds-rail\" aria-label=\"行程工具\"><button class=\"ds-logo\">T3</button><button class=\"ds-active\">规划</button><button>线路库</button><button>天气</button></nav>",
-      "css": ".ds-rail{display:grid;gap:3px;width:52px;padding:6px;border:1px solid rgba(255,255,255,.18);border-radius:14px;background:rgba(24,30,34,.78);box-shadow:0 8px 24px rgba(8,12,14,.22);color:#fff;backdrop-filter:blur(12px) saturate(112%)}.ds-rail button{min-height:40px;border:1px solid transparent;border-radius:10px;background:transparent;color:rgba(255,255,255,.82);font:600 10px Segoe UI,PingFang SC,Microsoft YaHei,Noto Sans CJK SC,system-ui,sans-serif;cursor:pointer;transition:background-color 140ms ease-out,border-color 140ms ease-out,color 140ms ease-out,transform 100ms ease-out}.ds-rail .ds-logo{background:#f7f7f4;color:#1f2428;font-weight:800}.ds-rail button:hover{border-color:rgba(255,255,255,.18);background:rgba(255,255,255,.1);color:#fff}.ds-rail button:focus-visible{outline:2px solid #f04a1d;outline-offset:2px}.ds-rail .ds-active{border-color:#f04a1d;background:#f04a1d;color:#fff}.ds-rail button:active{transform:scale(.98)}"
+      "css": ".ds-rail{display:grid;gap:2px;width:48px;padding:4px;border:1px solid rgba(255,255,255,.1);border-radius:12px;background:#161b1e;box-shadow:0 6px 18px rgba(0,0,0,.2);color:#fff}.ds-rail button{position:relative;width:38px;height:38px;border:0;border-radius:8px;background:transparent;color:rgba(255,255,255,.92);font:600 10px Segoe UI,PingFang SC,Microsoft YaHei,Noto Sans CJK SC,system-ui,sans-serif;cursor:pointer;transition:background-color 140ms ease-out,color 140ms ease-out,transform 100ms ease-out}.ds-rail button:hover{background:rgba(255,255,255,.09)}.ds-rail button:focus-visible{outline:2px solid #f04a1d;outline-offset:2px}.ds-rail .ds-active{background:rgba(255,255,255,.08);color:#f04a1d}.ds-rail .ds-active:before{content:'';position:absolute;left:-5px;top:8px;bottom:8px;width:1px;background:#f04a1d}.ds-rail button:active{transform:scale(.97)}"
     },
     {
       "name": "Map context card",
@@ -94,6 +107,14 @@
       "css": ".ds-journey{overflow:hidden;border:1px solid rgba(31,36,40,.16);border-radius:16px;background:rgba(250,250,247,.94);color:#1f2428;font-family:Segoe UI,PingFang SC,Microsoft YaHei,Noto Sans CJK SC,system-ui,sans-serif;backdrop-filter:blur(12px) saturate(108%)}.ds-journey header{display:flex;align-items:center;gap:10px;min-height:58px;padding:0 14px}.ds-journey header b{font-size:14px}.ds-journey header span{padding-left:10px;border-left:1px solid rgba(31,36,40,.16);color:#5f696f;font-size:12px;font-variant-numeric:tabular-nums}.ds-row{display:grid;grid-template-columns:48px 1fr auto;gap:8px;align-items:center;width:100%;min-height:58px;padding:8px 10px;border:0;border-top:1px solid rgba(31,36,40,.16);background:#fff;color:#1f2428;text-align:left;cursor:pointer}.ds-row span b,.ds-row span small{display:block}.ds-row span b{color:#f04a1d;font-size:12px}.ds-row span small,.ds-row em{color:#5f696f;font-size:10px;font-style:normal}.ds-row strong{font-size:11px}.ds-row.ds-selected{background:rgba(240,74,29,.06);box-shadow:inset 1px 0 #f04a1d}.ds-row:focus-visible{outline:2px solid #f04a1d;outline-offset:-2px}"
     },
     {
+      "name": "Elevation Profile",
+      "kind": "custom",
+      "refersTo": "elevation-profile",
+      "description": "Analyze's lower-edge counterpart to Route Summary: dark, continuous, and focused on the route trace and current reading.",
+      "html": "<section class=\"ds-profile\"><header><b>高程剖面</b><button>← 返回规划</button></header><div class=\"ds-trace\"></div><footer>0 km <strong>28.4 km</strong> 60 km</footer></section>",
+      "css": ".ds-profile{min-height:150px;padding:12px 18px;border:1px solid rgba(255,255,255,.1);border-radius:12px;background:#161b1e;box-shadow:0 12px 32px rgba(0,0,0,.2);color:rgba(255,255,255,.92);font:12px Segoe UI,PingFang SC,Microsoft YaHei,system-ui,sans-serif}.ds-profile header,.ds-profile footer{display:flex;align-items:center;justify-content:space-between}.ds-profile button{height:36px;border:0;border-radius:8px;background:rgba(255,255,255,.09);color:#fff}.ds-trace{height:72px;margin:14px 0;border-bottom:1px solid rgba(255,255,255,.18);background:linear-gradient(168deg,transparent 0 28%,#f04a1d 29% 32%,transparent 33% 55%,#f04a1d 56% 59%,transparent 60%)}.ds-profile strong{color:#f04a1d}"
+    },
+    {
       "name": "Anchored weather card",
       "kind": "custom",
       "refersTo": "weather-card",
@@ -104,17 +125,19 @@
   ],
   "narrative": {
     "northStar": "The Map Is the Trip",
-    "overview": "TRIP 3D is a restrained, authored Chinese cartography workspace. A continuous natural-terrain map carries the route, while near-black operational chrome makes the controls legible without competing for the first glance. The route-orange line and primary action establish the only urgent visual voice.\n\nThe product feels like a dependable field instrument: compact rounded controls, short Chinese labels, ordered row content, and progressive disclosure let planning, terrain, time, and weather remain facets of one trip. Frosted material is reserved for information anchored to the map, so geographic context survives without turning the interface into glass decoration.",
-    "keyCharacteristics": ["Map-first operating canvas with slim edge chrome and a single filled route action.", "Natural, quiet terrain and paper-like information surfaces rather than dashboard-card density.", "Restrained Chinese system typography with compact metadata and tabular numerical detail.", "Orange route selection, blue weather information, and direct truthful status colors.", "Rounded, familiar controls; dense information remains in rows, sheets, and drawers."],
+    "overview": "TRIP 3D is a Chinese-first terrain instrument, not a dashboard beside a map. Warm hillshade and contour texture hold the full visual field, while #161b1e-class instruments establish a quiet operating hierarchy. Route Ember stays rare: it traces the route, identifies the active Plan/Analyze state, and marks direct selection.\n\nDesktop arranges brand/search, stage switching, and route actions into three floating top islands; a narrow rail and compact zoom group remain peripheral. Plan's Route Summary and Analyze's Elevation Profile trade the same lower-edge territory, preserving one trip model and one continuous map context. Mobile collapses this hierarchy into a 44px-safe header and one lower contextual layer.",
+    "keyCharacteristics": ["Warm terrain and hillshade canvas with a sharp orange route signal.", "#161b1e compact instruments and warm-paper inspectors.", "8/10/12/14px geometry with restrained shadows and short motion.", "Desktop three-island hierarchy with a narrow rail and lower-edge continuity.", "Mobile reflow that protects map gestures and 44px targets."],
     "rules": [
       { "name": "The One Route Voice Rule", "body": "Route orange is reserved for the active route, its direct selection state, and the single primary action; it is not a general decorative accent.", "section": "Colors" },
+      { "name": "The Three-Island Rule", "body": "Desktop working chrome resolves into brand/search, stage, and route-action islands; other controls remain peripheral.", "section": "Layout" },
+      { "name": "The Lower-Edge Continuity Rule", "body": "Route Summary in Plan and Elevation Profile in Analyze use the same lower information territory; analysis does not add a dashboard layer.", "section": "Components" },
       { "name": "The Operational Type Rule", "body": "Use weight, size, and short labels to establish priority; do not add a second display voice or force dense route data into oversized type.", "section": "Typography" },
       { "name": "The Continuous Map Rule", "body": "Chrome attaches to the map edge or collapses into the shared sheet; no open state may fragment the trip into competing dashboard columns.", "section": "Layout" },
       { "name": "The Flat-First Rule", "body": "Use elevation only to establish a floating map context; do not add shadows to ordinary content rows or invent a card hierarchy.", "section": "Elevation & Depth" },
       { "name": "The Contextual Frost Rule", "body": "Blur belongs exclusively to map-anchored information and dark/light map controls, with opaque fallbacks when reduced transparency is requested.", "section": "Elevation & Depth" },
       { "name": "The Grouped Row Rule", "body": "Reserve rounded outer corners for a meaningful group; internal rows divide with fine lines and selection rules instead of acquiring individual card silhouettes.", "section": "Shapes" }
     ],
-    "dos": ["Do keep the map and route as the default visual proof of the product.", "Do use Route Ember only for movement, explicit selection, and the one primary action.", "Do keep high-frequency controls compact at 40px on desktop and reachable at 44px touch targets on mobile.", "Do use frosted dark or light material only for map-anchored context, with an opaque reduced-transparency fallback.", "Do group itinerary, settings, and metrics into lined rows with progressive disclosure."],
-    "donts": ["Don't turn the workspace into a generic AI dashboard, feature-wall card grid, or decorative metric wall.", "Don't use pervasive glass, glow, gradient identity, or invented smart claims.", "Don't give every field, metric, or itinerary segment its own rounded card.", "Don't use hover lift, bounce, broad `transition: all`, or decorative entrance sequences.", "Don't silently hide unavailable, stale, or provider-limited trip information behind polished visual treatment."]
+    "dos": ["Do keep terrain and the route as the visual proof of the product.", "Do use Route Ember only for movement, explicit selection, and the active Plan/Analyze state.", "Do use 40px desktop controls and 44px mobile targets.", "Do preserve warm-paper inspector context and dark profile continuity.", "Do use reduced-transparency opaque fallbacks."],
+    "donts": ["Don't turn contextual route detail into a card grid.", "Don't use pervasive glass, glow, or gradient identity.", "Don't use broad transitions, bounce, or hover lift.", "Don't hide unavailable terrain, weather, or saved state behind polished treatment."]
   }
 }

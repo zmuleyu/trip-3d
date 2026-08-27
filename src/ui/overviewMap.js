@@ -23,6 +23,7 @@ const MOBILE_TRANSITION_MS = 380
 const BASE_LABELS_TO_HIDE = /poi|housenumber|airport|aeroway|transit|neighbourhood|suburb/i
 const SOURCE_IDS = {
   terrain: 'trip-native-terrain',
+  terrainShade: 'trip-terrain-hillshade',
   admin: 'trip-admin-boundaries',
   route: 'trip-planned-route',
   weather: 'trip-route-weather',
@@ -118,11 +119,33 @@ function tuneBaseStyle(map) {
 
 function addPlannerLayers(map) {
   if (map.getSource(SOURCE_IDS.route)) return
+  map.addSource(SOURCE_IDS.terrainShade, {
+    type: 'raster-dem',
+    tiles: [TERRARIUM_TILE_URL_TEMPLATE],
+    tileSize: TERRARIUM_TILE_SIZE,
+    encoding: 'terrarium',
+    attribution: 'Terrain Tiles / Mapzen / Tilezen',
+  })
   map.addSource(SOURCE_IDS.admin, { type: 'geojson', data: EMPTY_FEATURE_COLLECTION })
   map.addSource(SOURCE_IDS.route, { type: 'geojson', data: EMPTY_FEATURE_COLLECTION })
   map.addSource(SOURCE_IDS.weather, { type: 'geojson', data: EMPTY_FEATURE_COLLECTION })
   map.addSource(SOURCE_IDS.waypoints, { type: 'geojson', data: EMPTY_FEATURE_COLLECTION })
   map.addSource(SOURCE_IDS.cursor, { type: 'geojson', data: EMPTY_FEATURE_COLLECTION })
+
+  const firstSymbolLayer = (map.getStyle()?.layers ?? []).find((layer) => layer.type === 'symbol')?.id
+  map.addLayer({
+    id: 'trip-terrain-relief',
+    type: 'hillshade',
+    source: SOURCE_IDS.terrainShade,
+    layout: { visibility: 'none' },
+    paint: {
+      'hillshade-exaggeration': 0.34,
+      'hillshade-shadow-color': '#80684f',
+      'hillshade-accent-color': '#b29a7c',
+      'hillshade-highlight-color': '#fff9ed',
+      'hillshade-illumination-direction': 315,
+    },
+  }, firstSymbolLayer)
 
   map.addLayer({
     id: 'trip-admin-boundary-line',
@@ -289,7 +312,7 @@ export function createOverviewMap({
   const emptyHint = document.createElement('div')
   emptyHint.className = 'ui-map-empty'
   emptyHint.setAttribute('role', 'status')
-  emptyHint.innerHTML = `${iconSvg('pin')}<div><b>单击地图设置起点</b><span>随后继续添加途经点</span></div>`
+  emptyHint.innerHTML = `${iconSvg('pin')}<div><b>单击地图设置起点</b><span aria-hidden="true"></span></div>`
 
   let onboardingDismissed = false
   try { onboardingDismissed = sessionStorage.getItem('trip3d.planningGuide.dismissed') === '1' } catch { /* optional session preference */ }
@@ -298,9 +321,9 @@ export function createOverviewMap({
   onboarding.setAttribute('aria-label', '路线规划步骤')
   onboarding.innerHTML = `
     <ol>
-      <li data-guide-step="start"><span>1</span>设置起点</li>
-      <li data-guide-step="via"><span>2</span>添加途经点</li>
-      <li data-guide-step="confirm"><span>3</span>确认路线</li>
+      <li data-guide-step="start"><span>1</span>起点</li>
+      <li data-guide-step="via"><span>2</span>途经点</li>
+      <li data-guide-step="confirm"><span>3</span>路线</li>
     </ol>
     <button type="button">跳过引导</button>`
   onboarding.querySelector('button').onclick = () => {
@@ -417,6 +440,10 @@ export function createOverviewMap({
       if (casing) map.setPaintProperty('trip-route-casing', 'line-width', terrain3d ? 9 : 7)
       const routeLine = map.getLayer('trip-route-line')
       if (routeLine) map.setPaintProperty('trip-route-line', 'line-width', terrain3d ? 4.5 : 3.5)
+      if (map.getLayer('trip-terrain-relief')) {
+        map.setLayoutProperty('trip-terrain-relief', 'visibility', plannerMode ? 'visible' : 'none')
+        map.setPaintProperty('trip-terrain-relief', 'hillshade-exaggeration', terrain3d ? 0.46 : 0.34)
+      }
 
       for (const layer of map.getStyle()?.layers ?? []) {
         if (layer.type !== 'symbol' || layer.id.startsWith('trip-')) continue

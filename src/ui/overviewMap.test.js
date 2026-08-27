@@ -157,6 +157,14 @@ describe('overview MapLibre planner map', () => {
     expect(instance.controls[0].control.options.compact).toBe(false)
     expect(instance.canvas.getAttribute('aria-label')).toBe('路线规划地图')
     expect(instance.getSource('trip-native-terrain')).toBeUndefined()
+    expect(instance.getSource('trip-terrain-hillshade')).toMatchObject({
+      type: 'raster-dem',
+      encoding: 'terrarium',
+    })
+    expect(instance.getLayer('trip-terrain-relief')).toMatchObject({
+      type: 'hillshade',
+      source: 'trip-terrain-hillshade',
+    })
     expect(instance.terrain).toBeNull()
   })
 
