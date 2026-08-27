@@ -495,7 +495,8 @@ export function createProfileCard(accent = '#ff4d00') {
   const metrics = document.createElement('div')
   metrics.className = 'profile-metrics'
   const status = document.createElement('p')
-  status.className = 'profile-status'
+  status.className = 'profile-status profile-status-pill'
+  status.setAttribute('aria-live', 'polite')
   const statusMessage = document.createElement('span')
   const cursorReadout = document.createElement('span')
   cursorReadout.className = 'profile-cursor-readout'
@@ -503,7 +504,16 @@ export function createProfileCard(accent = '#ff4d00') {
   recovery.type = 'button'
   recovery.className = 'profile-recovery'
   recovery.hidden = true
-  recovery.textContent = '扩展路线地形'
+  recovery.textContent = '重试'
+  const returnPlan = document.createElement('button')
+  returnPlan.type = 'button'
+  returnPlan.className = 'profile-recovery profile-return-plan'
+  returnPlan.hidden = true
+  returnPlan.textContent = '返回规划'
+  const recoveryActions = document.createElement('div')
+  recoveryActions.className = 'profile-recovery-actions'
+  recoveryActions.hidden = true
+  recoveryActions.append(recovery, returnPlan)
   const canvas = document.createElement('canvas')
   canvas.width = 596
   canvas.height = 110
@@ -519,14 +529,14 @@ export function createProfileCard(accent = '#ff4d00') {
   details.hidden = true
   details.append(metrics, source)
   status.append(statusMessage, cursorReadout)
-  body.append(status, recovery, canvas, detailsToggle, details)
+  body.append(status, recoveryActions, canvas, detailsToggle, details)
   el.append(head, body)
   document.body.appendChild(el)
   let stage = 'plan'
   let folded = false
   let lastPts = null
   let lastGrade = null
-  let cbs = { onCursorDistance: null, onExpand: null }
+  let cbs = { onCursorDistance: null, onExpand: null, onRetry: null, onReturnPlan: null }
   let lastCursorDistanceM = null
   let profileReady = false
   let detailsOpen = false
@@ -542,7 +552,8 @@ export function createProfileCard(accent = '#ff4d00') {
     if (!available) setDetailsOpen(false)
   }
   detailsToggle.addEventListener('click', () => setDetailsOpen(!detailsOpen))
-  recovery.addEventListener('click', () => cbs.onExpand?.())
+  recovery.addEventListener('click', () => (cbs.onRetry ?? cbs.onExpand)?.())
+  returnPlan.addEventListener('click', () => cbs.onReturnPlan?.())
   const formatGrade = (gradePct) => {
     const rounded = Math.round(gradePct * 10) / 10
     if (rounded > 0) return `上坡 +${rounded.toFixed(1)}%`
@@ -673,11 +684,19 @@ export function createProfileCard(accent = '#ff4d00') {
         metrics.replaceChildren()
         source.textContent = ''
         setDetailsAvailable(false)
-        recovery.hidden = analysis.status !== 'outside-coverage'
+        const recoverable = ['outside-coverage', 'route-terrain-unavailable', 'route-terrain-budget', 'route-terrain-cancelled'].includes(analysis.status)
+        recoveryActions.hidden = !recoverable
+        recovery.hidden = !recoverable
+        returnPlan.hidden = !recoverable
+        recovery.textContent = analysis.status === 'outside-coverage' ? '补齐路线地形' : '重试'
         statusMessage.textContent = {
           incomplete: '至少添加起点和终点',
-          'outside-coverage': '路线超出范围，扩展地形范围后重试',
+          'outside-coverage': '路线地形尚未补齐',
           'dem-unavailable': '高程数据暂不可用',
+          'route-terrain-loading': '路线地形 · 正在补齐',
+          'route-terrain-unavailable': '路线地形暂不可用',
+          'route-terrain-budget': '路线较长，暂时无法补齐完整地形',
+          'route-terrain-cancelled': '路线已变化，地形补齐已取消',
         }[analysis.status] ?? '高程数据暂不可用'
         syncSliderAvailability()
         cursorReadout.textContent = ''
@@ -690,7 +709,9 @@ export function createProfileCard(accent = '#ff4d00') {
       lastPts = points
       lastGrade = grade
       canvas.classList.remove('hidden')
+      recoveryActions.hidden = true
       recovery.hidden = true
+      returnPlan.hidden = true
       setDetailsAvailable(true)
       statusMessage.textContent = `${(profile.distanceM / 1000).toFixed(1)} km · 高程可用`
       source.textContent = grade?.status === 'ready'

@@ -471,8 +471,12 @@ body.planner-operate .ui-settings { top: 58px; width: min(360px, calc(100vw - 24
 .profile-body { padding: 8px 12px 9px; }
 .profile-metrics { display: flex; flex-wrap: wrap; gap: 3px 18px; color: var(--trip-ink); font-size: 11px; font-variant-numeric: tabular-nums; }
 .profile-status { margin: 3px 0 0; color: var(--trip-ink-soft); font-size: 11px; line-height: 1.35; }
+.profile-status-pill { width: fit-content; max-width: 100%; padding: 4px 8px; border-radius: 999px; background: rgba(31,36,40,.06); overflow-wrap: anywhere; }
 .profile-cursor-readout { margin-left: 8px; color: var(--trip-ink); font-variant-numeric: tabular-nums; }
+.profile-recovery-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 7px; }
+.profile-recovery-actions[hidden] { display: none; }
 .profile-recovery { min-height: 32px; margin-top: 7px; padding: 0 10px; border: 1px solid var(--trip-line-strong); border-radius: 10px; background: transparent; color: var(--trip-ink); font: 600 11px/1 var(--trip-font); cursor: pointer; }
+.profile-recovery-actions .profile-recovery { margin-top: 0; }
 .profile-recovery:hover { border-color: var(--trip-route); color: var(--trip-route); }
 .profile-recovery[hidden] { display: none; }
 .profile-source { display: block; margin-top: 3px; color: var(--trip-ink-soft); font-size: 11px; }
@@ -490,7 +494,10 @@ body.planner-operate .ui-settings { top: 58px; width: min(360px, calc(100vw - 24
 .profile-details { padding: 2px 0 1px; }
 .ui-map-fit.hidden { display: none !important; }
 .ui-profile[data-status="outside-coverage"] .profile-status,
-.ui-profile[data-status="dem-unavailable"] .profile-status { color: var(--trip-warning); }
+.ui-profile[data-status="dem-unavailable"] .profile-status,
+.ui-profile[data-status="route-terrain-unavailable"] .profile-status,
+.ui-profile[data-status="route-terrain-budget"] .profile-status,
+.ui-profile[data-status="route-terrain-cancelled"] .profile-status { color: var(--trip-warning); }
 
 /* legacy route-hud replaced by chrome */
 .route-hud { display: none !important; }

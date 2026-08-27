@@ -4,6 +4,7 @@
 
 export const TERRARIUM_TILE_URL_TEMPLATE = 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'
 export const TERRARIUM_TILE_SIZE = 256
+export const TERRARIUM_SOURCE_ID = `${TERRARIUM_TILE_URL_TEMPLATE}|terrarium|${TERRARIUM_TILE_SIZE}`
 
 const TILE_URL = (z, x, y) => TERRARIUM_TILE_URL_TEMPLATE
   .replace('{z}', z)

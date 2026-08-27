@@ -132,7 +132,7 @@ export function samplePolyline(geo, coords, elevOf, nSamples = DEFAULT_SAMPLES) 
     const x = a.x + (b.x - a.x) * f
     const z = a.z + (b.z - a.z) * f
     const ll = worldToLonLat(geo, x, z)
-    pts.push({ x, z, lon: ll.lon, lat: ll.lat, ele: elevOf(x, z), cumDistM: target })
+    pts.push({ x, z, lon: ll.lon, lat: ll.lat, ele: elevOf(x, z, ll), cumDistM: target })
   }
   return pts
 }
@@ -193,7 +193,7 @@ export function sampleRoutePath(geo, waypoints, elevOf, nSamples = DEFAULT_SAMPL
     const x = dense[k].x + (dense[k + 1].x - dense[k].x) * f
     const z = dense[k].z + (dense[k + 1].z - dense[k].z) * f
     const { lon, lat } = worldToLonLat(geo, x, z)
-    out.push({ x, z, lon, lat, ele: elevOf(x, z), cumDistM: target })
+    out.push({ x, z, lon, lat, ele: elevOf(x, z, { lon, lat }), cumDistM: target })
   }
   return out
 }

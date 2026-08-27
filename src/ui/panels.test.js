@@ -124,7 +124,11 @@ describe('Analyze elevation profile', () => {
 
   it.each([
     ['dem-unavailable', '高程数据暂不可用'],
-    ['outside-coverage', '扩展地形范围后重试'],
+    ['outside-coverage', '路线地形尚未补齐'],
+    ['route-terrain-loading', '路线地形 · 正在补齐'],
+    ['route-terrain-unavailable', '路线地形暂不可用'],
+    ['route-terrain-budget', '路线较长，暂时无法补齐完整地形'],
+    ['route-terrain-cancelled', '路线已变化，地形补齐已取消'],
     ['incomplete', '至少添加起点和终点'],
   ])('renders a truthful %s state without zero or inferred values', (status, message) => {
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(canvasContext())
@@ -141,21 +145,31 @@ describe('Analyze elevation profile', () => {
     expect(card.el.querySelector('.profile-details').hidden).toBe(true)
   })
 
-  it('offers terrain expansion only for outside coverage and keeps it in the unavailable context', () => {
-    const onExpand = vi.fn()
+  it('offers retry and return-to-Plan only for recoverable corridor states without technical counts', () => {
+    const onRetry = vi.fn()
+    const onReturnPlan = vi.fn()
     const card = createProfileCard()
     card.setStage('analyze')
-    card.setCallbacks({ onExpand })
+    card.setCallbacks({ onRetry, onReturnPlan })
 
-    card.update({ status: 'outside-coverage', points: [], profile: null })
     const recovery = card.el.querySelector('.profile-recovery')
-    expect(recovery.hidden).toBe(false)
+    const returnPlan = card.el.querySelector('.profile-return-plan')
+    for (const status of ['outside-coverage', 'route-terrain-unavailable', 'route-terrain-budget', 'route-terrain-cancelled']) {
+      card.update({ status, points: [], profile: null })
+      expect(recovery.hidden).toBe(false)
+      expect(returnPlan.hidden).toBe(false)
+      expect(card.el.textContent).not.toMatch(/\b(?:DEM|tile|tiles|window)\b/i)
+      expect(card.el.textContent).not.toMatch(/\d+\s*(?:个|块)/)
+    }
     recovery.click()
-    expect(onExpand).toHaveBeenCalledOnce()
+    returnPlan.click()
+    expect(onRetry).toHaveBeenCalledOnce()
+    expect(onReturnPlan).toHaveBeenCalledOnce()
 
-    for (const status of ['incomplete', 'dem-unavailable', 'loading', 'error']) {
+    for (const status of ['incomplete', 'dem-unavailable', 'route-terrain-loading']) {
       card.update({ status, points: [], profile: null })
       expect(recovery.hidden).toBe(true)
+      expect(returnPlan.hidden).toBe(true)
     }
   })
 
