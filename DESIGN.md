@@ -137,11 +137,19 @@ The palette is terrain-neutral and high-contrast: ink and paper establish operat
 
 ## Layout
 
-The map is the continuous working surface. On desktop, three deliberately offset floating islands hold brand/search, trip identity, and view/edit actions above the uninterrupted map. A short 48px navigation rail, a 340px inset context inspector, and a centered 62px trip spine establish varied depth without forming a rigid four-edge frame. Inspectors stay at least 22px from the viewport edge; neighboring map controls reflow instead of overlapping them.
+The map is the continuous working surface. Floating control groups contain only the actions needed for the current task, frequency, and map context; they may merge, split, or move between states and viewports. Brand/search, trip identity, view/edit, destination access, and contextual tools must never be treated as a fixed island count, rail length, or component quota. Inspectors and analysis layers reflow rather than competing with map controls.
 
-At 1080px the secondary weather and layer triggers recede. At 720px and below, the command bar becomes 56px, the left rail becomes a 58px bottom navigation strip, and the itinerary becomes one bottom sheet with peek (96px), working-half, and full states. Mobile preserves the map behind the sheet, surfaces only two summary metrics, and keeps primary map operations reachable above it.
+On desktop, the default Analyze state is map-first: the route corridor, current position, and one compact analysis layer remain visible; lower-frequency operations recede to a rail, overflow, or on-demand drawer. The distilled D1 preview's three top groups, short rail, and bottom profile band are one useful arrangement for that state—not a global layout prescription. At 1080px, secondary weather and layer triggers recede before the map loses working area.
 
-**The Continuous Map Rule.** Chrome floats above the map with a visible geographic margin or collapses into the shared sheet; no open state may fragment the trip into competing dashboard columns or close the map inside a four-sided frame.
+At 720px and below, map gestures retain priority. The analysis layer becomes a shared bottom sheet with peek, working-half, and full states; it keeps the map visible, leaves the key action reachable, and can be collapsed without losing route context. A mobile control group may combine the actions represented by desktop groups; it does not reproduce desktop chrome mechanically.
+
+**The Continuous Map Rule.** Chrome floats above the map with a visible geographic margin or collapses into an analysis layer, map anchor, side context, or shared sheet according to task. No open state may fragment the trip into competing dashboard columns, form a rigid four-edge frame, or turn the map into background decoration.
+
+### Analyze hierarchy and route terrain seam
+
+Analyze starts with only what is needed to read the journey: map, Route Ember corridor, elevation profile, current position, and one core value. `路线详情`按需展示路线、高程、坡度与可用状态；内部数据来源或参数不进入用户可见层级。剖面与详情构成一个连续、可收起的信息层，无论位于底部、侧边或锚定地图，都保持地图上下文。
+
+Route Ember is the sole strong visual on the working map. Terrain outside the corridor stays low contrast; terrain detail may progressively resolve along the route. Future P6 terrain availability enters through one small truthful route-terrain status capsule (for example, `路线地形 · 正在补齐`) and corridor refinement only. It must not introduce a separate terrain-management destination or invent coverage, completion, weather, dates, risk, or analytics.
 
 ## Elevation & Depth
 
@@ -178,16 +186,16 @@ Forms are rounded, compact, and repeatable. Ordinary controls use a gently curve
 - **State:** The active choice is expressed by both fill and text contrast, never color alone.
 
 ### Navigation rail
-- **Style:** Desktop is a short 48px inset dark rail with contained 34px marks; active labels appear in a small adjacent dark chip rather than widening the navigation. Mobile becomes a light 58px bottom strip with persistent text labels.
-- **State:** Active work uses a one-pixel Route Ember rule, a quiet translucent fill, and a readable label chip on desktop; mobile uses route-orange type plus a restrained pale fill.
+- **Style:** A rail is a compact destination affordance when persistent access earns map area. Its length, placement, and labels follow task frequency and viewport; it may collapse into an overflow or shared mobile control group. Active labels appear in a small adjacent chip rather than widening the map chrome.
+- **State:** Active work uses a one-pixel Route Ember rule, a quiet translucent fill, and a readable label chip or equivalent accessible label. It never forces a fixed desktop/mobile navigation shape.
 
 ### Map context and controls
 - **Style:** Map labels use a 10px-radius light frosted context card; map-operation controls sit in a 14px-radius dark frosted group with 40px buttons.
 - **State:** Map control hover adds only a quiet translucent light fill. Context stays anchored at the map edge and never reads as a general card surface.
 
 ### Journey summary and itinerary rows
-- **Style:** Desktop uses a centered 62px floating trip spine that stops before the viewport edges. Day segments share one surface, use internal dividers, and connect time, route, distance, and weather without becoming separate cards. Expanded content appears in a 340px inset inspector. Itinerary rows remain 58px minimum inside one outlined sequence.
-- **State:** The spine expands the inspector, while selected rows use both a thin Route Ember leading rule and a 6% orange fill. Mobile reuses the existing peek/half/full sheet instead of duplicating the desktop spine.
+- **Style:** Summary, itinerary, and analysis information use one continuous lined layer rather than a fixed spine, metric wall, or card set. The layer may sit at the bottom, beside the map, or at a map anchor when that placement preserves the task's geography. Expanded route detail remains a progressive disclosure; itinerary rows stay 58px minimum inside one outlined sequence.
+- **State:** Selected rows use both a thin Route Ember leading rule and a 6% orange fill. The information layer expands, collapses, or relocates with context; mobile reuses its peek/half/full sheet instead of duplicating desktop composition.
 
 ### First-use route guidance
 - **Style:** Guidance follows the map cursor with one short action label while a compact step strip sits above the summary: `设置起点 → 添加途经点 → 确认路线`.
@@ -199,7 +207,7 @@ Forms are rounded, compact, and repeatable. Ordinary controls use a gently curve
 
 ### Settings and menus
 - **Style:** Every desktop inspector uses a compact near-black header cap, warm-paper body, 12–16px rounded boundary, fine dividers, and 40–42px controls. Overflow menus remain small, anchored, and grouped by meaning.
-- **State:** The left rail is the sole destination switcher. Planning, weather, and retention each open a single-purpose inspector with no nested category tabs; settings keeps `地图 / 地形 / 路线`. Planning orders naming, route mode and one continuous waypoint sequence, disclosed import/edit tools, then its save action. Weather reads the live route only, provides Today/Tomorrow/custom-date selection, automatically uses representative route points, and presents truthful forecast or ERA5/archive availability.
+- **State:** Destination access uses the smallest contextual rail, overflow, anchor, or drawer that keeps the map usable; no one control placement is globally mandatory. Planning, weather, saving, sharing, export, settings, and Admin each retain a discoverable single-purpose entry without competing with default Analyze. Planning orders naming, route mode and one continuous waypoint sequence, disclosed import/edit/export tools, then its save action. Weather reads the live route only, provides Today/Tomorrow/custom-date selection, automatically uses representative route points, and presents truthful forecast or ERA5/archive availability.
 
 ## Do's and Don'ts
 
