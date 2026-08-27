@@ -26,7 +26,6 @@ import { loadDem, sampleDem } from './dem.js'
 import { makeGeoContext, worldToLonLat, lonLatToWorld, TERRAIN_SIZE } from './lib/geo.js'
 import { createOverviewMap } from './ui/overviewMap.js'
 import { createPlannerWorkspace } from './ui/plannerWorkspace.js'
-import { createTerrainCustomLayer } from './map/terrainCustomLayer.js'
 import { setDrawerOpen } from './ui/drawer.js'
 import { createAdminLayer } from './ui/adminLayer.js'
 import { provinceAdcode, extractRings, clipRingToBbox, pointInRing } from './lib/adminBoundaries.js'
@@ -1432,6 +1431,7 @@ fSource
   .name('vertical scale')
   .onFinishChange(() => {
     if (params.source === 'real') regenerateTerrain()
+    overviewMap?.setTerrainExaggeration(params.demExaggeration)
     syncSettingsControls()
   })
 fSource.add({ load: () => loadRealTerrain() }, 'load').name('load location ⤓')
@@ -2398,23 +2398,11 @@ const routeActions = {
 }
 const planningPanel = createPlanningPanel(routeActions)
 planningPanel.setRouteMode(route.mode, snapState.on ? '等待路网吸附' : '仅测距；不估算时长')
-// overview inset map: click → fly the 3D camera to that lon/lat
-const plannerTerrainLayer = createTerrainCustomLayer({
-  getTerrainContext: () => {
-    if (!geo || !dem || rebuildPending || demBusy) return null
-    return {
-      terrain,
-      geo,
-      dem,
-      baseAltitude: params.source === 'real' ? dem.meanM : 0,
-    }
-  },
-})
 
 let plannerWorkspace
 let workflowStage
 const overviewMap = createOverviewMap({
-  terrainLayer: plannerTerrainLayer,
+  terrainExaggeration: params.demExaggeration,
   onTerrainUnavailable: (error) => {
     plannerWorkspace?.setStage(WORKFLOW_STAGES.PLAN)
     setLegacyFrameModeActive(false)
@@ -2474,10 +2462,12 @@ function applyPlannerView(view) {
   const accepted = overviewMap.setPlannerView(requested)
   const actual = accepted ? requested : '2d'
   plannerWorkspace?.setStage(actual === '3d' ? WORKFLOW_STAGES.ANALYZE : WORKFLOW_STAGES.PLAN)
-  setLegacyFrameModeActive(actual === '3d')
+  // Native MapLibre terrain owns its own render lifecycle. The legacy Three
+  // scheduler remains idle unless a real legacy animation explicitly needs it.
+  setLegacyFrameModeActive(false)
   document.body.classList.toggle('planner-2d', workflowStage?.stage !== WORKFLOW_STAGES.ANALYZE && actual === '2d')
   document.body.classList.toggle('planner-3d', actual === '3d')
-  overviewMap.update(route, lastRoutePts, currentViewportRect())
+  overviewMap.update(route, lastRoutePts, currentViewportRect(), { fit: false })
   if (mapWorkspaceActive) overviewMap.resize({ fit: false })
   return actual
 }
@@ -2496,7 +2486,7 @@ function runPlanRouteMutation(mutate) {
 }
 
 function fitWorkflowStage() {
-  requestAnimationFrame(() => overviewMap.resize())
+  requestAnimationFrame(() => overviewMap.resize({ fit: false }))
 }
 
 function applyWorkflowStage(stage) {
@@ -2622,16 +2612,16 @@ const mode = createModeMachine({
       applyPlannerView(plannerWorkspace.view)
       if (!dem) loadRealTerrain()
       ensureRouteLayer()
-      refreshRoute()
+      refreshRoute({ fitOverview: false })
       rail.setActive('planning')
       panelHost.show('planning', '规划行程', 'ESC 退出', planningPanel.el)
       panelHost.setCollapsed(true)
-      requestAnimationFrame(() => { overviewMap.resize(); overviewMap.update(route, lastRoutePts, currentViewportRect()) })
+      requestAnimationFrame(() => { overviewMap.resize({ fit: false }); overviewMap.update(route, lastRoutePts, currentViewportRect(), { fit: false }) })
     } else {
       document.body.classList.remove('planner-2d', 'planner-3d')
       rail.clearActive()
       panelHost.hide()
-      overviewMap.update(route, lastRoutePts, currentViewportRect())
+      overviewMap.update(route, lastRoutePts, currentViewportRect(), { fit: false })
     }
   },
 })
@@ -2814,6 +2804,7 @@ function applyNativeSetting(key, value, { commit = true } = {}) {
     if (params.source === 'real') loadRealTerrain()
   } else if (key === 'demExaggeration') {
     params.demExaggeration = value
+    overviewMap?.setTerrainExaggeration(value)
     if (commit && params.source === 'real') regenerateTerrain()
   } else if (['routeSlopeColors', 'routeArrows', 'routeTicks'].includes(key)) {
     params[key] = !!value
@@ -2961,7 +2952,7 @@ if (params.planning) {
 }
 
 // console access for debugging/scripting
-window.__exp = { scene, camera, controls, params, terrain, loadRealTerrain, loadAdminBoundaries, expandTerrainToRoute, plannerWorkspace, overviewMap, plannerTerrainLayer, get renderStats() { return { legacyFps: fps, legacyFrames: legacyFrameLoop?.frameCount ?? 0, legacyFrameLoopRunning: legacyFrameLoop?.running ?? false, plannerTerrain: overviewMap.terrainStats } }, get routeCoverage() { return lastRouteCoverage }, get terrainState() { return { demBusy, demRequestId, rebuildPending, rebuildQueued, terrainGen } }, get routingState() { return { on: snapState.on, profile: snapProfile, version: snapState.version, demKey: snapState.demKey } }, get adminState() { return adminState }, get adminInteraction() { return adminInteraction }, get adminLayer() { return adminLayer }, get labels() { return labels }, get route() { return route }, get geo() { return geo }, get dem() { return dem } }
+window.__exp = { scene, camera, controls, params, terrain, loadRealTerrain, loadAdminBoundaries, expandTerrainToRoute, plannerWorkspace, overviewMap, get renderStats() { return { legacyFps: fps, legacyFrames: legacyFrameLoop?.frameCount ?? 0, legacyFrameLoopRunning: legacyFrameLoop?.running ?? false, plannerTerrain: overviewMap.terrainState } }, get routeCoverage() { return lastRouteCoverage }, get terrainState() { return { demBusy, demRequestId, rebuildPending, rebuildQueued, terrainGen } }, get routingState() { return { on: snapState.on, profile: snapProfile, version: snapState.version, demKey: snapState.demKey } }, get adminState() { return adminState }, get adminInteraction() { return adminInteraction }, get adminLayer() { return adminLayer }, get labels() { return labels }, get route() { return route }, get geo() { return geo }, get dem() { return dem } }
 
 // real world is the default source — fetch its tiles on startup
 if (params.source === 'real') loadRealTerrain()

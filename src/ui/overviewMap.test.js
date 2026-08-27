@@ -18,6 +18,8 @@ const maplibre = vi.hoisted(() => {
       this.resizeCalls = 0
       this.fitCalls = []
       this.easeCalls = []
+      this.terrainCalls = []
+      this.terrain = null
       this.pitch = 0
       this.bearing = 0
       instances.push(this)
@@ -66,12 +68,18 @@ const maplibre = vi.hoisted(() => {
     setLayoutProperty = vi.fn()
     addSource(id, definition) {
       const source = {
+        ...definition,
         data: definition.data,
         setData: vi.fn((data) => { source.data = data }),
       }
       this.sources.set(id, source)
     }
     getSource(id) { return this.sources.get(id) }
+    setTerrain(options) {
+      if (this.terrainError) throw this.terrainError
+      this.terrain = options
+      this.terrainCalls.push(options)
+    }
     addLayer(layer) { this.layers.push(layer) }
     getLayer(id) { return this.layers.find((layer) => layer.id === id) }
     setStyle() { this.sources.clear(); this.layers = []; this.emit('style.load') }
@@ -148,51 +156,107 @@ describe('overview MapLibre planner map', () => {
     expect(instance.options.canvasContextAttributes).toEqual({ antialias: true })
     expect(instance.controls[0].control.options.compact).toBe(false)
     expect(instance.canvas.getAttribute('aria-label')).toBe('路线规划地图')
+    expect(instance.getSource('trip-native-terrain')).toBeUndefined()
+    expect(instance.terrain).toBeNull()
+  })
+
+  it('recovers a failed initial style into the same usable 2D route map', () => {
+    const onTerrainUnavailable = vi.fn()
+    const overview = createOverviewMap({ onTerrainUnavailable })
+    document.body.appendChild(overview.el)
+    overview.el.getBoundingClientRect = () => ({ left: 0, top: 0, width: 820, height: 560, right: 820, bottom: 560, x: 0, y: 0, toJSON() {} })
+    const instance = maplibre.instances[0]
+    instance.options.container.getBoundingClientRect = overview.el.getBoundingClientRect
+    overview.setPlannerMode(true)
+    overview.update({ waypoints: [{ id: 'a', lon: 113, lat: 41.2 }, { id: 'b', lon: 113.2, lat: 41.4 }] }, null, VIEWPORT)
+
+    instance.emit('error', { error: new Error('style initialization failed') })
+
+    expect(maplibre.instances).toHaveLength(1)
+    expect(overview.plannerView).toBe('2d')
+    expect(instance.terrain).toBeNull()
+    expect(instance.getSource('trip-route-waypoints').data.features.map((feature) => feature.properties.waypointId)).toEqual(['a', 'b'])
+    expect(overview.el.querySelector('.ui-map-error').textContent).toContain('已保留路线规划')
+    expect(onTerrainUnavailable).toHaveBeenCalledWith(expect.objectContaining({ message: 'style initialization failed' }))
   })
 
   it('uses the same map, route, selection, and camera context across Plan → Analyze → Plan', () => {
-    const terrainLayer = {
-      id: 'trip-three-terrain',
-      type: 'custom',
-      failed: null,
-      setFailureHandler: vi.fn(),
-      setEnabled: vi.fn(() => true),
-      getStats: vi.fn(() => ({ frames: 4, averageMs: 2, maxMs: 3 })),
-    }
-    const { overview, instance } = setup({ terrainLayer })
+    const route = { waypoints: [{ id: 'a', lon: 113, lat: 41.2 }, { id: 'b', lon: 113.2, lat: 41.4 }] }
+    const { overview, instance } = setup({ terrainExaggeration: 1.8 })
     overview.setPlannerMode(true)
-    overview.update({ waypoints: [{ id: 'a', lon: 113, lat: 41.2 }, { id: 'b', lon: 113.2, lat: 41.4 }] }, null, VIEWPORT)
-    instance.jumpTo({ center: [113.12, 41.31], zoom: 12.4 })
+    overview.update(route, null, VIEWPORT)
+    overview.setSelectedWaypoint('a')
+    instance.jumpTo({ center: [113.12, 41.31], zoom: 12.4, bearing: 27 })
     const canvas = instance.getCanvas()
     const center = { ...instance.getCenter() }
     const zoom = instance.getZoom()
+    const bearing = instance.getBearing()
+    const routeIds = instance.getSource('trip-route-waypoints').data.features.map((feature) => feature.properties.waypointId)
 
     expect(overview.setPlannerView('3d')).toBe(true)
     expect(maplibre.instances).toHaveLength(1)
     expect(instance.getCanvas()).toBe(canvas)
     expect(instance.getPitch()).toBe(55)
-    expect(instance.getBearing()).toBeLessThan(-30)
-    expect(terrainLayer.setEnabled).toHaveBeenLastCalledWith(true)
+    expect(instance.getBearing()).toBe(bearing)
+    expect(instance.getCenter()).toEqual(center)
+    expect(instance.getZoom()).toBe(zoom)
+    expect(instance.getSource('trip-native-terrain')).toMatchObject({
+      type: 'raster-dem',
+      tiles: ['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'],
+      tileSize: 256,
+      encoding: 'terrarium',
+    })
+    expect(instance.terrain).toEqual({ source: 'trip-native-terrain', exaggeration: 1.8 })
+    expect(instance.layers.some((layer) => layer.type === 'custom')).toBe(false)
     expect(instance.getLayer('trip-route-corridor')).toMatchObject({ source: 'trip-planned-route' })
     expect(instance.setPaintProperty).toHaveBeenCalledWith('trip-route-corridor', 'line-width', 18)
 
-    overview.setSelectedWaypoint('a')
-    expect(overview.setPlannerView('2d')).toBe(true)
-    expect(instance.getPitch()).toBe(0)
-    expect(instance.getBearing()).toBe(0)
+    // This is a programmatic camera correction, so it has no originalEvent
+    // and terrain readiness may restore the stage anchor.
+    instance.jumpTo({ center: [114, 42], zoom: 9, bearing: 12 })
+    instance.emit('sourcedata', { sourceId: 'trip-native-terrain', isSourceLoaded: true })
     expect(instance.getCenter()).toEqual(center)
     expect(instance.getZoom()).toBe(zoom)
-    expect(terrainLayer.setEnabled).toHaveBeenLastCalledWith(false)
+    expect(instance.getBearing()).toBe(bearing)
+    expect(instance.getPitch()).toBe(55)
+    overview.setPlannerMode(true, { editing: false })
+    expect(instance.getCenter()).toEqual(center)
+    expect(instance.getZoom()).toBe(zoom)
+    expect(instance.getBearing()).toBe(bearing)
+
+    expect(overview.setPlannerView('2d')).toBe(true)
+    expect(instance.getPitch()).toBe(0)
+    expect(instance.getBearing()).toBe(bearing)
+    expect(instance.getCenter()).toEqual(center)
+    expect(instance.getZoom()).toBe(zoom)
+    expect(instance.terrain).toBeNull()
+    expect(instance.getSource('trip-route-waypoints').data.features.map((feature) => feature.properties.waypointId)).toEqual(routeIds)
     expect(instance.getSource('trip-route-waypoints').data.features[0].properties.selected).toBe(true)
-    expect(instance.stop).toHaveBeenCalledTimes(3)
+    expect(instance.stop).toHaveBeenCalledTimes(4)
     expect(instance.easeCalls).toHaveLength(2)
-    expect(instance.easeCalls.at(-1)).toMatchObject({ pitch: 0, bearing: 0, duration: 650, essential: false })
+    expect(instance.easeCalls[0]).toMatchObject({ pitch: 55, freezeElevation: true })
+    expect(instance.easeCalls.at(-1)).toMatchObject({ pitch: 0, duration: 650, essential: false })
+  })
+
+  it('keeps a real user camera move made before terrain readiness', () => {
+    const { overview, instance } = setup()
+    overview.setPlannerMode(true)
+    overview.update({ waypoints: [{ id: 'a', lon: 113, lat: 41.2 }, { id: 'b', lon: 113.2, lat: 41.4 }] }, null, VIEWPORT)
+    overview.setPlannerView('3d')
+
+    instance.emit('dragstart', { originalEvent: { type: 'pointerdown' } })
+    instance.jumpTo({ center: [114, 42], zoom: 9, bearing: 12 })
+    instance.emit('sourcedata', { sourceId: 'trip-native-terrain', isSourceLoaded: true })
+
+    expect(instance.getCenter()).toEqual({ lng: 114, lat: 42 })
+    expect(instance.getZoom()).toBe(9)
+    expect(instance.getBearing()).toBe(12)
+    expect(instance.getPitch()).toBe(55)
   })
 
   it('retargets rapid toggles to the latest view and uses the mobile transition duration', () => {
     vi.stubGlobal('matchMedia', (query) => ({ matches: query === '(max-width: 720px)' }))
-    const terrainLayer = { id: 'trip-three-terrain', type: 'custom', setFailureHandler: vi.fn(), setEnabled: vi.fn(() => true) }
-    const { overview, instance } = setup({ terrainLayer })
+    const { overview, instance } = setup()
     overview.setPlannerMode(true)
     overview.update({ waypoints: [{ id: 'a', lon: 179.8, lat: 12 }, { id: 'b', lon: -179.8, lat: 12 }] }, null, VIEWPORT)
 
@@ -202,28 +266,27 @@ describe('overview MapLibre planner map', () => {
 
     expect(instance.stop).toHaveBeenCalledTimes(4)
     expect(instance.easeCalls.map((call) => call.duration)).toEqual([380, 380, 380])
-    expect(instance.easeCalls.at(-1)).toMatchObject({ pitch: 46, bearing: -90 })
+    expect(instance.easeCalls.at(-1)).toMatchObject({ pitch: 46 })
     expect(instance.getPitch()).toBe(46)
-    expect(instance.getBearing()).toBe(-90)
+    expect(instance.getBearing()).toBe(0)
     expect(instance.dragPan.enable).not.toHaveBeenCalled()
   })
 
   it('fits mobile Analyze without reserving space for the Plan bottom sheet', () => {
     vi.stubGlobal('matchMedia', (query) => ({ matches: query === '(max-width: 720px)' }))
-    const terrainLayer = { id: 'trip-three-terrain', type: 'custom', setFailureHandler: vi.fn(), setEnabled: vi.fn(() => true) }
-    const { overview, instance } = setup({ terrainLayer })
+    const { overview, instance } = setup()
     overview.setPlannerMode(true, { editing: false })
     overview.update({ waypoints: [{ id: 'a', lon: 113, lat: 41.2 }, { id: 'b', lon: 113.2, lat: 41.4 }] }, null, VIEWPORT)
     overview.setPlannerView('3d')
     overview.fit()
 
     expect(instance.fitCalls.at(-1).options.padding).toEqual({ top: 96, right: 48, bottom: 88, left: 48 })
+    expect(instance.fitCalls.at(-1).options.freezeElevation).toBe(true)
   })
 
   it('switches immediately for reduced-motion users without changing the map instance', () => {
     vi.stubGlobal('matchMedia', (query) => ({ matches: query === '(prefers-reduced-motion: reduce)' }))
-    const terrainLayer = { id: 'trip-three-terrain', type: 'custom', setFailureHandler: vi.fn(), setEnabled: vi.fn(() => true) }
-    const { overview, instance } = setup({ terrainLayer })
+    const { overview, instance } = setup()
     overview.setPlannerMode(true)
     const canvas = instance.getCanvas()
 
@@ -237,28 +300,49 @@ describe('overview MapLibre planner map', () => {
     expect(instance.getBearing()).toBe(0)
   })
 
-  it('returns to an operable 2D route map when the terrain layer fails', () => {
-    let fail
+  it('returns to an operable 2D route map when native terrain fails and clears only that error after retry', () => {
     const onTerrainUnavailable = vi.fn()
-    const terrainLayer = {
-      id: 'trip-three-terrain',
-      type: 'custom',
-      failed: null,
-      setFailureHandler: vi.fn((handler) => { fail = handler }),
-      setEnabled: vi.fn(() => true),
-    }
-    const { overview, instance } = setup({ terrainLayer, onTerrainUnavailable })
+    const { overview, instance } = setup({ onTerrainUnavailable })
+    const route = { waypoints: [{ id: 'a', lon: 113, lat: 41.2 }, { id: 'b', lon: 113.2, lat: 41.4 }] }
     overview.setPlannerMode(true)
-    overview.setPlannerView('3d')
-    const error = new Error('shared context failed')
-    terrainLayer.failed = error
-    fail(error)
+    overview.update(route, null, VIEWPORT)
+    overview.setSelectedWaypoint('a')
+    const error = new Error('native terrain initialization failed')
+    instance.terrainError = error
+
+    expect(overview.setPlannerView('3d')).toBe(false)
 
     expect(overview.plannerView).toBe('2d')
     expect(instance.getPitch()).toBe(0)
     expect(instance.getBearing()).toBe(0)
+    expect(instance.getSource('trip-route-waypoints').data.features.map((feature) => feature.properties.waypointId)).toEqual(['a', 'b'])
+    expect(instance.getSource('trip-route-waypoints').data.features[0].properties.selected).toBe(true)
     expect(overview.el.querySelector('.ui-map-error').classList.contains('hidden')).toBe(false)
     expect(onTerrainUnavailable).toHaveBeenCalledWith(error)
+
+    instance.terrainError = null
+    expect(overview.setPlannerView('3d')).toBe(true)
+    expect(overview.plannerView).toBe('3d')
+    expect(instance.terrain).toEqual({ source: 'trip-native-terrain', exaggeration: 1.6 })
+    expect(overview.el.querySelector('.ui-map-error').classList.contains('hidden')).toBe(true)
+  })
+
+  it('falls back to the same 2D route after a native terrain WebGL context loss', () => {
+    const onTerrainUnavailable = vi.fn()
+    const { overview, instance } = setup({ onTerrainUnavailable })
+    overview.setPlannerMode(true)
+    overview.update({ waypoints: [{ id: 'a', lon: 113, lat: 41.2 }, { id: 'b', lon: 113.2, lat: 41.4 }] }, null, VIEWPORT)
+    overview.setSelectedWaypoint('b')
+    overview.setPlannerView('3d')
+
+    instance.canvas.dispatchEvent(new Event('webglcontextlost', { cancelable: true }))
+
+    expect(overview.plannerView).toBe('2d')
+    expect(instance.terrain).toBeNull()
+    expect(instance.getPitch()).toBe(0)
+    expect(instance.getSource('trip-route-waypoints').data.features.map((feature) => feature.properties.waypointId)).toEqual(['a', 'b'])
+    expect(instance.getSource('trip-route-waypoints').data.features[1].properties.selected).toBe(true)
+    expect(onTerrainUnavailable).toHaveBeenCalledWith(expect.objectContaining({ message: 'WebGL context lost' }))
   })
 
   it('keeps the empty planner visible and sends map clicks to waypoint planning', () => {
@@ -393,15 +477,7 @@ describe('overview MapLibre planner map', () => {
     const onWaypointMoveStart = vi.fn()
     const onWaypointMove = vi.fn(() => true)
     const onWaypointMoveEnd = vi.fn()
-    const terrainLayer = {
-      id: 'trip-three-terrain',
-      type: 'custom',
-      failed: null,
-      setFailureHandler: vi.fn(),
-      setEnabled: vi.fn(() => true),
-    }
     const { overview, instance } = setup({
-      terrainLayer,
       onPlanAdd,
       onJump,
       onWaypointSelect,
@@ -427,7 +503,7 @@ describe('overview MapLibre planner map', () => {
     expect(onWaypointSelect).toHaveBeenCalledWith('a')
     instance.emit('click', { lngLat: { lng: 113.3, lat: 41.5 } })
     expect(onPlanAdd).not.toHaveBeenCalled()
-    expect(onJump).toHaveBeenCalledWith(113.3, 41.5)
+    expect(onJump).not.toHaveBeenCalled()
     expect(overview.el.querySelector('.ui-map-context').textContent).toContain('路线只读')
     expect(instance.canvas.getAttribute('aria-label')).toBe('地形分析地图')
   })
