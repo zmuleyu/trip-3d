@@ -1,5 +1,4 @@
 // Context panel contents + profile floating card. DOM only; fed by main.js.
-import { bandColumns } from '../lib/weather.js'
 import { durationContract, normalizeRouteMode } from '../lib/routePlanning.js'
 
 // ---------------------------------------------------------------- planning panel
@@ -475,28 +474,46 @@ export function createLibraryPanel(actions) {
 
 // ---------------------------------------------------------------- profile card
 export function createProfileCard(accent = '#ff4d00') {
-  const el = document.createElement('div')
+  const el = document.createElement('section')
   el.className = 'ui-profile hidden'
-  const head = document.createElement('div')
+  el.dataset.status = 'incomplete'
+  el.setAttribute('aria-label', '路线高程剖面')
+  const head = document.createElement('button')
+  head.type = 'button'
   head.className = 'head'
   const title = document.createElement('span')
-  title.textContent = '高程剖面'
+  title.textContent = '路线高程'
   const fold = document.createElement('span')
   fold.className = 'fold'
-  fold.textContent = '收起 ▾'
+  fold.textContent = '收起'
   head.append(title, fold)
+  head.setAttribute('aria-expanded', 'true')
+  const body = document.createElement('div')
+  body.className = 'profile-body'
+  const metrics = document.createElement('div')
+  metrics.className = 'profile-metrics'
+  const status = document.createElement('p')
+  status.className = 'profile-status'
+  status.setAttribute('aria-live', 'polite')
   const canvas = document.createElement('canvas')
   canvas.width = 596
   canvas.height = 110
-  el.append(head, canvas)
+  canvas.setAttribute('role', 'img')
+  const source = document.createElement('small')
+  source.className = 'profile-source'
+  body.append(metrics, status, canvas, source)
+  el.append(head, body)
   document.body.appendChild(el)
+  let stage = 'plan'
   let folded = false
   let lastPts = null
   let cbs = { onHover: null, onSelect: null }
+  const syncVisibility = () => el.classList.toggle('hidden', stage !== 'analyze')
   head.onclick = () => {
     folded = !folded
     el.classList.toggle('folded', folded)
-    fold.textContent = folded ? '展开 ▸' : '收起 ▾'
+    head.setAttribute('aria-expanded', String(!folded))
+    fold.textContent = folded ? '展开' : '收起'
   }
   const indexAt = (e) => {
     if (!lastPts || lastPts.length < 2) return null
@@ -516,76 +533,58 @@ export function createProfileCard(accent = '#ff4d00') {
   })
   return {
     el,
+    setStage(next) {
+      stage = next === 'analyze' ? 'analyze' : 'plan'
+      syncVisibility()
+    },
     setCallbacks(next) { cbs = { ...cbs, ...next } },
-    // weatherDays (optional): aggregated TripWeatherDay[] — when provided, a
-    // trip-day-axis band is drawn above the profile; when omitted, band clears.
-    update(stats, pts, weatherDays, dayBounds) {
-      if (!pts || pts.length < 2) {
-        el.classList.add('hidden')
+    update(analysis = {}) {
+      const ready = analysis.status === 'ready' && analysis.points?.length >= 2 && analysis.profile
+      el.dataset.status = analysis.status ?? 'dem-unavailable'
+      metrics.replaceChildren()
+      const ctx = canvas.getContext('2d')
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+      if (!ready) {
         lastPts = null
+        canvas.classList.add('hidden')
+        source.textContent = ''
+        status.textContent = {
+          incomplete: '至少添加起点和终点',
+          'outside-coverage': '路线超出范围，扩展地形范围后重试',
+          'dem-unavailable': '高程数据暂不可用',
+        }[analysis.status] ?? '高程数据暂不可用'
+        canvas.setAttribute('aria-label', status.textContent)
+        syncVisibility()
         return
       }
-      lastPts = pts
-      el.classList.remove('hidden')
-      title.textContent = `高程剖面 · ${(stats.distanceM / 1000).toFixed(1)} km · 最高 ${stats.maxEle}m`
-      const ctx = canvas.getContext('2d')
-      const { width: W, height: H } = canvas
-      ctx.clearRect(0, 0, W, H)
-      const BAND_H = 12
-      const hasBand = Array.isArray(weatherDays) && weatherDays.length > 0
-      const bandTop = 2
-      const profileTop = hasBand ? bandTop + BAND_H + 6 : bandTop
-      // trip-day band: segmented by route-day fractions when dayEnds exist
-      if (hasBand) {
-        const cols = bandColumns(dayBounds, weatherDays.length)
-        for (const c of cols) {
-          const d = weatherDays[c.dayIndex]
-          const x = 10 + c.x0 * (W - 20)
-          const w = Math.max((c.x1 - c.x0) * (W - 20) - 1, 1)
-          ctx.fillStyle = !d ? 'rgba(23,25,27,0.12)' : d.isRain ? 'rgba(74,144,217,0.55)' : 'rgba(240,234,214,0.7)'
-          ctx.fillRect(x, bandTop, w, BAND_H)
-          if (d && (weatherDays.length <= 8 || c.dayIndex === 0 || c.dayIndex === weatherDays.length - 1)) {
-            ctx.fillStyle = '#17191b'
-            ctx.font = '8px monospace'
-            ctx.textAlign = 'center'
-            ctx.fillText(d.date.slice(5), x + w / 2, bandTop + 9)
-          }
-        }
-        ctx.textAlign = 'left'
+      const { points, profile } = analysis
+      lastPts = points
+      canvas.classList.remove('hidden')
+      status.textContent = `${(profile.distanceM / 1000).toFixed(1)} km · 高程可用`
+      source.textContent = 'Terrarium 原始米制高程'
+      for (const text of [
+        `最低 ${Math.round(profile.minElevationM).toLocaleString('zh-CN')} m`,
+        `最高 ${Math.round(profile.maxElevationM).toLocaleString('zh-CN')} m`,
+      ]) {
+        const item = document.createElement('span')
+        item.textContent = text
+        metrics.appendChild(item)
       }
-      // elevation profile
-      const eles = pts.map((p) => p.ele)
-      const min = Math.min(...eles), max = Math.max(...eles), span = Math.max(max - min, 1)
+      canvas.setAttribute('aria-label', `路线高程剖面，最低 ${Math.round(profile.minElevationM)} 米，最高 ${Math.round(profile.maxElevationM)} 米`)
+      const { width: W, height: H } = canvas
+      const min = profile.minElevationM
+      const max = profile.maxElevationM
+      const span = Math.max(max - min, 1)
       ctx.strokeStyle = accent
       ctx.lineWidth = 2
       ctx.beginPath()
-      pts.forEach((p, i) => {
-        const x = (i / (pts.length - 1)) * (W - 20) + 10
-        const yy = profileTop + (1 - (p.ele - min) / span) * (H - 16 - profileTop)
-        i ? ctx.lineTo(x, yy) : ctx.moveTo(x, yy)
+      points.forEach((point, index) => {
+        const x = (index / (points.length - 1)) * (W - 24) + 12
+        const yy = 8 + (1 - (point.ele - min) / span) * (H - 18)
+        index ? ctx.lineTo(x, yy) : ctx.moveTo(x, yy)
       })
       ctx.stroke()
-      // day boundary separators (multi-day segmentation): accent dashed verticals
-      if (Array.isArray(dayBounds) && dayBounds.length) {
-        ctx.save()
-        ctx.strokeStyle = accent
-        ctx.globalAlpha = 0.75
-        ctx.setLineDash([3, 3])
-        ctx.lineWidth = 1
-        for (const b of dayBounds) {
-          const x = 10 + b.frac * (W - 20)
-          ctx.beginPath()
-          ctx.moveTo(x, profileTop - 2)
-          ctx.lineTo(x, H - 6)
-          ctx.stroke()
-          ctx.fillText(`D${b.day}`, x + 2, profileTop + 8)
-        }
-        ctx.restore()
-      }
-      ctx.fillStyle = '#17191b'
-      ctx.font = '10px monospace'
-      ctx.fillText(`${Math.round(min)} m`, 10, H - 4)
-      ctx.fillText(`${Math.round(max)} m`, 10, profileTop + 10)
+      syncVisibility()
     },
   }
 }

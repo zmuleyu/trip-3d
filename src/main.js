@@ -35,7 +35,8 @@ import { computeRegionRouteStats, formatRouteStats } from './lib/adminRouteStats
 import { createAdminBoundaryUI } from './ui/adminPanel.js'
 import { createSharePanel, renderPoster } from './ui/sharePanel.js'
 import { buildPosterData } from './lib/poster.js'
-import { createRoute, addWaypoint, insertWaypoint, removeWaypoint, moveWaypoint, reverseWaypoints, closeLoop, toggleDayEnd, normalizeDayEnds, dayNumberAt, routeStats, routeFingerprint, samplePolyline } from './lib/route.js'
+import { createRoute, addWaypoint, insertWaypoint, removeWaypoint, moveWaypoint, reverseWaypoints, closeLoop, toggleDayEnd, normalizeDayEnds, dayNumberAt, routeStats, routeFingerprint } from './lib/route.js'
+import { analyzeRouteElevation, syncRouteAnalysisConsumer } from './lib/routeAnalysis.js'
 import { sunPosition, shadeFraction } from './lib/sun.js'
 import { resamplePath, flyoverDuration, cameraFrame } from './lib/flyover.js'
 import { createHistory } from './lib/history.js'
@@ -47,7 +48,7 @@ import { encodeShare, decodeShare } from './lib/share.js'
 import { createModeMachine, MODES } from './ui/mode.js'
 import { createRail, createPanelHost, createLayerButtons, createToast } from './ui/chrome.js'
 import { iconSvg } from './ui/icons.js'
-import { createPlanningPanel, createLibraryPanel } from './ui/panels.js'
+import { createPlanningPanel, createLibraryPanel, createProfileCard } from './ui/panels.js'
 import { createWeatherPanel } from './ui/weatherPanel.js'
 import { createSettingsPanel } from './ui/settingsPanel.js'
 import { formatSummary, loadSummaryPreferences, saveSummaryPreferences } from './ui/summaryPreferences.js'
@@ -787,6 +788,7 @@ let dem = null
 let demBusy = false
 let demRequestId = 0
 let settingsPanel = null
+let profileCard = null
 let mapWorkspaceActive = false
 let layerBtns = null
 let settingsTerrainReadyText = ''
@@ -829,6 +831,11 @@ async function loadRealTerrain() {
     if (requestId !== demRequestId) return
     console.error('DEM load failed:', err)
     settingsPanel?.setTerrainStatus('error', '高程数据加载失败，请检查网络后重试。')
+    if (!dem) {
+      lastRouteAnalysis = analyzeRouteElevation({ route, geo, sampleElevation: null })
+      lastRoutePts = []
+      profileCard?.update(lastRouteAnalysis)
+    }
     loadingEl.textContent = 'elevation fetch failed — check connection'
     setTimeout(() => {
       loadingEl.classList.add('hidden')
@@ -1088,6 +1095,7 @@ function regenerateTerrain() {
 // ------------------------------------------------------------------ route planning
 let geo = null // makeGeoContext(dem), set in loadRealTerrain
 let route = createRoute()
+let lastRouteAnalysis = analyzeRouteElevation({ route })
 let routeLayer = null
 let selectedWaypointId = null
 let waypointPreviewing = false
@@ -1174,48 +1182,82 @@ function cancelWaypointMove(id) {
   refreshRoute({ recordHistory: false, fitOverview: false })
 }
 
+function refreshUnavailableRouteAnalysis(coordinates, { recordHistory, fitOverview }) {
+  routeLayer?.clear()
+  lastRoutePts = []
+  profileCard?.update(lastRouteAnalysis)
+  normalizeDayEnds(route)
+  if (recordHistory) routeHistory.record(route)
+  updateRouteUI(route, {
+    distanceM: routeDistanceMeters(coordinates),
+    ascentM: null,
+    descentM: null,
+    maxEle: null,
+    minEle: null,
+    driveMinutes: null,
+  }, [], { fitOverview })
+  if (weatherState.result && weatherState.revision !== route.revision) weatherState.requestId++
+  if (adminInteraction.selected) scheduleAdminRouteStat()
+}
+
 function refreshRoute({ recordHistory = true, fitOverview = true } = {}) {
-  if (!routeLayer || !geo || !dem) return
   reconcileWaypointSelection()
+  if (!geo || !dem) {
+    lastRouteAnalysis = analyzeRouteElevation({ route, geo, sampleElevation: null })
+    lastRoutePts = []
+    profileCard?.update(lastRouteAnalysis)
+    plannerWorkspace?.setAnalyzeAvailable(routeCanBeAnalyzed(route))
+    workflowStage?.reconcile()
+    return
+  }
+  if (!routeLayer) ensureRouteLayer()
+  if (!routeLayer) return
   const coordinates = activeRouteCoordinates()
   lastRouteCoverage = route.waypoints.length >= 2
     ? routeCoverage(geo, coordinates, TERRAIN_SIZE)
     : { covered: true, outsideCount: 0, total: coordinates.length, bounds: null }
   plannerWorkspace?.setCoverage(lastRouteCoverage)
   if (!lastRouteCoverage.covered) {
-    routeLayer.update([], { selectedWaypointId })
-    lastRoutePts = []
-    normalizeDayEnds(route)
-    if (recordHistory) routeHistory.record(route)
-    updateRouteUI(route, {
-      distanceM: routeDistanceMeters(coordinates),
-      ascentM: null,
-      descentM: null,
-      maxEle: null,
-      minEle: null,
-      driveMinutes: null,
-    }, [], { fitOverview })
-    if (weatherState.result && weatherState.revision !== route.revision) weatherState.requestId++
-    if (adminInteraction.selected) scheduleAdminRouteStat()
+    lastRouteAnalysis = analyzeRouteElevation({
+      route,
+      geo,
+      sampleElevation: elevOfWorld,
+      coverage: lastRouteCoverage,
+    })
+    refreshUnavailableRouteAnalysis(coordinates, { recordHistory, fitOverview })
     return
   }
-  // snapped geometry (WGS-84) is re-sampled with CURRENT geo/elevOf getters each
-  // refresh — never cache world-space pts across DEM switches (review #8)
-  let pathPts = null
-  if (!waypointPreviewing && snapState.on && snapState.geometry && snapState.version === snapVersion() && snapState.demKey === currentDemKey()) {
-    pathPts = samplePolyline(geo, snapState.geometry, elevOfWorld)
-  }
-  const pts = routeLayer.update(route.waypoints, {
-    slopeColors: params.routeSlopeColors,
-    arrows: params.routeArrows,
-    ticks: params.routeTicks,
-    pathPts,
-    selectedWaypointId,
+  // Raw DEM analysis owns route-point production. Renderers and downstream
+  // consumers receive the same immutable-by-convention point set.
+  const snappedGeometry = !waypointPreviewing && snapState.on && snapState.geometry && snapState.version === snapVersion() && snapState.demKey === currentDemKey()
+    ? snapState.geometry
+    : null
+  lastRouteAnalysis = analyzeRouteElevation({
+    route,
+    snappedGeometry,
+    geo,
+    sampleElevation: elevOfWorld,
+    coverage: lastRouteCoverage,
   })
+  const legacyState = syncRouteAnalysisConsumer(lastRouteAnalysis, {
+    render: (points) => routeLayer.update(route.waypoints, {
+      slopeColors: params.routeSlopeColors,
+      arrows: params.routeArrows,
+      ticks: params.routeTicks,
+      pathPts: points,
+      selectedWaypointId,
+    }),
+  })
+  if (legacyState !== 'ready') {
+    refreshUnavailableRouteAnalysis(coordinates, { recordHistory, fitOverview })
+    return
+  }
+  const pts = lastRouteAnalysis.points
   lastRoutePts = pts
+  profileCard?.update(lastRouteAnalysis)
   normalizeDayEnds(route) // id-based markers: drop refs to deleted waypoints
   if (recordHistory) routeHistory.record(route) // safe: dedup no-ops on non-route refreshes
-  updateRouteUI(route, pts.length ? routeStats(pts) : null, pts, { fitOverview })
+  updateRouteUI(route, lastRouteAnalysis.stats, pts, { fitOverview })
   // route edited → any in-flight weather query for the old revision is void
   if (weatherState.result && weatherState.revision !== route.revision) weatherState.requestId++
   if (adminInteraction.selected) scheduleAdminRouteStat() // route change → recompute L4 stat
@@ -2397,6 +2439,7 @@ const routeActions = {
   },
 }
 const planningPanel = createPlanningPanel(routeActions)
+profileCard = createProfileCard(params.hudAccent)
 planningPanel.setRouteMode(route.mode, snapState.on ? '等待路网吸附' : '仅测距；不估算时长')
 
 let plannerWorkspace
@@ -2491,6 +2534,7 @@ function fitWorkflowStage() {
 
 function applyWorkflowStage(stage) {
   const analyze = stage === WORKFLOW_STAGES.ANALYZE
+  profileCard?.setStage(stage)
   document.body.classList.toggle('analyze-operate', analyze)
   if (analyze) {
     if (mode?.isPlanning()) mode.exitPlanning()
@@ -2952,7 +2996,7 @@ if (params.planning) {
 }
 
 // console access for debugging/scripting
-window.__exp = { scene, camera, controls, params, terrain, loadRealTerrain, loadAdminBoundaries, expandTerrainToRoute, plannerWorkspace, overviewMap, get renderStats() { return { legacyFps: fps, legacyFrames: legacyFrameLoop?.frameCount ?? 0, legacyFrameLoopRunning: legacyFrameLoop?.running ?? false, plannerTerrain: overviewMap.terrainState } }, get routeCoverage() { return lastRouteCoverage }, get terrainState() { return { demBusy, demRequestId, rebuildPending, rebuildQueued, terrainGen } }, get routingState() { return { on: snapState.on, profile: snapProfile, version: snapState.version, demKey: snapState.demKey } }, get adminState() { return adminState }, get adminInteraction() { return adminInteraction }, get adminLayer() { return adminLayer }, get labels() { return labels }, get route() { return route }, get geo() { return geo }, get dem() { return dem } }
+window.__exp = { scene, camera, controls, params, terrain, loadRealTerrain, loadAdminBoundaries, expandTerrainToRoute, plannerWorkspace, overviewMap, get renderStats() { return { legacyFps: fps, legacyFrames: legacyFrameLoop?.frameCount ?? 0, legacyFrameLoopRunning: legacyFrameLoop?.running ?? false, plannerTerrain: overviewMap.terrainState } }, get routeCoverage() { return lastRouteCoverage }, get routeAnalysis() { return lastRouteAnalysis }, get terrainState() { return { demBusy, demRequestId, rebuildPending, rebuildQueued, terrainGen } }, get routingState() { return { on: snapState.on, profile: snapProfile, version: snapState.version, demKey: snapState.demKey } }, get adminState() { return adminState }, get adminInteraction() { return adminInteraction }, get adminLayer() { return adminLayer }, get labels() { return labels }, get route() { return route }, get geo() { return geo }, get dem() { return dem } }
 
 // real world is the default source — fetch its tiles on startup
 if (params.source === 'real') loadRealTerrain()
