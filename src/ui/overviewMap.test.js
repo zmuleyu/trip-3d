@@ -160,6 +160,75 @@ describe('overview MapLibre planner map', () => {
     expect(instance.terrain).toBeNull()
   })
 
+  it('keeps one transient Analyze cursor source and routes map hover/tap back without editing or jumping', () => {
+    const onAnalysisCursor = vi.fn()
+    const onJump = vi.fn()
+    const { overview, instance } = setup({ onAnalysisCursor, onJump })
+    const route = { waypoints: [{ id: 'a', lon: 100, lat: 30 }, { id: 'b', lon: 101, lat: 30 }] }
+    const points = [
+      { lon: 100, lat: 30, ele: 1000, cumDistM: 0 },
+      { lon: 101, lat: 30, ele: 1200, cumDistM: 1000 },
+    ]
+    overview.setPlannerMode(true, { editing: false })
+    overview.update(route, points, VIEWPORT)
+    overview.setPlannerView('3d')
+    overview.setAnalysisCursor({ points, distanceM: 500 })
+    expect(instance.getSource('trip-analysis-cursor').data.features).toHaveLength(1)
+    expect(instance.layers.filter((layer) => layer.id === 'trip-analysis-cursor')).toHaveLength(1)
+    const repeated = [
+      { lon: 100, lat: 30, ele: 1000, cumDistM: 0 },
+      { lon: 100, lat: 30, ele: 1100, cumDistM: 0 },
+    ]
+    overview.setAnalysisCursor({ points: repeated, distanceM: 0 })
+    expect(instance.getSource('trip-analysis-cursor').data.features[0].geometry.coordinates).toEqual([100, 30])
+    overview.setAnalysisCursor({ points, distanceM: 500 })
+
+    const routeFeature = { layer: { source: 'trip-planned-route' } }
+    instance.emit('mousemove', { features: [routeFeature], lngLat: { lng: 100.25, lat: 30 } })
+    expect(onAnalysisCursor).toHaveBeenLastCalledWith(expect.closeTo(250, 4))
+    expect(instance.dragPan.disable).not.toHaveBeenCalled()
+    instance.emit('click', { features: [routeFeature], lngLat: { lng: 100.75, lat: 30 } })
+    expect(onAnalysisCursor).toHaveBeenLastCalledWith(expect.closeTo(750, 4))
+    expect(onJump).not.toHaveBeenCalled()
+
+    instance.canvas.dispatchEvent(new Event('pointerleave'))
+    expect(onAnalysisCursor).toHaveBeenLastCalledWith(null)
+    overview.setPlannerView('2d')
+    expect(instance.getSource('trip-analysis-cursor').data.features).toHaveLength(0)
+  })
+
+  it('keeps weather, waypoint, and drag-suppression click priority before a queried route cursor', () => {
+    const onAnalysisCursor = vi.fn()
+    const onWaypointSelect = vi.fn()
+    const onJump = vi.fn()
+    const { overview, instance } = setup({ onAnalysisCursor, onWaypointSelect, onJump })
+    const route = { waypoints: [{ id: 'a', lon: 100, lat: 30 }, { id: 'b', lon: 101, lat: 30 }] }
+    const points = [
+      { lon: 100, lat: 30, ele: 1000, cumDistM: 0 },
+      { lon: 101, lat: 30, ele: 1200, cumDistM: 1000 },
+    ]
+    const routeFeature = { layer: { id: 'trip-route-line', source: 'trip-planned-route' } }
+    const waypointFeature = { layer: { id: 'trip-waypoint-circles', source: 'trip-route-waypoints' }, properties: { waypointId: 'a' } }
+    overview.setPlannerMode(true, { editing: false })
+    overview.update(route, points, VIEWPORT)
+    overview.setPlannerView('3d')
+    overview.setAnalysisCursor({ points, distanceM: 500 })
+
+    instance.renderedFeatures = [waypointFeature, routeFeature]
+    instance.emit('click', { point: { x: 20, y: 20 }, lngLat: { lng: 100.25, lat: 30 } })
+    expect(onWaypointSelect).toHaveBeenCalledWith('a')
+    expect(onAnalysisCursor).not.toHaveBeenCalled()
+
+    instance.renderedFeatures = [routeFeature]
+    instance.emit('click', { point: { x: 20, y: 20 }, lngLat: { lng: 100.75, lat: 30 } })
+    expect(onAnalysisCursor).toHaveBeenCalledWith(expect.closeTo(750, 4))
+    expect(onJump).not.toHaveBeenCalled()
+
+    overview.setPlannerView('2d')
+    instance.emit('click', { point: { x: 20, y: 20 }, lngLat: { lng: 100.75, lat: 30 } })
+    expect(onJump).toHaveBeenCalledWith(100.75, 30)
+  })
+
   it('recovers a failed initial style into the same usable 2D route map', () => {
     const onTerrainUnavailable = vi.fn()
     const overview = createOverviewMap({ onTerrainUnavailable })

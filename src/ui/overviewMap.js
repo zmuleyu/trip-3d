@@ -7,6 +7,7 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import { iconSvg } from './icons.js'
 import { adminOverlayGeoJSON, weatherOverlayGeoJSON } from '../map/overlayAdapters.js'
 import { TERRARIUM_TILE_SIZE, TERRARIUM_TILE_URL_TEMPLATE } from '../dem.js'
+import { analysisPointsReady, nearestAnalysisDistance, sampleAnalysisAtDistance } from '../lib/analysisCursor.js'
 
 const OPENFREEMAP_STYLE = 'https://tiles.openfreemap.org/styles/positron'
 const FALLBACK_STYLE = {
@@ -27,6 +28,7 @@ const SOURCE_IDS = {
   route: 'trip-planned-route',
   weather: 'trip-route-weather',
   waypoints: 'trip-route-waypoints',
+  cursor: 'trip-analysis-cursor',
 }
 
 const EMPTY_FEATURE_COLLECTION = Object.freeze({ type: 'FeatureCollection', features: [] })
@@ -141,6 +143,7 @@ function addPlannerLayers(map) {
   map.addSource(SOURCE_IDS.route, { type: 'geojson', data: EMPTY_FEATURE_COLLECTION })
   map.addSource(SOURCE_IDS.weather, { type: 'geojson', data: EMPTY_FEATURE_COLLECTION })
   map.addSource(SOURCE_IDS.waypoints, { type: 'geojson', data: EMPTY_FEATURE_COLLECTION })
+  map.addSource(SOURCE_IDS.cursor, { type: 'geojson', data: EMPTY_FEATURE_COLLECTION })
 
   map.addLayer({
     id: 'trip-terrain-coverage-fill',
@@ -193,6 +196,17 @@ function addPlannerLayers(map) {
     source: SOURCE_IDS.route,
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: { 'line-color': ACCENT, 'line-width': 3.5 },
+  })
+  map.addLayer({
+    id: 'trip-analysis-cursor',
+    type: 'circle',
+    source: SOURCE_IDS.cursor,
+    paint: {
+      'circle-radius': 6,
+      'circle-color': '#ff4d00',
+      'circle-stroke-color': '#ffffff',
+      'circle-stroke-width': 2,
+    },
   })
   map.addLayer({
     id: 'trip-weather-markers',
@@ -277,7 +291,7 @@ function addPlannerLayers(map) {
 export function createOverviewMap({
   terrainExaggeration = 1.6, onTerrainUnavailable, onJump, onPlanAdd, onWaypointSelect,
   onWaypointMoveStart, onWaypointMove, onWaypointMoveEnd, onWaypointMoveCancel,
-  onWeatherDetails,
+  onWeatherDetails, onAnalysisCursor,
 } = {}) {
   const el = document.createElement('div')
   el.className = 'ui-overview hidden'
@@ -391,6 +405,7 @@ export function createOverviewMap({
   let attributionControlContainer = null
   let attributionMapParent = null
   let selectedWaypointId = null
+  let analysisCursor = { points: null, distanceM: null }
   let adminOverlay = { enabled: false, rings: [], selected: null }
   let weatherOverlay = { routeRevision: -1, weatherRevision: -1, result: null }
   let weatherData = EMPTY_FEATURE_COLLECTION
@@ -595,6 +610,13 @@ export function createOverviewMap({
     weatherData = weatherOverlayGeoJSON(weatherOverlay)
     map.getSource(SOURCE_IDS.weather)?.setData(weatherData)
     map.getSource(SOURCE_IDS.waypoints)?.setData(featureCollection(waypointFeatures(lastRoute, selectedWaypointId)))
+    const sample = plannerMode && plannerView === '3d'
+      ? sampleAnalysisAtDistance(analysisCursor.points, analysisCursor.distanceM)
+      : null
+    const cursorData = sample
+      ? featureCollection([{ type: 'Feature', properties: { distanceM: sample.distanceM, ele: sample.ele }, geometry: { type: 'Point', coordinates: [sample.lon, sample.lat] } }])
+      : EMPTY_FEATURE_COLLECTION
+    map.getSource(SOURCE_IDS.cursor)?.setData(cursorData)
   }
 
   const weatherCondition = (code) => {
@@ -823,6 +845,23 @@ export function createOverviewMap({
       .find((feature) => feature.properties?.waypointId) ?? null
   }
 
+  function routeFeatureAt(event) {
+    const fromEvent = event.features?.find((feature) => feature.layer?.source === SOURCE_IDS.route)
+    if (fromEvent) return fromEvent
+    if (!event.point) return null
+    return map.queryRenderedFeatures(event.point, { layers: ['trip-route-line'] })
+      .find((feature) => feature.layer?.source === SOURCE_IDS.route) ?? null
+  }
+
+  function requestAnalysisCursor(event) {
+    if (!plannerMode || plannerView !== '3d' || editingMode || !analysisPointsReady(analysisCursor.points)) return false
+    if (!routeFeatureAt(event) || !event.lngLat) return false
+    const distanceM = nearestAnalysisDistance(analysisCursor.points, event.lngLat.lng, event.lngLat.lat)
+    if (!Number.isFinite(distanceM)) return false
+    onAnalysisCursor?.(distanceM)
+    return true
+  }
+
   function startWaypointDrag(event) {
     if (!plannerMode || !editingMode || event.originalEvent?.button > 0) return
     const feature = waypointFeature(event)
@@ -895,6 +934,7 @@ export function createOverviewMap({
   map.on('touchstart', 'trip-waypoint-circles', startWaypointDrag)
   map.on('mousemove', moveWaypointDrag)
   map.on('mousemove', movePlanningGuide)
+  map.on('mousemove', requestAnalysisCursor)
   map.on('touchmove', moveWaypointDrag)
   map.on('mouseup', endWaypointDrag)
   map.on('touchend', endWaypointDrag)
@@ -942,10 +982,14 @@ export function createOverviewMap({
       suppressMapClickTimer = null
       return
     }
+    if (requestAnalysisCursor(event)) return
     if (plannerMode && plannerView === '3d' && !editingMode) return
     const { lng, lat } = event.lngLat
     if (editingMode && onPlanAdd) onPlanAdd(lng, lat)
     else onJump?.(lng, lat)
+  })
+  map.getCanvas().addEventListener('pointerleave', (event) => {
+    if (event.pointerType !== 'touch' && plannerView === '3d') onAnalysisCursor?.(null)
   })
 
   zoomIn.onclick = () => map.zoomIn({ duration: 160 })
@@ -967,8 +1011,12 @@ export function createOverviewMap({
       el.classList.toggle('planner', plannerMode)
       el.classList.toggle('editing', editingMode)
       if (plannerMode) el.classList.remove('hidden')
-      if (!plannerMode) plannerView = '2d'
+      if (!plannerMode) {
+        plannerView = '2d'
+        analysisCursor.distanceM = null
+      }
       setInteractionForView({ animate: false })
+      syncPlannerData()
       updateChrome()
       decorateCanvas()
       requestAnimationFrame(() => resize({ fit: false }))
@@ -980,8 +1028,10 @@ export function createOverviewMap({
         return false
       }
       plannerView = requested
+      if (requested === '2d') analysisCursor.distanceM = null
       lastFitKey = ''
       setInteractionForView()
+      syncPlannerData()
       if (requested === '3d') syncNativeTerrainCamera()
       updateChrome()
       decorateCanvas()
@@ -1011,6 +1061,13 @@ export function createOverviewMap({
     focusPlanner() { map.getCanvas().focus() },
     setSelectedWaypoint(id) {
       selectedWaypointId = id ?? null
+      syncPlannerData()
+    },
+    setAnalysisCursor({ points, distanceM } = {}) {
+      analysisCursor = {
+        points: analysisPointsReady(points) ? points : null,
+        distanceM: Number.isFinite(distanceM) ? distanceM : null,
+      }
       syncPlannerData()
     },
     setAdminOverlay(next) {
