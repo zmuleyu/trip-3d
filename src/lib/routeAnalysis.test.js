@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import { makeGeoContext, worldToLonLat } from './geo.js'
-import { analyzeRouteElevation, consumeReadyRouteAnalysis, syncRouteAnalysisConsumer } from './routeAnalysis.js'
+import { analyzeRouteElevation, consumeReadyRouteAnalysis, deriveRouteGrade, sampleRouteGradeAtDistance, syncRouteAnalysisConsumer } from './routeAnalysis.js'
 
-const dem = { lat: 31.108, lon: 102.884, zoom: 12, size: 768 }
+const dem = { lat: 31.108, lon: 102.884, zoom: 12, size: 768, metersPerPixel: 30 }
 const geo = makeGeoContext(dem)
 const lonLat = (x, z) => worldToLonLat(geo, x, z)
 const waypoint = (id, x, z) => ({ id, name: id, ...lonLat(x, z), ele: 0 })
@@ -33,6 +33,8 @@ describe('raw DEM route analysis', () => {
     })
     expect(base.stats.minEle).toBe(Math.round(base.profile.minElevationM))
     expect(base.stats.maxEle).toBe(Math.round(base.profile.maxElevationM))
+    expect(base.grade).toEqual(exaggeratedVisualRequest.grade)
+    expect(base.grade.status).toBe('ready')
   })
 
   it('uses snapped and non-snapped geometry through the same result contract', () => {
@@ -47,7 +49,7 @@ describe('raw DEM route analysis', () => {
     })
 
     for (const result of [direct, snapped]) {
-      expect(Object.keys(result).sort()).toEqual(['points', 'profile', 'stats', 'status'])
+      expect(Object.keys(result).sort()).toEqual(['grade', 'points', 'profile', 'stats', 'status'])
       expect(result.status).toBe('ready')
       expect(result.points).toHaveLength(240)
       expect(result.profile.distanceM).toBe(result.stats.distanceM)
@@ -56,7 +58,7 @@ describe('raw DEM route analysis', () => {
   })
 
   it('fails closed for incomplete routes, missing DEM access, and coverage gaps', () => {
-    const expected = (status) => ({ status, points: [], profile: null, stats: null })
+    const expected = (status) => ({ status, points: [], profile: null, stats: null, grade: null })
     expect(analyzeRouteElevation({ route: { waypoints: [route.waypoints[0]] }, geo, sampleElevation: rawElevation }))
       .toEqual(expected('incomplete'))
     expect(analyzeRouteElevation({ route, geo: null, sampleElevation: rawElevation }))
@@ -71,7 +73,7 @@ describe('raw DEM route analysis', () => {
     const analysis = analyzeRouteElevation({ route, geo, sampleElevation: () => Number.NaN, coverage: { covered: true } })
     const legacyUpdate = vi.fn()
 
-    expect(analysis).toEqual({ status: 'dem-unavailable', points: [], profile: null, stats: null })
+    expect(analysis).toEqual({ status: 'dem-unavailable', points: [], profile: null, stats: null, grade: null })
     expect(consumeReadyRouteAnalysis(analysis, legacyUpdate)).toBe(false)
     expect(legacyUpdate).not.toHaveBeenCalled()
   })
@@ -100,5 +102,55 @@ describe('raw DEM route analysis', () => {
     expect(clear).toHaveBeenCalledExactlyOnceWith()
     expect(route).toBe(routeIdentity)
     expect(route.waypoints.map((point) => point.id)).toEqual(['A', 'B'])
+  })
+})
+
+describe('trusted route grade', () => {
+  const gradeGeo = (metersPerPixel = 20, point = { px: 5, py: 5 }) => ({
+    dem: { metersPerPixel, size: 10 },
+    worldToPx: () => point,
+  })
+  const points = [
+    { x: 0, z: 0, ele: 100, cumDistM: 0 },
+    { x: 1, z: 0, ele: 120, cumDistM: 200 },
+    { x: 2, z: 0, ele: 140, cumDistM: 400 },
+  ]
+
+  it('uses a signed percent secant over a resolution-aware window and distance-weighted average', () => {
+    const grade = deriveRouteGrade(points, gradeGeo())
+
+    expect(grade).toMatchObject({
+      status: 'ready',
+      minimumRunM: 100,
+      sampleSpacingM: 200,
+      windowM: 800,
+      averageAbsPct: 10,
+      maxUphillPct: 10,
+      maxDownhillPct: null,
+    })
+    expect(sampleRouteGradeAtDistance(grade, 100)).toBeCloseTo(10, 8)
+  })
+
+  it('keeps downhill negative and does not substitute degrees for percent', () => {
+    const descending = points.map((point) => ({ ...point, ele: 140 - point.cumDistM / 10 }))
+    const grade = deriveRouteGrade(descending, gradeGeo())
+
+    expect(grade.averageAbsPct).toBeCloseTo(10, 8)
+    expect(grade.maxUphillPct).toBeNull()
+    expect(grade.maxDownhillPct).toBeCloseTo(-10, 8)
+  })
+
+  it.each([
+    ['short route', points.map((point) => ({ ...point, cumDistM: point.cumDistM / 10 })), gradeGeo()],
+    ['zero distance', points.map((point) => ({ ...point, cumDistM: 0 })), gradeGeo()],
+    ['outside DEM canvas', points, gradeGeo(20, { px: 12, py: 5 })],
+  ])('fails closed for %s', (_label, candidatePoints, candidateGeo) => {
+    const grade = deriveRouteGrade(candidatePoints, candidateGeo)
+
+    expect(grade.status).not.toBe('ready')
+    expect(grade.samples).toEqual([])
+    expect(grade.averageAbsPct).toBeNull()
+    expect(grade.maxUphillPct).toBeNull()
+    expect(grade.maxDownhillPct).toBeNull()
   })
 })
