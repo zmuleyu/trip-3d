@@ -5,8 +5,8 @@ import {
 } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { iconSvg } from './icons.js'
-import { routeCameraBearing } from '../map/routeView.js'
 import { adminOverlayGeoJSON, weatherOverlayGeoJSON } from '../map/overlayAdapters.js'
+import { TERRARIUM_TILE_SIZE, TERRARIUM_TILE_URL_TEMPLATE } from '../dem.js'
 
 const OPENFREEMAP_STYLE = 'https://tiles.openfreemap.org/styles/positron'
 const FALLBACK_STYLE = {
@@ -21,6 +21,7 @@ const DESKTOP_TRANSITION_MS = 650
 const MOBILE_TRANSITION_MS = 380
 const BASE_LABELS_TO_HIDE = /poi|housenumber|airport|aeroway|transit|neighbourhood|suburb/i
 const SOURCE_IDS = {
+  terrain: 'trip-native-terrain',
   coverage: 'trip-terrain-coverage',
   admin: 'trip-admin-boundaries',
   route: 'trip-planned-route',
@@ -274,7 +275,7 @@ function addPlannerLayers(map) {
 }
 
 export function createOverviewMap({
-  terrainLayer, onTerrainUnavailable, onJump, onPlanAdd, onWaypointSelect,
+  terrainExaggeration = 1.6, onTerrainUnavailable, onJump, onPlanAdd, onWaypointSelect,
   onWaypointMoveStart, onWaypointMove, onWaypointMoveEnd, onWaypointMoveCancel,
   onWeatherDetails,
 } = {}) {
@@ -380,6 +381,11 @@ export function createOverviewMap({
   let styleReady = false
   let fallback2d = false
   let fallbackRequested = false
+  let nativeTerrainActive = false
+  let nativeTerrainFailure = null
+  let nativeTerrainCameraAnchor = null
+  let nativeTerrainCameraSyncPending = false
+  let currentTerrainExaggeration = Number.isFinite(Number(terrainExaggeration)) ? Number(terrainExaggeration) : 1.6
   let hasCamera = false
   let lastFitKey = ''
   let attributionControlContainer = null
@@ -397,15 +403,25 @@ export function createOverviewMap({
   let waypointDrag = null
   let suppressNextMapClick = false
   let suppressMapClickTimer = null
+  let mapErrorKind = null
   const baseLabelVisibility = new Map()
 
-  function setTerrainError(message) {
+  function setMapError(message, kind = 'terrain') {
     mapError.textContent = message
     mapError.classList.remove('hidden')
+    mapErrorKind = kind
   }
 
-  function currentRouteBearing() {
-    return routeCameraBearing(routeCoordinates(lastRoute, lastPoints))
+  function clearTerrainError() {
+    if (mapErrorKind !== 'terrain') return
+    mapError.classList.add('hidden')
+    mapErrorKind = null
+  }
+
+  function cancelPendingTerrainCameraForUser(event) {
+    if (!event?.originalEvent) return
+    nativeTerrainCameraAnchor = null
+    nativeTerrainCameraSyncPending = false
   }
 
   function hasReducedMotion() {
@@ -418,34 +434,38 @@ export function createOverviewMap({
 
   function setRouteVisualTreatment(terrain3d) {
     if (!styleReady) return
-    const corridor = map.getLayer('trip-route-corridor')
-    if (corridor) {
-      map.setPaintProperty('trip-route-corridor', 'line-opacity', terrain3d ? 0.23 : 0)
-      map.setPaintProperty('trip-route-corridor', 'line-width', terrain3d ? 18 : 0)
-    }
-    const casing = map.getLayer('trip-route-casing')
-    if (casing) map.setPaintProperty('trip-route-casing', 'line-width', terrain3d ? 9 : 7)
-    const routeLine = map.getLayer('trip-route-line')
-    if (routeLine) map.setPaintProperty('trip-route-line', 'line-width', terrain3d ? 4.5 : 3.5)
-
-    for (const layer of map.getStyle()?.layers ?? []) {
-      if (layer.type !== 'symbol' || layer.id.startsWith('trip-')) continue
-      const semanticName = `${layer.id} ${layer['source-layer'] ?? ''}`
-      if (BASE_LABELS_TO_HIDE.test(semanticName)) continue
-      if (!baseLabelVisibility.has(layer.id)) baseLabelVisibility.set(layer.id, layer.layout?.visibility ?? 'visible')
-      try {
-        map.setLayoutProperty(layer.id, 'visibility', terrain3d ? 'none' : baseLabelVisibility.get(layer.id))
-      } catch {
-        // Upstream styles may replace a layer between style events. The route
-        // remains readable even when a label cannot be retuned.
+    try {
+      const corridor = map.getLayer('trip-route-corridor')
+      if (corridor) {
+        map.setPaintProperty('trip-route-corridor', 'line-opacity', terrain3d ? 0.23 : 0)
+        map.setPaintProperty('trip-route-corridor', 'line-width', terrain3d ? 18 : 0)
       }
+      const casing = map.getLayer('trip-route-casing')
+      if (casing) map.setPaintProperty('trip-route-casing', 'line-width', terrain3d ? 9 : 7)
+      const routeLine = map.getLayer('trip-route-line')
+      if (routeLine) map.setPaintProperty('trip-route-line', 'line-width', terrain3d ? 4.5 : 3.5)
+
+      for (const layer of map.getStyle()?.layers ?? []) {
+        if (layer.type !== 'symbol' || layer.id.startsWith('trip-')) continue
+        const semanticName = `${layer.id} ${layer['source-layer'] ?? ''}`
+        if (BASE_LABELS_TO_HIDE.test(semanticName)) continue
+        if (!baseLabelVisibility.has(layer.id)) baseLabelVisibility.set(layer.id, layer.layout?.visibility ?? 'visible')
+        try {
+          map.setLayoutProperty(layer.id, 'visibility', terrain3d ? 'none' : baseLabelVisibility.get(layer.id))
+        } catch {
+          // Upstream styles may replace a layer between style events. The route
+          // remains readable even when a label cannot be retuned.
+        }
+      }
+    } catch {
+      // MapLibre may temporarily release its style during context recovery.
+      // The route data remains intact and the next style event reapplies it.
     }
   }
 
   function moveCameraForView(terrain3d, { animate = true } = {}) {
     const camera = {
       pitch: terrain3d ? terrainPitch() : 0,
-      bearing: terrain3d ? currentRouteBearing() : 0,
     }
     map.stop?.()
     if (!animate || hasReducedMotion()) {
@@ -458,6 +478,75 @@ export function createOverviewMap({
       duration: mobile ? MOBILE_TRANSITION_MS : DESKTOP_TRANSITION_MS,
       easing: (t) => 1 - ((1 - t) ** 3),
       essential: false,
+      freezeElevation: terrain3d,
+    })
+  }
+
+  function disableNativeTerrain() {
+    nativeTerrainCameraAnchor = null
+    nativeTerrainCameraSyncPending = false
+    if (!nativeTerrainActive) return true
+    try {
+      map.setTerrain(null)
+      nativeTerrainActive = false
+      return true
+    } catch (error) {
+      nativeTerrainActive = false
+      nativeTerrainFailure = error instanceof Error ? error : new Error(String(error))
+      return false
+    }
+  }
+
+  function enableNativeTerrain() {
+    if (!styleReady || fallback2d || typeof map.setTerrain !== 'function') {
+      nativeTerrainFailure = new Error('MapLibre native terrain is unavailable')
+      return false
+    }
+    try {
+      const wasActive = nativeTerrainActive
+      if (!wasActive) {
+        const center = map.getCenter()
+        nativeTerrainCameraAnchor = {
+          center: [center.lng, center.lat],
+          zoom: map.getZoom(),
+          bearing: map.getBearing(),
+        }
+        nativeTerrainCameraSyncPending = true
+      }
+      const sourceAlreadyExists = !!map.getSource(SOURCE_IDS.terrain)
+      if (!sourceAlreadyExists) {
+        map.addSource(SOURCE_IDS.terrain, {
+          type: 'raster-dem',
+          tiles: [TERRARIUM_TILE_URL_TEMPLATE],
+          tileSize: TERRARIUM_TILE_SIZE,
+          encoding: 'terrarium',
+          attribution: 'Terrain Tiles / Mapzen / Tilezen',
+        })
+      }
+      map.setTerrain({ source: SOURCE_IDS.terrain, exaggeration: currentTerrainExaggeration })
+      nativeTerrainActive = true
+      nativeTerrainFailure = null
+      clearTerrainError()
+      return true
+    } catch (error) {
+      try { map.setTerrain(null) } catch { /* style/context recovery may already be unavailable */ }
+      nativeTerrainActive = false
+      nativeTerrainFailure = error instanceof Error ? error : new Error(String(error))
+      return false
+    }
+  }
+
+  function syncNativeTerrainCamera(event) {
+    if (!nativeTerrainActive || !nativeTerrainCameraSyncPending || !nativeTerrainCameraAnchor) return
+    const sourceLoaded = event?.isSourceLoaded === true || map.isSourceLoaded?.(SOURCE_IDS.terrain) === true
+    if (!sourceLoaded) return
+    const anchor = nativeTerrainCameraAnchor
+    nativeTerrainCameraSyncPending = false
+    map.jumpTo({
+      center: anchor.center,
+      zoom: anchor.zoom,
+      bearing: anchor.bearing,
+      pitch: terrainPitch(),
     })
   }
 
@@ -471,20 +560,19 @@ export function createOverviewMap({
       map.dragRotate?.disable?.()
       map.touchPitch?.disable?.()
     }
-    terrainLayer?.setEnabled(terrain3d)
+    if (!terrain3d) disableNativeTerrain()
     setRouteVisualTreatment(terrain3d)
     moveCameraForView(terrain3d, { animate })
   }
 
-  function degradeTo2d(error, message = '地形分析暂时不可用；已保留路线规划') {
+  function degradeTo2d(error, message = '地形分析暂时不可用；已保留路线规划', errorKind = 'terrain') {
     plannerView = '2d'
+    disableNativeTerrain()
     setInteractionForView({ animate: false })
-    setTerrainError(message)
+    setMapError(message, errorKind)
     updateChrome()
     onTerrainUnavailable?.(error instanceof Error ? error : new Error(message))
   }
-
-  terrainLayer?.setFailureHandler?.((error) => degradeTo2d(error))
 
   function syncAttributionHost() {
     const control = attributionControlContainer ?? mapSurface.querySelector('.maplibregl-ctrl-bottom-left')
@@ -648,12 +736,18 @@ export function createOverviewMap({
     if (!bounds) return
     const [[minLon, minLat], [maxLon, maxLat]] = bounds
     const camera = plannerMode && plannerView === '3d'
-      ? { pitch: terrainPitch(), bearing: currentRouteBearing() }
-      : { pitch: 0, bearing: 0 }
+      ? { pitch: terrainPitch(), bearing: map.getBearing() }
+      : { pitch: 0, bearing: map.getBearing() }
     if (minLon === maxLon && minLat === maxLat) {
       map.jumpTo({ center: [minLon, minLat], zoom: Math.min(13, Math.max(10, map.getZoom())), ...camera })
     } else {
-      map.fitBounds(bounds, { padding: fitPadding(), maxZoom: 13, duration: 0, ...camera })
+      map.fitBounds(bounds, {
+        padding: fitPadding(),
+        maxZoom: 13,
+        duration: 0,
+        freezeElevation: nativeTerrainActive,
+        ...camera,
+      })
     }
     hasCamera = true
     updateChrome()
@@ -677,17 +771,11 @@ export function createOverviewMap({
   function installPlannerStyle() {
     if (map.getSource(SOURCE_IDS.coverage)) return
     styleReady = true
-    if (!fallback2d) mapError.classList.add('hidden')
     tuneBaseStyle(map)
-    if (terrainLayer && !fallback2d) {
-      try {
-        map.addLayer(terrainLayer)
-      } catch (error) {
-        degradeTo2d(error)
-      }
-      if (terrainLayer.failed) degradeTo2d(terrainLayer.failed)
-    }
     addPlannerLayers(map)
+    if (plannerMode && plannerView === '3d' && !enableNativeTerrain()) {
+      degradeTo2d(nativeTerrainFailure)
+    }
     syncWeatherLayerVisibility()
     setRouteVisualTreatment(plannerMode && plannerView === '3d')
     syncPlannerData()
@@ -698,17 +786,33 @@ export function createOverviewMap({
 
   map.on('style.load', installPlannerStyle)
   map.on('load', installPlannerStyle)
+  map.on('sourcedata', (event) => {
+    if (event?.sourceId === SOURCE_IDS.terrain) syncNativeTerrainCamera(event)
+  })
+  map.on('dragstart', cancelPendingTerrainCameraForUser)
+  map.on('zoomstart', cancelPendingTerrainCameraForUser)
+  map.on('rotatestart', cancelPendingTerrainCameraForUser)
+  map.on('pitchstart', cancelPendingTerrainCameraForUser)
   map.on('error', (event) => {
+    if (nativeTerrainActive && event?.sourceId === SOURCE_IDS.terrain) {
+      degradeTo2d(event?.error)
+      return
+    }
     if (styleReady || fallbackRequested) return
     fallbackRequested = true
     fallback2d = true
-      degradeTo2d(event?.error, '底图暂时不可用；已保留路线规划')
+    degradeTo2d(event?.error, '底图暂时不可用；已保留路线规划', 'style')
     try {
       map.setStyle(FALLBACK_STYLE)
     } catch {
       // The canvas and route state remain interactive even if style recovery
       // itself fails; the visible error is the truthful terminal state.
     }
+  })
+  map.getCanvas().addEventListener('webglcontextlost', (event) => {
+    if (!nativeTerrainActive) return
+    event.preventDefault?.()
+    degradeTo2d(new Error('WebGL context lost'))
   })
   map.on('zoom', updateChrome)
   function waypointFeature(event) {
@@ -838,6 +942,7 @@ export function createOverviewMap({
       suppressMapClickTimer = null
       return
     }
+    if (plannerMode && plannerView === '3d' && !editingMode) return
     const { lng, lat } = event.lngLat
     if (editingMode && onPlanAdd) onPlanAdd(lng, lat)
     else onJump?.(lng, lat)
@@ -866,24 +971,41 @@ export function createOverviewMap({
       setInteractionForView({ animate: false })
       updateChrome()
       decorateCanvas()
-      requestAnimationFrame(resize)
+      requestAnimationFrame(() => resize({ fit: false }))
     },
     setPlannerView(next) {
       const requested = next === '3d' ? '3d' : '2d'
-      if (requested === '3d' && (!terrainLayer || terrainLayer.failed || fallback2d)) {
-        degradeTo2d(terrainLayer?.failed)
+      if (requested === '3d' && !enableNativeTerrain()) {
+        degradeTo2d(nativeTerrainFailure)
         return false
       }
       plannerView = requested
       lastFitKey = ''
       setInteractionForView()
+      if (requested === '3d') syncNativeTerrainCamera()
       updateChrome()
       decorateCanvas()
       requestAnimationFrame(() => resize({ fit: false }))
       return true
     },
     get plannerView() { return plannerView },
-    get terrainStats() { return terrainLayer?.getStats?.() ?? null },
+    get terrainState() {
+      return {
+        active: nativeTerrainActive,
+        sourceId: SOURCE_IDS.terrain,
+        exaggeration: currentTerrainExaggeration,
+        failed: nativeTerrainFailure,
+      }
+    },
+    setTerrainExaggeration(value) {
+      const next = Number(value)
+      if (!Number.isFinite(next) || next <= 0) return false
+      currentTerrainExaggeration = next
+      if (!nativeTerrainActive) return true
+      if (enableNativeTerrain()) return true
+      degradeTo2d(nativeTerrainFailure)
+      return false
+    },
     resize,
     fit: fitCurrent,
     focusPlanner() { map.getCanvas().focus() },

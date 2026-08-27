@@ -2,8 +2,14 @@
 // Public S3 bucket, no API key. meters = (R*256 + G + B/256) - 32768
 // Attribution: Terrain Tiles / Mapzen / Tilezen — AWS Open Data.
 
-const TILE_URL = (z, x, y) => `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${x}/${y}.png`
-const TILE_PX = 256
+export const TERRARIUM_TILE_URL_TEMPLATE = 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'
+export const TERRARIUM_TILE_SIZE = 256
+
+const TILE_URL = (z, x, y) => TERRARIUM_TILE_URL_TEMPLATE
+  .replace('{z}', z)
+  .replace('{x}', x)
+  .replace('{y}', y)
+const TILE_PX = TERRARIUM_TILE_SIZE
 
 export async function loadDem({ lat, lon, zoom, tilesAcross = 3 }) {
   const n = 2 ** zoom
