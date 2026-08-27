@@ -1,5 +1,6 @@
 // Context panel contents + profile floating card. DOM only; fed by main.js.
 import { durationContract, normalizeRouteMode } from '../lib/routePlanning.js'
+import { analysisPointsReady, nearestAnalysisIndex, sampleAnalysisAtDistance } from '../lib/analysisCursor.js'
 
 // ---------------------------------------------------------------- planning panel
 // duration formatting: ≥24h shows days (long road trips)
@@ -494,20 +495,37 @@ export function createProfileCard(accent = '#ff4d00') {
   metrics.className = 'profile-metrics'
   const status = document.createElement('p')
   status.className = 'profile-status'
-  status.setAttribute('aria-live', 'polite')
+  const statusMessage = document.createElement('span')
+  const cursorReadout = document.createElement('span')
+  cursorReadout.className = 'profile-cursor-readout'
   const canvas = document.createElement('canvas')
   canvas.width = 596
   canvas.height = 110
-  canvas.setAttribute('role', 'img')
   const source = document.createElement('small')
   source.className = 'profile-source'
+  status.append(statusMessage, cursorReadout)
   body.append(metrics, status, canvas, source)
   el.append(head, body)
   document.body.appendChild(el)
   let stage = 'plan'
   let folded = false
   let lastPts = null
-  let cbs = { onHover: null, onSelect: null }
+  let cbs = { onCursorDistance: null }
+  let lastCursorDistanceM = null
+  let profileReady = false
+  const clearSliderSemantics = () => {
+    canvas.tabIndex = -1
+    for (const name of ['role', 'aria-label', 'aria-valuemin', 'aria-valuemax', 'aria-valuenow', 'aria-valuetext']) canvas.removeAttribute(name)
+  }
+  const enableSliderSemantics = () => {
+    canvas.tabIndex = 0
+    canvas.setAttribute('role', 'slider')
+    canvas.setAttribute('aria-label', '路线高程剖面游标')
+  }
+  const syncSliderAvailability = () => {
+    if (profileReady && stage === 'analyze') enableSliderSemantics()
+    else clearSliderSemantics()
+  }
   const syncVisibility = () => el.classList.toggle('hidden', stage !== 'analyze')
   head.onclick = () => {
     folded = !folded
@@ -515,52 +533,121 @@ export function createProfileCard(accent = '#ff4d00') {
     head.setAttribute('aria-expanded', String(!folded))
     fold.textContent = folded ? '展开' : '收起'
   }
-  const indexAt = (e) => {
-    if (!lastPts || lastPts.length < 2) return null
+  const distanceAt = (e) => {
+    if (!analysisPointsReady(lastPts)) return null
     const rect = canvas.getBoundingClientRect()
     const mx = ((e.clientX - rect.left) / rect.width) * canvas.width
-    const i = Math.round(((mx - 10) / (canvas.width - 20)) * (lastPts.length - 1))
-    return Math.max(0, Math.min(lastPts.length - 1, i))
+    const fraction = Math.max(0, Math.min(1, (mx - 12) / (canvas.width - 24)))
+    return lastPts[0].cumDistM + (lastPts.at(-1).cumDistM - lastPts[0].cumDistM) * fraction
   }
-  canvas.addEventListener('mousemove', (e) => {
-    const i = indexAt(e)
-    if (i != null) cbs.onHover?.(i)
+  const requestCursor = (distanceM) => {
+    if (Number.isFinite(distanceM)) cbs.onCursorDistance?.(distanceM)
+  }
+  canvas.addEventListener('pointermove', (e) => {
+    requestCursor(distanceAt(e))
   })
-  canvas.addEventListener('mouseleave', () => cbs.onHover?.(null))
-  canvas.addEventListener('click', (e) => {
-    const i = indexAt(e)
-    if (i != null) cbs.onSelect?.(i)
+  canvas.addEventListener('pointerdown', (e) => {
+    requestCursor(distanceAt(e))
   })
+  canvas.addEventListener('pointerleave', (e) => {
+    if (e.pointerType !== 'touch') cbs.onCursorDistance?.(null)
+  })
+  canvas.addEventListener('keydown', (e) => {
+    if (!analysisPointsReady(lastPts)) return
+    const currentIndex = nearestAnalysisIndex(lastPts, lastCursorDistanceM ?? lastPts[0].cumDistM)
+    let nextIndex = currentIndex
+    if (e.key === 'ArrowLeft') nextIndex = Math.max(0, currentIndex - 1)
+    else if (e.key === 'ArrowRight') nextIndex = Math.min(lastPts.length - 1, currentIndex + 1)
+    else if (e.key === 'Home') nextIndex = 0
+    else if (e.key === 'End') nextIndex = lastPts.length - 1
+    else return
+    e.preventDefault()
+    requestCursor(lastPts[nextIndex].cumDistM)
+  })
+  const draw = () => {
+    const ctx = canvas.getContext('2d')
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+    if (!analysisPointsReady(lastPts)) return
+    const min = Math.min(...lastPts.map((point) => point.ele))
+    const max = Math.max(...lastPts.map((point) => point.ele))
+    const span = Math.max(max - min, 1)
+    const { width: W, height: H } = canvas
+    ctx.strokeStyle = accent
+    ctx.lineWidth = 2
+    ctx.beginPath()
+    lastPts.forEach((point, index) => {
+      const x = (index / (lastPts.length - 1)) * (W - 24) + 12
+      const yy = 8 + (1 - (point.ele - min) / span) * (H - 18)
+      index ? ctx.lineTo(x, yy) : ctx.moveTo(x, yy)
+    })
+    ctx.stroke()
+    const sample = sampleAnalysisAtDistance(lastPts, lastCursorDistanceM)
+    if (!sample) {
+      cursorReadout.textContent = ''
+      canvas.removeAttribute('aria-valuemin')
+      canvas.removeAttribute('aria-valuemax')
+      canvas.removeAttribute('aria-valuenow')
+      canvas.removeAttribute('aria-valuetext')
+      return
+    }
+    const startDistanceM = lastPts[0].cumDistM
+    const totalDistanceM = lastPts.at(-1).cumDistM - startDistanceM
+    const fraction = totalDistanceM > 0 ? (sample.distanceM - startDistanceM) / totalDistanceM : 0
+    const x = 12 + fraction * (W - 24)
+    const y = 8 + (1 - (sample.ele - min) / span) * (H - 18)
+    ctx.strokeStyle = 'rgba(31,36,40,.62)'
+    ctx.lineWidth = 1
+    ctx.beginPath(); ctx.moveTo(x, 5); ctx.lineTo(x, H - 5); ctx.stroke()
+    ctx.fillStyle = accent
+    ctx.beginPath(); ctx.arc(x, y, 3.5, 0, Math.PI * 2); ctx.fill()
+    const distanceText = `${(sample.distanceM / 1000).toFixed(1)} km`
+    const valueText = `${distanceText} · ${Math.round(sample.ele).toLocaleString('zh-CN')} m`
+    cursorReadout.textContent = valueText
+    if (profileReady && stage === 'analyze') {
+      canvas.setAttribute('aria-valuemin', String(Math.round(startDistanceM)))
+      canvas.setAttribute('aria-valuemax', String(Math.round(lastPts.at(-1).cumDistM)))
+      canvas.setAttribute('aria-valuenow', String(Math.round(sample.distanceM)))
+      canvas.setAttribute('aria-valuetext', valueText)
+    }
+  }
   return {
     el,
     setStage(next) {
       stage = next === 'analyze' ? 'analyze' : 'plan'
+      syncSliderAvailability()
+      if (profileReady) draw()
       syncVisibility()
     },
     setCallbacks(next) { cbs = { ...cbs, ...next } },
+    setCursorDistance(distanceM) {
+      lastCursorDistanceM = Number.isFinite(distanceM) ? distanceM : null
+      draw()
+    },
     update(analysis = {}) {
-      const ready = analysis.status === 'ready' && analysis.points?.length >= 2 && analysis.profile
+      const ready = analysis.status === 'ready' && analysisPointsReady(analysis.points) && analysis.profile
       el.dataset.status = analysis.status ?? 'dem-unavailable'
       metrics.replaceChildren()
-      const ctx = canvas.getContext('2d')
-      ctx.clearRect(0, 0, canvas.width, canvas.height)
       if (!ready) {
+        profileReady = false
         lastPts = null
+        lastCursorDistanceM = null
         canvas.classList.add('hidden')
         source.textContent = ''
-        status.textContent = {
+        statusMessage.textContent = {
           incomplete: '至少添加起点和终点',
           'outside-coverage': '路线超出范围，扩展地形范围后重试',
           'dem-unavailable': '高程数据暂不可用',
         }[analysis.status] ?? '高程数据暂不可用'
-        canvas.setAttribute('aria-label', status.textContent)
+        syncSliderAvailability()
+        cursorReadout.textContent = ''
         syncVisibility()
         return
       }
       const { points, profile } = analysis
+      profileReady = true
       lastPts = points
       canvas.classList.remove('hidden')
-      status.textContent = `${(profile.distanceM / 1000).toFixed(1)} km · 高程可用`
+      statusMessage.textContent = `${(profile.distanceM / 1000).toFixed(1)} km · 高程可用`
       source.textContent = 'Terrarium 原始米制高程'
       for (const text of [
         `最低 ${Math.round(profile.minElevationM).toLocaleString('zh-CN')} m`,
@@ -570,20 +657,8 @@ export function createProfileCard(accent = '#ff4d00') {
         item.textContent = text
         metrics.appendChild(item)
       }
-      canvas.setAttribute('aria-label', `路线高程剖面，最低 ${Math.round(profile.minElevationM)} 米，最高 ${Math.round(profile.maxElevationM)} 米`)
-      const { width: W, height: H } = canvas
-      const min = profile.minElevationM
-      const max = profile.maxElevationM
-      const span = Math.max(max - min, 1)
-      ctx.strokeStyle = accent
-      ctx.lineWidth = 2
-      ctx.beginPath()
-      points.forEach((point, index) => {
-        const x = (index / (points.length - 1)) * (W - 24) + 12
-        const yy = 8 + (1 - (point.ele - min) / span) * (H - 18)
-        index ? ctx.lineTo(x, yy) : ctx.moveTo(x, yy)
-      })
-      ctx.stroke()
+      syncSliderAvailability()
+      draw()
       syncVisibility()
     },
   }

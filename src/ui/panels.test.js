@@ -88,7 +88,7 @@ describe('route library recovery', () => {
 
 describe('Analyze elevation profile', () => {
   const canvasContext = () => ({
-    beginPath: vi.fn(), clearRect: vi.fn(), fillText: vi.fn(), lineTo: vi.fn(), moveTo: vi.fn(), stroke: vi.fn(),
+    arc: vi.fn(), beginPath: vi.fn(), clearRect: vi.fn(), fill: vi.fn(), fillText: vi.fn(), lineTo: vi.fn(), moveTo: vi.fn(), stroke: vi.fn(),
   })
 
   it('shows raw DEM range only in Analyze and supports keyboard-native folding', () => {
@@ -97,8 +97,8 @@ describe('Analyze elevation profile', () => {
     const analysis = {
       status: 'ready',
       points: [
-        { ele: 1180, cumDistM: 0 },
-        { ele: 1360, cumDistM: 4200 },
+        { lon: 100, lat: 30, ele: 1180, cumDistM: 0 },
+        { lon: 101, lat: 31, ele: 1360, cumDistM: 4200 },
       ],
       profile: { distanceM: 4200, minElevationM: 1180, maxElevationM: 1360 },
       stats: { distanceM: 4200, minEle: 1180, maxEle: 1360 },
@@ -136,5 +136,93 @@ describe('Analyze elevation profile', () => {
     expect(card.el.dataset.status).toBe(status)
     expect(card.el.textContent).toContain(message)
     expect(card.el.textContent).not.toContain('0 m')
+    expect(card.el.querySelector('canvas').getAttribute('role')).toBeNull()
+  })
+
+  it('uses a finite first-point cursor and fixed endpoint x for a zero-length profile', () => {
+    const ctx = canvasContext()
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(ctx)
+    const onCursorDistance = vi.fn()
+    const card = createProfileCard()
+    const analysis = {
+      status: 'ready',
+      points: [
+        { lon: 100, lat: 30, ele: 1000, cumDistM: 0 },
+        { lon: 100, lat: 30, ele: 1100, cumDistM: 0 },
+      ],
+      profile: { distanceM: 0, minElevationM: 1000, maxElevationM: 1100 },
+    }
+    card.update(analysis)
+    card.setStage('analyze')
+    card.setCallbacks({ onCursorDistance })
+    card.setCursorDistance(0)
+    const canvas = card.el.querySelector('canvas')
+    canvas.getBoundingClientRect = () => ({ left: 0, width: 596 })
+
+    expect(canvas.getAttribute('aria-valuenow')).toBe('0')
+    expect(canvas.getAttribute('aria-valuetext')).toContain('0.0 km')
+    canvas.dispatchEvent(new MouseEvent('pointermove', { clientX: 300 }))
+    canvas.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
+    expect(onCursorDistance).toHaveBeenLastCalledWith(0)
+    expect(ctx.moveTo).toHaveBeenCalledWith(12, expect.any(Number))
+    expect(ctx.lineTo).toHaveBeenCalledWith(12, expect.any(Number))
+    expect(() => card.setCursorDistance(0)).not.toThrow()
+  })
+
+  it('does not invent a cursor before the shared owner synchronizes one', () => {
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(canvasContext())
+    const card = createProfileCard()
+    const analysis = {
+      status: 'ready',
+      points: [
+        { lon: 100, lat: 30, ele: 1000, cumDistM: 0 },
+        { lon: 101, lat: 30, ele: 1100, cumDistM: 1000 },
+      ],
+      profile: { distanceM: 1000, minElevationM: 1000, maxElevationM: 1100 },
+    }
+    card.update(analysis)
+    card.setStage('analyze')
+    const canvas = card.el.querySelector('canvas')
+    expect(canvas.getAttribute('aria-valuenow')).toBeNull()
+    card.setCursorDistance(0)
+    expect(canvas.getAttribute('aria-valuenow')).toBe('0')
+    expect(canvas.getAttribute('aria-valuetext')).toContain('0.0 km')
+  })
+
+  it('shares a focusable cursor through pointer, touch, and sampled keyboard steps', () => {
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(canvasContext())
+    const onCursorDistance = vi.fn()
+    const card = createProfileCard()
+    const analysis = {
+      status: 'ready',
+      points: [
+        { lon: 100, lat: 30, ele: 1000, cumDistM: 0 },
+        { lon: 101, lat: 30, ele: 1200, cumDistM: 1000 },
+        { lon: 101, lat: 31, ele: 1400, cumDistM: 2000 },
+      ],
+      profile: { distanceM: 2000, minElevationM: 1000, maxElevationM: 1400 },
+    }
+    card.setStage('analyze')
+    card.setCallbacks({ onCursorDistance })
+    card.update(analysis)
+    const canvas = card.el.querySelector('canvas')
+    canvas.getBoundingClientRect = () => ({ left: 0, width: 596 })
+
+    canvas.dispatchEvent(new MouseEvent('pointermove', { clientX: 304 }))
+    expect(onCursorDistance).toHaveBeenLastCalledWith(expect.closeTo(1021, 0))
+    card.setCursorDistance(1000)
+    expect(canvas.getAttribute('role')).toBe('slider')
+    expect(canvas.getAttribute('aria-valuetext')).toContain('1.0 km')
+    canvas.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
+    expect(onCursorDistance).toHaveBeenLastCalledWith(2000)
+    canvas.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }))
+    expect(onCursorDistance).toHaveBeenLastCalledWith(0)
+
+    const touchLeave = new Event('pointerleave')
+    Object.defineProperty(touchLeave, 'pointerType', { value: 'touch' })
+    canvas.dispatchEvent(touchLeave)
+    expect(onCursorDistance).not.toHaveBeenLastCalledWith(null)
+    canvas.dispatchEvent(new Event('pointerleave'))
+    expect(onCursorDistance).toHaveBeenLastCalledWith(null)
   })
 })

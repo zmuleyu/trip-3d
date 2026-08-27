@@ -37,6 +37,7 @@ import { createSharePanel, renderPoster } from './ui/sharePanel.js'
 import { buildPosterData } from './lib/poster.js'
 import { createRoute, addWaypoint, insertWaypoint, removeWaypoint, moveWaypoint, reverseWaypoints, closeLoop, toggleDayEnd, normalizeDayEnds, dayNumberAt, routeStats, routeFingerprint } from './lib/route.js'
 import { analyzeRouteElevation, syncRouteAnalysisConsumer } from './lib/routeAnalysis.js'
+import { initialAnalysisCursorDistance } from './lib/analysisCursor.js'
 import { sunPosition, shadeFraction } from './lib/sun.js'
 import { resamplePath, flyoverDuration, cameraFrame } from './lib/flyover.js'
 import { createHistory } from './lib/history.js'
@@ -1183,6 +1184,8 @@ function cancelWaypointMove(id) {
 }
 
 function refreshUnavailableRouteAnalysis(coordinates, { recordHistory, fitOverview }) {
+  analysisCursorPathKey = ''
+  clearAnalysisCursor()
   routeLayer?.clear()
   lastRoutePts = []
   profileCard?.update(lastRouteAnalysis)
@@ -1203,6 +1206,8 @@ function refreshUnavailableRouteAnalysis(coordinates, { recordHistory, fitOvervi
 function refreshRoute({ recordHistory = true, fitOverview = true } = {}) {
   reconcileWaypointSelection()
   if (!geo || !dem) {
+    analysisCursorPathKey = ''
+    clearAnalysisCursor()
     lastRouteAnalysis = analyzeRouteElevation({ route, geo, sampleElevation: null })
     lastRoutePts = []
     profileCard?.update(lastRouteAnalysis)
@@ -1253,8 +1258,12 @@ function refreshRoute({ recordHistory = true, fitOverview = true } = {}) {
     return
   }
   const pts = lastRouteAnalysis.points
+  const nextAnalysisCursorPathKey = pts.map((point) => `${point.lon.toFixed(6)},${point.lat.toFixed(6)},${point.cumDistM.toFixed(1)}`).join('|')
+  if (analysisCursorPathKey && analysisCursorPathKey !== nextAnalysisCursorPathKey) clearAnalysisCursor()
+  analysisCursorPathKey = nextAnalysisCursorPathKey
   lastRoutePts = pts
   profileCard?.update(lastRouteAnalysis)
+  if (!initializeAnalysisCursor(pts)) overviewMap?.setAnalysisCursor({ points: pts, distanceM: analysisCursorDistanceM })
   normalizeDayEnds(route) // id-based markers: drop refs to deleted waypoints
   if (recordHistory) routeHistory.record(route) // safe: dedup no-ops on non-route refreshes
   updateRouteUI(route, lastRouteAnalysis.stats, pts, { fitOverview })
@@ -2444,6 +2453,24 @@ planningPanel.setRouteMode(route.mode, snapState.on ? '等待路网吸附' : '�
 
 let plannerWorkspace
 let workflowStage
+let analysisCursorDistanceM = null
+let analysisCursorPathKey = ''
+function setAnalysisCursor(distanceM) {
+  analysisCursorDistanceM = Number.isFinite(distanceM) ? distanceM : null
+  profileCard?.setCursorDistance(analysisCursorDistanceM)
+  overviewMap?.setAnalysisCursor({ points: lastRouteAnalysis?.points, distanceM: analysisCursorDistanceM })
+}
+function clearAnalysisCursor() {
+  setAnalysisCursor(null)
+}
+function initializeAnalysisCursor(points = lastRouteAnalysis?.points) {
+  const distanceM = initialAnalysisCursorDistance(points, analysisCursorDistanceM)
+  if (!Number.isFinite(distanceM)) return false
+  if (distanceM === analysisCursorDistanceM) return false
+  setAnalysisCursor(distanceM)
+  return true
+}
+profileCard.setCallbacks({ onCursorDistance: setAnalysisCursor })
 const overviewMap = createOverviewMap({
   terrainExaggeration: params.demExaggeration,
   onTerrainUnavailable: (error) => {
@@ -2462,6 +2489,7 @@ const overviewMap = createOverviewMap({
   onWaypointMoveEnd: commitWaypointMove,
   onWaypointMoveCancel: cancelWaypointMove,
   onWeatherDetails: showHourlyWeatherDetails,
+  onAnalysisCursor: setAnalysisCursor,
   onPlanAdd: (lon, lat) => {
     if (!params.planning || !geo || !dem) return
     const { x, z } = lonLatToWorld(geo, lon, lat)
@@ -2535,6 +2563,8 @@ function fitWorkflowStage() {
 function applyWorkflowStage(stage) {
   const analyze = stage === WORKFLOW_STAGES.ANALYZE
   profileCard?.setStage(stage)
+  if (!analyze) clearAnalysisCursor()
+  else initializeAnalysisCursor()
   document.body.classList.toggle('analyze-operate', analyze)
   if (analyze) {
     if (mode?.isPlanning()) mode.exitPlanning()
