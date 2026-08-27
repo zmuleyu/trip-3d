@@ -361,6 +361,16 @@ describe('overview MapLibre planner map', () => {
     expect(instance.fitCalls.at(-1).options.freezeElevation).toBe(true)
   })
 
+  it('keeps mobile Plan route endpoints clear of the right-side zoom instrument', () => {
+    vi.stubGlobal('matchMedia', (query) => ({ matches: query === '(max-width: 720px)' }))
+    const { overview, instance } = setup()
+    overview.setPlannerMode(true)
+    overview.update({ waypoints: [{ id: 'a', lon: 113, lat: 41.2 }, { id: 'b', lon: 113.2, lat: 41.4 }] }, null, VIEWPORT)
+    overview.fit()
+
+    expect(instance.fitCalls.at(-1).options.padding).toMatchObject({ top: 120, right: 72, left: 56 })
+  })
+
   it('switches immediately for reduced-motion users without changing the map instance', () => {
     vi.stubGlobal('matchMedia', (query) => ({ matches: query === '(prefers-reduced-motion: reduce)' }))
     const { overview, instance } = setup()

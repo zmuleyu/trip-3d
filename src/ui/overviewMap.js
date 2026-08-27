@@ -726,7 +726,7 @@ export function createOverviewMap({
     }
     const height = Math.max(0, mapSurface.getBoundingClientRect().height)
     const usableHeight = Math.min(height, Math.max(240, window.innerHeight * 0.4))
-    return { top: 120, right: 56, bottom: Math.max(80, height - usableHeight + 80), left: 56 }
+    return { top: 120, right: 72, bottom: Math.max(80, height - usableHeight + 80), left: 56 }
   }
 
   function fitCurrent() {
