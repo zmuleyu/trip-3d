@@ -22,7 +22,7 @@ import { createCone } from './cone.js'
 import { createLabels, disposeLabels } from './labels.js'
 import { createHud3D, findPois } from './hud3d.js'
 import { createHud2D } from './hud2d.js'
-import { loadDem, sampleDem } from './dem.js'
+import { TERRARIUM_SOURCE_ID, loadDem, sampleDem } from './dem.js'
 import { makeGeoContext, worldToLonLat, lonLatToWorld, TERRAIN_SIZE } from './lib/geo.js'
 import { createOverviewMap } from './ui/overviewMap.js'
 import { createPlannerWorkspace } from './ui/plannerWorkspace.js'
@@ -36,7 +36,8 @@ import { createAdminBoundaryUI } from './ui/adminPanel.js'
 import { createSharePanel, renderPoster } from './ui/sharePanel.js'
 import { buildPosterData } from './lib/poster.js'
 import { createRoute, addWaypoint, insertWaypoint, removeWaypoint, moveWaypoint, reverseWaypoints, closeLoop, toggleDayEnd, normalizeDayEnds, dayNumberAt, routeStats, routeFingerprint } from './lib/route.js'
-import { analyzeRouteElevation, syncRouteAnalysisConsumer } from './lib/routeAnalysis.js'
+import { analyzeRouteElevation, sampleRouteAnalysisPath, syncRouteAnalysisConsumer } from './lib/routeAnalysis.js'
+import { createRouteDemAnalysisController, createRouteDemCoverage, createRouteDemRunIdentity } from './lib/routeDemCoverage.js'
 import { initialAnalysisCursorDistance } from './lib/analysisCursor.js'
 import { sunPosition, shadeFraction } from './lib/sun.js'
 import { resamplePath, flyoverDuration, cameraFrame } from './lib/flyover.js'
@@ -1097,6 +1098,9 @@ function regenerateTerrain() {
 let geo = null // makeGeoContext(dem), set in loadRealTerrain
 let route = createRoute()
 let lastRouteAnalysis = analyzeRouteElevation({ route })
+const routeDemCoverage = createRouteDemCoverage()
+let routeCorridorState = { key: null, status: 'idle', analysis: null, error: null, performance: null }
+let routeDemAnalysisController = null
 let routeLayer = null
 let selectedWaypointId = null
 let waypointPreviewing = false
@@ -1122,6 +1126,53 @@ let lastRouteCoverage = { covered: true, outsideCount: 0, total: 0, bounds: null
 function activeRouteCoordinates() {
   if (!waypointPreviewing && snapState.on && snapState.geometry && snapState.version === snapVersion()) return snapState.geometry
   return route.waypoints
+}
+
+function activeRouteAnalysisGeometry() {
+  return !waypointPreviewing && snapState.on && snapState.geometry && snapState.version === snapVersion()
+    ? snapState.geometry
+    : null
+}
+
+function currentRouteAnalysisKey() {
+  const snappedGeometry = activeRouteAnalysisGeometry()
+  const geometry = snappedGeometry ? `snapped:${snapState.version}:${snappedGeometry.length}` : `raw:${route.geometryRevision}`
+  return `${routeFingerprint(route)}:${geometry}`
+}
+
+function currentRouteCorridorRun() {
+  const sourceIdentity = params.source === 'real' ? TERRARIUM_SOURCE_ID : `unavailable:${params.source}`
+  const zoom = Number(params.demZoom)
+  return {
+    sourceIdentity,
+    zoom,
+    key: createRouteDemRunIdentity({ routeKey: currentRouteAnalysisKey(), zoom, sourceIdentity }),
+  }
+}
+
+function corridorUnavailableStatus(state = routeCorridorState) {
+  if (state.status === 'loading') return 'route-terrain-loading'
+  if (state.status === 'cancelled') return 'route-terrain-cancelled'
+  if (state.error?.code === 'budget-exceeded') return 'route-terrain-budget'
+  if (state.status === 'error') return 'route-terrain-unavailable'
+  return 'outside-coverage'
+}
+
+function invalidateRouteCorridorAnalysis(nextKey) {
+  if (!routeCorridorState.key || routeCorridorState.key === nextKey) return
+  routeDemAnalysisController?.cancel()
+  routeCorridorState = {
+    key: nextKey,
+    status: 'cancelled',
+    analysis: null,
+    error: null,
+    performance: null,
+  }
+}
+
+function invalidateRouteCorridorForTerrainRunChange() {
+  invalidateRouteCorridorAnalysis(currentRouteCorridorRun().key)
+  if (workflowStage?.stage === WORKFLOW_STAGES.ANALYZE) refreshRoute({ recordHistory: false, fitOverview: false })
 }
 
 function reconcileWaypointSelection() {
@@ -1205,6 +1256,8 @@ function refreshUnavailableRouteAnalysis(coordinates, { recordHistory, fitOvervi
 
 function refreshRoute({ recordHistory = true, fitOverview = true } = {}) {
   reconcileWaypointSelection()
+  const analysisKey = currentRouteCorridorRun().key
+  invalidateRouteCorridorAnalysis(analysisKey)
   if (!geo || !dem) {
     analysisCursorPathKey = ''
     clearAnalysisCursor()
@@ -1222,13 +1275,21 @@ function refreshRoute({ recordHistory = true, fitOverview = true } = {}) {
     ? routeCoverage(geo, coordinates, TERRAIN_SIZE)
     : { covered: true, outsideCount: 0, total: coordinates.length, bounds: null }
   plannerWorkspace?.setCoverage(lastRouteCoverage)
+  if (lastRouteCoverage.covered && routeCorridorState.key === analysisKey) {
+    routeDemAnalysisController?.cancel()
+    routeCorridorState = { key: null, status: 'idle', analysis: null, error: null, performance: null }
+  }
   if (!lastRouteCoverage.covered) {
-    lastRouteAnalysis = analyzeRouteElevation({
-      route,
-      geo,
-      sampleElevation: elevOfWorld,
-      coverage: lastRouteCoverage,
-    })
+    lastRouteAnalysis = routeCorridorState.key === analysisKey && routeCorridorState.status === 'ready'
+      ? routeCorridorState.analysis
+      : {
+          status: corridorUnavailableStatus(),
+          points: [],
+          profile: null,
+          stats: null,
+          grade: null,
+        }
+    if (lastRouteAnalysis.status === 'ready' && applyReadyRouteAnalysis({ recordHistory, fitOverview })) return
     refreshUnavailableRouteAnalysis(coordinates, { recordHistory, fitOverview })
     return
   }
@@ -1244,6 +1305,12 @@ function refreshRoute({ recordHistory = true, fitOverview = true } = {}) {
     sampleElevation: elevOfWorld,
     coverage: lastRouteCoverage,
   })
+  if (!applyReadyRouteAnalysis({ recordHistory, fitOverview })) {
+    refreshUnavailableRouteAnalysis(coordinates, { recordHistory, fitOverview })
+  }
+}
+
+function applyReadyRouteAnalysis({ recordHistory = false, fitOverview = false } = {}) {
   const legacyState = syncRouteAnalysisConsumer(lastRouteAnalysis, {
     render: (points) => routeLayer.update(route.waypoints, {
       slopeColors: params.routeSlopeColors,
@@ -1253,10 +1320,7 @@ function refreshRoute({ recordHistory = true, fitOverview = true } = {}) {
       selectedWaypointId,
     }),
   })
-  if (legacyState !== 'ready') {
-    refreshUnavailableRouteAnalysis(coordinates, { recordHistory, fitOverview })
-    return
-  }
+  if (legacyState !== 'ready') return false
   const pts = lastRouteAnalysis.points
   const nextAnalysisCursorPathKey = pts.map((point) => `${point.lon.toFixed(6)},${point.lat.toFixed(6)},${point.cumDistM.toFixed(1)}`).join('|')
   if (analysisCursorPathKey && analysisCursorPathKey !== nextAnalysisCursorPathKey) clearAnalysisCursor()
@@ -1270,6 +1334,7 @@ function refreshRoute({ recordHistory = true, fitOverview = true } = {}) {
   // route edited → any in-flight weather query for the old revision is void
   if (weatherState.result && weatherState.revision !== route.revision) weatherState.requestId++
   if (adminInteraction.selected) scheduleAdminRouteStat() // route change → recompute L4 stat
+  return true
 }
 
 let lastRoutePts = []
@@ -1446,6 +1511,7 @@ fSource
   .add(params, 'source', { 'procedural noise': 'noise', 'real world (DEM)': 'real' })
   .name('source')
   .onChange((v) => {
+    invalidateRouteCorridorForTerrainRunChange()
     if (v === 'real') loadRealTerrain()
     else {
       settingsPanel?.setTerrainStatus('loading', '正在生成程序化地形…')
@@ -1474,6 +1540,7 @@ fSource
   .add(params, 'demZoom', [8, 9, 10, 11, 12, 13, 14])
   .name('detail (zoom)')
   .onChange(() => {
+    invalidateRouteCorridorForTerrainRunChange()
     if (params.source === 'real') loadRealTerrain()
     syncSettingsControls()
   })
@@ -2470,7 +2537,69 @@ function initializeAnalysisCursor(points = lastRouteAnalysis?.points) {
   setAnalysisCursor(distanceM)
   return true
 }
-profileCard.setCallbacks({ onCursorDistance: setAnalysisCursor, onExpand: expandTerrainToRoute })
+
+function publishRouteCorridorState(state) {
+  if (state.key !== currentRouteCorridorRun().key) return
+  if (state.status === 'loading') {
+    routeCorridorState = { key: state.key, status: 'loading', analysis: null, error: null, performance: null }
+  } else if (state.status === 'ready') {
+    routeCorridorState = {
+      key: state.key,
+      status: 'ready',
+      analysis: state.analysis,
+      error: null,
+      performance: {
+        tileCount: state.coverage.tileCount,
+        newRequests: state.coverage.newRequests,
+        decodedBytes: state.coverage.decodedBytes,
+        totalDecodeMs: state.coverage.totalDecodeMs,
+        maxChunkMs: state.coverage.maxChunkMs,
+      },
+    }
+  } else {
+    routeCorridorState = { key: state.key, status: 'error', analysis: null, error: state.error, performance: null }
+  }
+  refreshRoute({ recordHistory: false, fitOverview: false })
+}
+
+routeDemAnalysisController = createRouteDemAnalysisController({
+  loadCoverage: (request) => routeDemCoverage.load(request),
+  onState: publishRouteCorridorState,
+})
+
+function requestRouteCorridorAnalysis() {
+  if (workflowStage?.stage !== WORKFLOW_STAGES.ANALYZE || lastRouteCoverage.covered || !geo || !dem) return null
+  const run = currentRouteCorridorRun()
+  if (params.source !== 'real' || run.sourceIdentity !== TERRARIUM_SOURCE_ID) {
+    routeCorridorState = { key: run.key, status: 'error', analysis: null, error: { code: 'source-unavailable' }, performance: null }
+    refreshRoute({ recordHistory: false, fitOverview: false })
+    return null
+  }
+  const snappedGeometry = activeRouteAnalysisGeometry()
+  const routeSnapshot = { ...route, waypoints: route.waypoints.map((waypoint) => ({ ...waypoint })) }
+  const snappedSnapshot = snappedGeometry?.map((coordinate) => [...coordinate]) ?? null
+  const geoSnapshot = geo
+  const points = sampleRouteAnalysisPath({ route: routeSnapshot, snappedGeometry: snappedSnapshot, geo: geoSnapshot })
+  return routeDemAnalysisController.start({
+    key: run.key,
+    points,
+    zoom: run.zoom,
+    sourceIdentity: run.sourceIdentity,
+    analyze: (coverage) => analyzeRouteElevation({
+      route: routeSnapshot,
+      snappedGeometry: snappedSnapshot,
+      geo: geoSnapshot,
+      sampleElevation: (_x, _z, point) => coverage.sample(point.lon, point.lat),
+      coverage: { covered: true, source: 'route-corridor', metersPerPixel: coverage.metersPerPixel },
+    }),
+  })
+}
+
+profileCard.setCallbacks({
+  onCursorDistance: setAnalysisCursor,
+  onRetry: () => { void requestRouteCorridorAnalysis() },
+  onReturnPlan: () => workflowStage?.setStage(WORKFLOW_STAGES.PLAN),
+})
 const overviewMap = createOverviewMap({
   terrainExaggeration: params.demExaggeration,
   onTerrainUnavailable: (error) => {
@@ -2563,7 +2692,13 @@ function fitWorkflowStage() {
 function applyWorkflowStage(stage) {
   const analyze = stage === WORKFLOW_STAGES.ANALYZE
   profileCard?.setStage(stage)
-  if (!analyze) clearAnalysisCursor()
+  if (!analyze) {
+    if (routeCorridorState.status === 'loading') {
+      routeDemAnalysisController?.cancel()
+      routeCorridorState = { ...routeCorridorState, status: 'cancelled', analysis: null, error: null }
+    }
+    clearAnalysisCursor()
+  }
   else initializeAnalysisCursor()
   document.body.classList.toggle('analyze-operate', analyze)
   if (analyze) {
@@ -2574,7 +2709,10 @@ function applyWorkflowStage(stage) {
     rail.clearActive()
     overviewMap.setPlannerMode(true, { editing: false })
     if (applyPlannerView('3d') !== '3d') workflowStage?.fallback('terrain-unavailable')
-    else fitWorkflowStage()
+    else {
+      fitWorkflowStage()
+      void requestRouteCorridorAnalysis()
+    }
     return
   }
   plannerWorkspace?.setStage(stage)
@@ -2860,6 +2998,7 @@ function applyNativeSetting(key, value, { commit = true } = {}) {
   if (['demLat', 'demLon', 'demZoom', 'demExaggeration', 'exposure', 'contrast', 'saturation', 'fogNear', 'fogFar'].includes(key)) value = Number(value)
   if (key === 'source') {
     params.source = value
+    invalidateRouteCorridorForTerrainRunChange()
     if (value === 'real') loadRealTerrain()
     else {
       settingsPanel?.setTerrainStatus('loading', '正在生成程序化地形…')
@@ -2879,6 +3018,7 @@ function applyNativeSetting(key, value, { commit = true } = {}) {
     params.demLocation = 'Custom'
   } else if (key === 'demZoom') {
     params.demZoom = value
+    invalidateRouteCorridorForTerrainRunChange()
     if (params.source === 'real') loadRealTerrain()
   } else if (key === 'demExaggeration') {
     params.demExaggeration = value
@@ -3030,7 +3170,7 @@ if (params.planning) {
 }
 
 // console access for debugging/scripting
-window.__exp = { scene, camera, controls, params, terrain, loadRealTerrain, loadAdminBoundaries, expandTerrainToRoute, plannerWorkspace, overviewMap, get renderStats() { return { legacyFps: fps, legacyFrames: legacyFrameLoop?.frameCount ?? 0, legacyFrameLoopRunning: legacyFrameLoop?.running ?? false, plannerTerrain: overviewMap.terrainState } }, get routeCoverage() { return lastRouteCoverage }, get routeAnalysis() { return lastRouteAnalysis }, get terrainState() { return { demBusy, demRequestId, rebuildPending, rebuildQueued, terrainGen } }, get routingState() { return { on: snapState.on, profile: snapProfile, version: snapState.version, demKey: snapState.demKey } }, get adminState() { return adminState }, get adminInteraction() { return adminInteraction }, get adminLayer() { return adminLayer }, get labels() { return labels }, get route() { return route }, get geo() { return geo }, get dem() { return dem } }
+window.__exp = { scene, camera, controls, params, terrain, loadRealTerrain, loadAdminBoundaries, expandTerrainToRoute, plannerWorkspace, overviewMap, get renderStats() { return { legacyFps: fps, legacyFrames: legacyFrameLoop?.frameCount ?? 0, legacyFrameLoopRunning: legacyFrameLoop?.running ?? false, plannerTerrain: overviewMap.terrainState } }, get routeCoverage() { return lastRouteCoverage }, get routeAnalysis() { return lastRouteAnalysis }, get routeDemCoverage() { return { state: routeCorridorState, cache: routeDemCoverage.stats() } }, get terrainState() { return { demBusy, demRequestId, rebuildPending, rebuildQueued, terrainGen } }, get routingState() { return { on: snapState.on, profile: snapProfile, version: snapState.version, demKey: snapState.demKey } }, get adminState() { return adminState }, get adminInteraction() { return adminInteraction }, get adminLayer() { return adminLayer }, get labels() { return labels }, get route() { return route }, get geo() { return geo }, get dem() { return dem } }
 
 // real world is the default source — fetch its tiles on startup
 if (params.source === 'real') loadRealTerrain()

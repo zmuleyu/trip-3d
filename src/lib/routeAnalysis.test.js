@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { makeGeoContext, worldToLonLat } from './geo.js'
-import { analyzeRouteElevation, consumeReadyRouteAnalysis, deriveRouteGrade, sampleRouteGradeAtDistance, syncRouteAnalysisConsumer } from './routeAnalysis.js'
+import { analyzeRouteElevation, consumeReadyRouteAnalysis, deriveRouteGrade, sampleRouteAnalysisPath, sampleRouteGradeAtDistance, syncRouteAnalysisConsumer } from './routeAnalysis.js'
 
 const dem = { lat: 31.108, lon: 102.884, zoom: 12, size: 768, metersPerPixel: 30 }
 const geo = makeGeoContext(dem)
@@ -55,6 +55,32 @@ describe('raw DEM route analysis', () => {
       expect(result.profile.distanceM).toBe(result.stats.distanceM)
     }
     expect(snapped.profile.maxElevationM).toBeGreaterThan(direct.profile.maxElevationM)
+  })
+
+  it('enumerates the same 240 raw or snapped analysis points before corridor loading', () => {
+    const snappedGeometry = [lonLat(-10, 0), lonLat(0, 6), lonLat(10, 0)].map(({ lon, lat }) => [lon, lat])
+
+    expect(sampleRouteAnalysisPath({ route, geo })).toHaveLength(240)
+    expect(sampleRouteAnalysisPath({ route, snappedGeometry, geo })).toHaveLength(240)
+  })
+
+  it('uses route-wide lon/lat Terrarium samples and resolution outside the visual DEM window', () => {
+    const corridorRoute = {
+      id: 'route-corridor',
+      waypoints: [waypoint('A', -40, 0), waypoint('B', 40, 0)],
+    }
+    const sampleElevation = vi.fn((_x, _z, point) => 1200 + point.lon * 2 + point.lat)
+    const analysis = analyzeRouteElevation({
+      route: corridorRoute,
+      geo,
+      sampleElevation,
+      coverage: { covered: true, source: 'route-corridor', metersPerPixel: 24 },
+    })
+
+    expect(analysis.status).toBe('ready')
+    expect(analysis.points).toHaveLength(240)
+    expect(analysis.grade).toMatchObject({ status: 'ready', metersPerPixel: 24 })
+    expect(sampleElevation).toHaveBeenCalledWith(expect.any(Number), expect.any(Number), expect.objectContaining({ lon: expect.any(Number), lat: expect.any(Number) }))
   })
 
   it('fails closed for incomplete routes, missing DEM access, and coverage gaps', () => {

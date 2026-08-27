@@ -35,14 +35,14 @@ function pointsStayWithinDem(points, geo) {
   })
 }
 
-export function deriveRouteGrade(points, geo) {
-  const metersPerPixel = Number(geo?.dem?.metersPerPixel)
+export function deriveRouteGrade(points, geo, { coverage = null } = {}) {
+  const metersPerPixel = Number(coverage?.metersPerPixel ?? geo?.dem?.metersPerPixel)
   if (!Number.isFinite(metersPerPixel) || metersPerPixel <= 0) return gradeUnavailable('resolution-unavailable')
   const validPoints = Array.isArray(points) && points.length >= 2 && points.every((point) =>
     [point?.x, point?.z, point?.ele, point?.cumDistM].every(Number.isFinite)
   )
   if (!validPoints) return gradeUnavailable('elevation-unavailable')
-  if (!pointsStayWithinDem(points, geo)) return gradeUnavailable('outside-coverage')
+  if (coverage?.source !== 'route-corridor' && !pointsStayWithinDem(points, geo)) return gradeUnavailable('outside-coverage')
 
   const totalDistanceM = points.at(-1).cumDistM - points[0].cumDistM
   const sampleSpacingM = totalDistanceM / (points.length - 1)
@@ -128,6 +128,14 @@ export function syncRouteAnalysisConsumer(analysis, { render, clear } = {}) {
   return 'unavailable'
 }
 
+export function sampleRouteAnalysisPath({ route, snappedGeometry = null, geo } = {}) {
+  if ((route?.waypoints?.length ?? 0) < 2 || !geo) return []
+  const emptyElevation = () => 0
+  return Array.isArray(snappedGeometry) && snappedGeometry.length >= 2
+    ? samplePolyline(geo, snappedGeometry, emptyElevation)
+    : sampleRoutePath(geo, route.waypoints, emptyElevation)
+}
+
 export function analyzeRouteElevation({
   route,
   snappedGeometry = null,
@@ -158,6 +166,6 @@ export function analyzeRouteElevation({
       maxElevationM: Math.max(...elevations),
     },
     stats,
-    grade: deriveRouteGrade(points, geo),
+    grade: deriveRouteGrade(points, geo, { coverage }),
   }
 }
