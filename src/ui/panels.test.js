@@ -91,7 +91,7 @@ describe('Analyze elevation profile', () => {
     arc: vi.fn(), beginPath: vi.fn(), clearRect: vi.fn(), fill: vi.fn(), fillText: vi.fn(), lineTo: vi.fn(), moveTo: vi.fn(), stroke: vi.fn(),
   })
 
-  it('shows raw DEM range only in Analyze and supports keyboard-native folding', () => {
+  it('shows elevation range only in Analyze and supports keyboard-native folding', () => {
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(canvasContext())
     const card = createProfileCard()
     const analysis = {
@@ -110,7 +110,7 @@ describe('Analyze elevation profile', () => {
     expect(card.el.classList.contains('hidden')).toBe(false)
     expect(card.el.textContent).toContain('最低 1,180 m')
     expect(card.el.textContent).toContain('最高 1,360 m')
-    expect(card.el.textContent).toContain('Terrarium')
+    expect(card.el.textContent).toContain('坡度不可用：有效水平距离或高程覆盖不足')
 
     const toggle = card.el.querySelector('.head')
     expect(toggle.tagName).toBe('BUTTON')
@@ -137,6 +137,26 @@ describe('Analyze elevation profile', () => {
     expect(card.el.textContent).toContain(message)
     expect(card.el.textContent).not.toContain('0 m')
     expect(card.el.querySelector('canvas').getAttribute('role')).toBeNull()
+    expect(card.el.querySelector('.profile-details-toggle').hidden).toBe(true)
+    expect(card.el.querySelector('.profile-details').hidden).toBe(true)
+  })
+
+  it('offers terrain expansion only for outside coverage and keeps it in the unavailable context', () => {
+    const onExpand = vi.fn()
+    const card = createProfileCard()
+    card.setStage('analyze')
+    card.setCallbacks({ onExpand })
+
+    card.update({ status: 'outside-coverage', points: [], profile: null })
+    const recovery = card.el.querySelector('.profile-recovery')
+    expect(recovery.hidden).toBe(false)
+    recovery.click()
+    expect(onExpand).toHaveBeenCalledOnce()
+
+    for (const status of ['incomplete', 'dem-unavailable', 'loading', 'error']) {
+      card.update({ status, points: [], profile: null })
+      expect(recovery.hidden).toBe(true)
+    }
   })
 
   it('uses a finite first-point cursor and fixed endpoint x for a zero-length profile', () => {
@@ -226,7 +246,7 @@ describe('Analyze elevation profile', () => {
     expect(onCursorDistance).toHaveBeenLastCalledWith(null)
   })
 
-  it('adds signed, windowed grade metrics to the existing profile cursor without a new owner', () => {
+  it('keeps aggregate grade metrics in a disclosed route-details layer', () => {
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(canvasContext())
     const card = createProfileCard()
     const analysis = {
@@ -259,10 +279,45 @@ describe('Analyze elevation profile', () => {
     expect(card.el.textContent).toContain('平均绝对坡度 9.2%')
     expect(card.el.textContent).toContain('最大上坡 +10.0%')
     expect(card.el.textContent).toContain('最大下坡 −8.3%')
-    expect(card.el.textContent).toContain('DEM 30 m/像元 · 200 m 局部窗口平均坡度')
+    expect(card.el.querySelector('.profile-details').hidden).toBe(true)
+    expect(card.el.querySelector('.profile-details-toggle').getAttribute('aria-expanded')).toBe('false')
+    card.el.querySelector('.profile-details-toggle').click()
+    expect(card.el.querySelector('.profile-details').hidden).toBe(false)
+    expect(card.el.querySelector('.profile-details-toggle').getAttribute('aria-expanded')).toBe('true')
+    expect(card.el.textContent).not.toContain('DEM 30 m/像元')
     expect(card.el.querySelector('canvas').getAttribute('aria-valuetext')).toContain('上坡 +10.0%')
     card.setStage('plan')
     expect(card.el.classList.contains('hidden')).toBe(true)
+  })
+
+  it('clears and hides route details across unavailable states before restoring a folded ready layer', () => {
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(canvasContext())
+    const card = createProfileCard()
+    const ready = {
+      status: 'ready',
+      points: [
+        { lon: 100, lat: 30, ele: 1000, cumDistM: 0 },
+        { lon: 101, lat: 30, ele: 1100, cumDistM: 1000 },
+      ],
+      profile: { distanceM: 1000, minElevationM: 1000, maxElevationM: 1100 },
+      grade: { status: 'ready', averageAbsPct: 10, maxUphillPct: 10, maxDownhillPct: -5, samples: [] },
+    }
+    card.setStage('analyze')
+    card.update(ready)
+    card.el.querySelector('.profile-details-toggle').click()
+    expect(card.el.querySelector('.profile-details').hidden).toBe(false)
+
+    card.update({ status: 'dem-unavailable', points: [], profile: null })
+    expect(card.el.querySelector('.profile-details-toggle').hidden).toBe(true)
+    expect(card.el.querySelector('.profile-details-toggle').disabled).toBe(true)
+    expect(card.el.querySelector('.profile-details').hidden).toBe(true)
+    expect(card.el.querySelector('.profile-details').textContent).toBe('')
+
+    card.update(ready)
+    expect(card.el.querySelector('.profile-details-toggle').hidden).toBe(false)
+    expect(card.el.querySelector('.profile-details-toggle').disabled).toBe(false)
+    expect(card.el.querySelector('.profile-details').hidden).toBe(true)
+    expect(card.el.querySelector('.profile-details-toggle').getAttribute('aria-expanded')).toBe('false')
   })
 
   it('keeps an available elevation profile truthful when its grade is unavailable', () => {

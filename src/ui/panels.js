@@ -499,22 +499,50 @@ export function createProfileCard(accent = '#ff4d00') {
   const statusMessage = document.createElement('span')
   const cursorReadout = document.createElement('span')
   cursorReadout.className = 'profile-cursor-readout'
+  const recovery = document.createElement('button')
+  recovery.type = 'button'
+  recovery.className = 'profile-recovery'
+  recovery.hidden = true
+  recovery.textContent = '扩展路线地形'
   const canvas = document.createElement('canvas')
   canvas.width = 596
   canvas.height = 110
   const source = document.createElement('small')
   source.className = 'profile-source'
+  const detailsToggle = document.createElement('button')
+  detailsToggle.type = 'button'
+  detailsToggle.className = 'profile-details-toggle'
+  detailsToggle.textContent = '路线详情'
+  detailsToggle.setAttribute('aria-expanded', 'false')
+  const details = document.createElement('div')
+  details.className = 'profile-details'
+  details.hidden = true
+  details.append(metrics, source)
   status.append(statusMessage, cursorReadout)
-  body.append(metrics, status, canvas, source)
+  body.append(status, recovery, canvas, detailsToggle, details)
   el.append(head, body)
   document.body.appendChild(el)
   let stage = 'plan'
   let folded = false
   let lastPts = null
   let lastGrade = null
-  let cbs = { onCursorDistance: null }
+  let cbs = { onCursorDistance: null, onExpand: null }
   let lastCursorDistanceM = null
   let profileReady = false
+  let detailsOpen = false
+  const setDetailsOpen = (open) => {
+    detailsOpen = !!open
+    details.hidden = !detailsOpen
+    detailsToggle.setAttribute('aria-expanded', String(detailsOpen))
+    detailsToggle.textContent = detailsOpen ? '收起路线详情' : '路线详情'
+  }
+  const setDetailsAvailable = (available) => {
+    detailsToggle.hidden = !available
+    detailsToggle.disabled = !available
+    if (!available) setDetailsOpen(false)
+  }
+  detailsToggle.addEventListener('click', () => setDetailsOpen(!detailsOpen))
+  recovery.addEventListener('click', () => cbs.onExpand?.())
   const formatGrade = (gradePct) => {
     const rounded = Math.round(gradePct * 10) / 10
     if (rounded > 0) return `上坡 +${rounded.toFixed(1)}%`
@@ -642,7 +670,10 @@ export function createProfileCard(accent = '#ff4d00') {
         lastGrade = null
         lastCursorDistanceM = null
         canvas.classList.add('hidden')
+        metrics.replaceChildren()
         source.textContent = ''
+        setDetailsAvailable(false)
+        recovery.hidden = analysis.status !== 'outside-coverage'
         statusMessage.textContent = {
           incomplete: '至少添加起点和终点',
           'outside-coverage': '路线超出范围，扩展地形范围后重试',
@@ -654,14 +685,17 @@ export function createProfileCard(accent = '#ff4d00') {
         return
       }
       const { points, profile, grade } = analysis
+      if (!profileReady) setDetailsOpen(false)
       profileReady = true
       lastPts = points
       lastGrade = grade
       canvas.classList.remove('hidden')
+      recovery.hidden = true
+      setDetailsAvailable(true)
       statusMessage.textContent = `${(profile.distanceM / 1000).toFixed(1)} km · 高程可用`
       source.textContent = grade?.status === 'ready'
-        ? `Terrarium 原始米制高程 · DEM ${Math.round(grade.metersPerPixel)} m/像元 · ${Math.round(grade.windowM)} m 局部窗口平均坡度`
-        : 'Terrarium 原始米制高程 · 坡度不可用：有效水平距离或高程覆盖不足'
+        ? '原始高程与局部坡度分析'
+        : '坡度不可用：有效水平距离或高程覆盖不足'
       for (const text of [
         `最低 ${Math.round(profile.minElevationM).toLocaleString('zh-CN')} m`,
         `最高 ${Math.round(profile.maxElevationM).toLocaleString('zh-CN')} m`,

@@ -443,7 +443,7 @@ describe('overview MapLibre planner map', () => {
     expect(instance.attributionElement.classList.contains('ui-map-attribution-floating')).toBe(false)
   })
 
-  it('renders one waypoint, a full snapped route, A/B/intermediate points, and DEM coverage', () => {
+  it('renders one waypoint and a full snapped route without a coverage overlay', () => {
     const { overview, instance } = setup()
     overview.setPlannerMode(true)
 
@@ -462,7 +462,7 @@ describe('overview MapLibre planner map', () => {
     expect(instance.getSource('trip-planned-route').data.features[0].geometry.coordinates).toEqual([
       [112.98, 41.18], [113.08, 41.38], [113.24, 41.43],
     ])
-    expect(instance.getSource('trip-terrain-coverage').data.features[0].geometry.type).toBe('Polygon')
+    expect(instance.getSource('trip-terrain-coverage')).toBeUndefined()
     expect(instance.fitCalls.at(-1).bounds).toEqual([[112.98, 41.18], [113.24, 41.43]])
     expect(overview.el.querySelector('.ui-map-fit span').textContent).toBe('完整路线')
   })
@@ -581,12 +581,12 @@ describe('overview MapLibre planner map', () => {
     const onJump = vi.fn()
     const { overview, instance } = setup({ onJump })
     overview.setPlannerMode(true)
-    overview.update({ waypoints: [] }, null, VIEWPORT)
+    overview.update({ waypoints: [{ id: 'a', lon: 113, lat: 41.2 }, { id: 'b', lon: 113.2, lat: 41.4 }] }, null, VIEWPORT)
 
     const before = overview.view.z
     overview.el.querySelector('[aria-label="放大地图"]').click()
     expect(overview.view.z).toBe(before + 1)
-    overview.el.querySelector('[aria-label="显示地形范围"]').click()
+    overview.el.querySelector('[aria-label="显示完整路线"]').click()
     expect(instance.fitCalls.length).toBeGreaterThan(1)
     overview.resize()
     expect(instance.resizeCalls).toBeGreaterThan(0)

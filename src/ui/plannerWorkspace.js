@@ -1,6 +1,6 @@
 import { iconSvg } from './icons.js'
 
-export function createPlannerWorkspace({ onStage, onExpand, onSearch, onPrimary, onWeather, onMoreAction, onSpineExpand } = {}) {
+export function createPlannerWorkspace({ onStage, onSearch, onPrimary, onWeather, onMoreAction, onSpineExpand } = {}) {
   const el = document.createElement('div')
   el.className = 'ui-planner-workspace hidden'
   el.innerHTML = `
@@ -27,16 +27,16 @@ export function createPlannerWorkspace({ onStage, onExpand, onSearch, onPrimary,
       </div>
     </header>
     <div class="ui-planner-more-menu hidden" role="menu" aria-label="更多操作">
+      <span class="ui-planner-more-label" role="presentation">线路</span>
+      <button type="button" role="menuitem" data-more-action="library">线路库</button>
+      <button type="button" role="menuitem" data-more-action="save">保存线路</button>
+      <button type="button" role="menuitem" data-more-action="share">分享线路</button>
       <span class="ui-planner-more-label" role="presentation">线路传输</span>
       <button type="button" role="menuitem" data-more-action="import">导入 GPX</button>
       <button type="button" role="menuitem" data-more-action="export">导出 GPX</button>
-      <span class="ui-planner-more-label" role="presentation">显示</span>
+      <span class="ui-planner-more-label" role="presentation">地图与显示</span>
+      <button type="button" role="menuitem" data-more-action="admin">行政区划</button>
       <button type="button" role="menuitem" data-more-action="settings">进阶设置</button>
-    </div>
-    <div class="ui-route-coverage hidden" role="alert">
-      <span class="ui-coverage-dot"></span>
-      <div><b>路线超出当前地形数据范围</b><span data-field="coverage-detail"></span></div>
-      <button type="button">扩展地形范围</button>
     </div>
     <section class="ui-trip-spine" aria-label="行程记录">
       <button type="button" class="ui-trip-spine-title">${iconSvg('planning')}<span>行程记录</span></button>
@@ -101,7 +101,6 @@ export function createPlannerWorkspace({ onStage, onExpand, onSearch, onPrimary,
     return true
   }
   buttons.forEach((button) => button.addEventListener('click', () => applyStage(button.dataset.stage, true)))
-  el.querySelector('.ui-route-coverage button').addEventListener('click', () => onExpand?.())
   applyStage('plan')
   return {
     el,
@@ -162,14 +161,6 @@ export function createPlannerWorkspace({ onStage, onExpand, onSearch, onPrimary,
       identity.querySelector('b').textContent = name || '未命名线路'
       identity.querySelector('span').textContent = `${dateText || '尚未设置日期'}${saved == null ? '' : saved ? ' · 已保存' : ' · 未保存'}`
     },
-    setCoverage(coverage) {
-      const alert = el.querySelector('.ui-route-coverage')
-      const blocked = coverage && !coverage.covered
-      alert.classList.toggle('hidden', !blocked)
-      if (blocked) {
-        el.querySelector('[data-field="coverage-detail"]').textContent =
-          ` ${coverage.outsideCount}/${coverage.total} 个采样点在范围外；高程与坡度已暂停。`
-      }
-    },
+    setCoverage() {},
   }
 }
