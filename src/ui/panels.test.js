@@ -225,4 +225,62 @@ describe('Analyze elevation profile', () => {
     canvas.dispatchEvent(new Event('pointerleave'))
     expect(onCursorDistance).toHaveBeenLastCalledWith(null)
   })
+
+  it('adds signed, windowed grade metrics to the existing profile cursor without a new owner', () => {
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(canvasContext())
+    const card = createProfileCard()
+    const analysis = {
+      status: 'ready',
+      points: [
+        { lon: 100, lat: 30, ele: 1000, cumDistM: 0 },
+        { lon: 101, lat: 30, ele: 1100, cumDistM: 1000 },
+        { lon: 102, lat: 30, ele: 1017, cumDistM: 2000 },
+      ],
+      profile: { distanceM: 2000, minElevationM: 1000, maxElevationM: 1100 },
+      grade: {
+        status: 'ready',
+        metersPerPixel: 30,
+        windowM: 200,
+        averageAbsPct: 9.2,
+        maxUphillPct: 10,
+        maxDownhillPct: -8.3,
+        samples: [
+          { distanceM: 0, gradePct: 10 },
+          { distanceM: 1000, gradePct: 10 },
+          { distanceM: 2000, gradePct: -8.3 },
+        ],
+      },
+    }
+
+    card.update(analysis)
+    card.setStage('analyze')
+    card.setCursorDistance(1000)
+
+    expect(card.el.textContent).toContain('平均绝对坡度 9.2%')
+    expect(card.el.textContent).toContain('最大上坡 +10.0%')
+    expect(card.el.textContent).toContain('最大下坡 −8.3%')
+    expect(card.el.textContent).toContain('DEM 30 m/像元 · 200 m 局部窗口平均坡度')
+    expect(card.el.querySelector('canvas').getAttribute('aria-valuetext')).toContain('上坡 +10.0%')
+    card.setStage('plan')
+    expect(card.el.classList.contains('hidden')).toBe(true)
+  })
+
+  it('keeps an available elevation profile truthful when its grade is unavailable', () => {
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(canvasContext())
+    const card = createProfileCard()
+    card.setStage('analyze')
+    card.update({
+      status: 'ready',
+      points: [
+        { lon: 100, lat: 30, ele: 1000, cumDistM: 0 },
+        { lon: 101, lat: 30, ele: 1010, cumDistM: 40 },
+      ],
+      profile: { distanceM: 40, minElevationM: 1000, maxElevationM: 1010 },
+      grade: { status: 'insufficient-distance', samples: [] },
+    })
+
+    expect(card.el.textContent).toContain('最低 1,000 m')
+    expect(card.el.textContent).toContain('坡度不可用：有效水平距离或高程覆盖不足')
+    expect(card.el.textContent).not.toContain('平均绝对坡度')
+  })
 })

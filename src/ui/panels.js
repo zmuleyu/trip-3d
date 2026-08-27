@@ -1,6 +1,7 @@
 // Context panel contents + profile floating card. DOM only; fed by main.js.
 import { durationContract, normalizeRouteMode } from '../lib/routePlanning.js'
 import { analysisPointsReady, nearestAnalysisIndex, sampleAnalysisAtDistance } from '../lib/analysisCursor.js'
+import { sampleRouteGradeAtDistance } from '../lib/routeAnalysis.js'
 
 // ---------------------------------------------------------------- planning panel
 // duration formatting: ≥24h shows days (long road trips)
@@ -510,9 +511,16 @@ export function createProfileCard(accent = '#ff4d00') {
   let stage = 'plan'
   let folded = false
   let lastPts = null
+  let lastGrade = null
   let cbs = { onCursorDistance: null }
   let lastCursorDistanceM = null
   let profileReady = false
+  const formatGrade = (gradePct) => {
+    const rounded = Math.round(gradePct * 10) / 10
+    if (rounded > 0) return `上坡 +${rounded.toFixed(1)}%`
+    if (rounded < 0) return `下坡 −${Math.abs(rounded).toFixed(1)}%`
+    return '坡度 0.0%'
+  }
   const clearSliderSemantics = () => {
     canvas.tabIndex = -1
     for (const name of ['role', 'aria-label', 'aria-valuemin', 'aria-valuemax', 'aria-valuenow', 'aria-valuetext']) canvas.removeAttribute(name)
@@ -601,7 +609,8 @@ export function createProfileCard(accent = '#ff4d00') {
     ctx.fillStyle = accent
     ctx.beginPath(); ctx.arc(x, y, 3.5, 0, Math.PI * 2); ctx.fill()
     const distanceText = `${(sample.distanceM / 1000).toFixed(1)} km`
-    const valueText = `${distanceText} · ${Math.round(sample.ele).toLocaleString('zh-CN')} m`
+    const gradePct = sampleRouteGradeAtDistance(lastGrade, sample.distanceM)
+    const valueText = `${distanceText} · ${Math.round(sample.ele).toLocaleString('zh-CN')} m${gradePct == null ? '' : ` · ${formatGrade(gradePct)}`}`
     cursorReadout.textContent = valueText
     if (profileReady && stage === 'analyze') {
       canvas.setAttribute('aria-valuemin', String(Math.round(startDistanceM)))
@@ -630,6 +639,7 @@ export function createProfileCard(accent = '#ff4d00') {
       if (!ready) {
         profileReady = false
         lastPts = null
+        lastGrade = null
         lastCursorDistanceM = null
         canvas.classList.add('hidden')
         source.textContent = ''
@@ -643,12 +653,15 @@ export function createProfileCard(accent = '#ff4d00') {
         syncVisibility()
         return
       }
-      const { points, profile } = analysis
+      const { points, profile, grade } = analysis
       profileReady = true
       lastPts = points
+      lastGrade = grade
       canvas.classList.remove('hidden')
       statusMessage.textContent = `${(profile.distanceM / 1000).toFixed(1)} km · 高程可用`
-      source.textContent = 'Terrarium 原始米制高程'
+      source.textContent = grade?.status === 'ready'
+        ? `Terrarium 原始米制高程 · DEM ${Math.round(grade.metersPerPixel)} m/像元 · ${Math.round(grade.windowM)} m 局部窗口平均坡度`
+        : 'Terrarium 原始米制高程 · 坡度不可用：有效水平距离或高程覆盖不足'
       for (const text of [
         `最低 ${Math.round(profile.minElevationM).toLocaleString('zh-CN')} m`,
         `最高 ${Math.round(profile.maxElevationM).toLocaleString('zh-CN')} m`,
@@ -656,6 +669,17 @@ export function createProfileCard(accent = '#ff4d00') {
         const item = document.createElement('span')
         item.textContent = text
         metrics.appendChild(item)
+      }
+      if (grade?.status === 'ready') {
+        for (const text of [
+          `平均绝对坡度 ${grade.averageAbsPct.toFixed(1)}%`,
+          `最大上坡 ${grade.maxUphillPct == null ? '—' : `+${grade.maxUphillPct.toFixed(1)}%`}`,
+          `最大下坡 ${grade.maxDownhillPct == null ? '—' : `−${Math.abs(grade.maxDownhillPct).toFixed(1)}%`}`,
+        ]) {
+          const item = document.createElement('span')
+          item.textContent = text
+          metrics.appendChild(item)
+        }
       }
       syncSliderAvailability()
       draw()
