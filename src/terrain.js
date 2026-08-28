@@ -236,6 +236,12 @@ uniform float uOverlayMix;`
 
   // Noise-driven roughness map (green channel is what three.js reads) + bump map
   // reused for micro relief that's finer than the vertex grid.
+  ensureRoughness(params) {
+    if (this.material.roughnessMap) return false
+    this.rebuildRoughness(params)
+    return true
+  }
+
   rebuildRoughness(params) {
     const size = 512
     const rng = mulberry32(params.seed + 777)
@@ -275,9 +281,4 @@ uniform float uOverlayMix;`
     this.material.needsUpdate = true
   }
 
-  updateMaterial(params) {
-    this.material.color.set(params.color)
-    this.material.envMapIntensity = params.envMapIntensity
-    this.material.bumpScale = params.bumpScale
-  }
 }

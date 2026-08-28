@@ -208,7 +208,7 @@ pmrem.dispose()
 
 const sun = new THREE.DirectionalLight(0xffffff, params.sunIntensity)
 sun.castShadow = true
-sun.shadow.mapSize.set(2048, 2048)
+sun.shadow.mapSize.set(params.shadowRes, params.shadowRes)
 sun.shadow.camera.left = -26
 sun.shadow.camera.right = 26
 sun.shadow.camera.top = 26
@@ -1750,7 +1750,7 @@ legacyTerrainTools = createLegacyTerrainToolsAdapter({
   terrain: {
     showLoading: () => loadingEl.classList.remove('hidden'),
     schedule: (work) => requestAnimationFrame(() => setTimeout(work, 30)),
-    rebuild: () => { terrain.rebuild(params); terrain.rebuildRoughness(params); regenerateLabels() },
+    rebuild: () => { terrain.rebuild(params); terrain.ensureRoughness(params); regenerateLabels() },
     refreshRoute: () => refreshRoute(),
     reloadAdminIfNeeded: () => {
       if (adminNeedsReload({ enabled: adminState.on, loadedKey: adminState.demKey, currentKey: currentDemKey() })) loadAdminBoundaries()
