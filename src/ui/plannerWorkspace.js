@@ -1,6 +1,6 @@
 import { iconSvg } from './icons.js'
 
-export function createPlannerWorkspace({ onStage, onSearch, onMoreAction, onSpineExpand } = {}) {
+export function createPlannerWorkspace({ onStage, onSearch, onMoreAction, onSpineExpand, onMenuChange } = {}) {
   const el = document.createElement('div')
   el.className = 'ui-planner-workspace hidden'
   el.innerHTML = `
@@ -60,7 +60,9 @@ export function createPlannerWorkspace({ onStage, onSearch, onMoreAction, onSpin
   spine.querySelector('.ui-trip-spine-expand').addEventListener('click', () => onSpineExpand?.())
   const moreMenu = el.querySelector('.ui-planner-more-menu')
   const setMoreOpen = (open) => {
+    if (open) setLayersOpen(false)
     moreMenu.classList.toggle('hidden', !open)
+    onMenuChange?.('more', !!open)
   }
   moreMenu.addEventListener('click', (event) => {
     const action = event.target.closest('[data-more-action]')?.dataset.moreAction
@@ -69,7 +71,9 @@ export function createPlannerWorkspace({ onStage, onSearch, onMoreAction, onSpin
     onMoreAction?.(action)
   })
   const setLayersOpen = (open) => {
+    if (open) setMoreOpen(false)
     document.body.classList.toggle('planner-layers-open', open)
+    onMenuChange?.('layers', !!open)
   }
   const syncPrimary = () => {
     moreMenu.querySelector('[data-more-action="save"]').disabled = !analyzeAvailable

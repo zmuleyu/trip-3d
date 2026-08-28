@@ -2227,6 +2227,19 @@ body.planner-operate.analyze-operate .profile-recovery { border-color: var(--ins
 @media (max-width: 1023px) {
   .ui-fluid-grip,
   .ui-fluid-resize { display: none !important; }
+
+  .ui-overview.planner .ui-map-controls.ui-map-dock button,
+  .ui-panel-chev {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .ui-overview.planner .ui-map-controls.ui-map-dock button:focus-visible,
+  .ui-panel-chev:focus-visible,
+  .ui-sheet-grabber:focus-visible {
+    outline: 2px solid var(--trip-route);
+    outline-offset: 2px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

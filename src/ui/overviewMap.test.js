@@ -45,6 +45,7 @@ const maplibre = vi.hoisted(() => {
     emit(event, payload = {}) { for (const handler of this.handlers.get(event) ?? []) handler(payload) }
     getCanvas() { return this.canvas }
     dragPan = { disable: vi.fn(), enable: vi.fn() }
+    touchZoomRotate = { enable: vi.fn() }
     queryRenderedFeatures(point, { layers } = {}) {
       return this.renderedFeatures?.filter((feature) => !layers || layers.includes(feature.layer?.id)) ?? []
     }
@@ -572,6 +573,65 @@ describe('overview MapLibre planner map', () => {
     await new Promise((resolve) => setTimeout(resolve, 0))
     instance.emit('click', { lngLat: { lng: 113.3, lat: 41.5 } })
     expect(onPlanAdd).toHaveBeenCalledWith(113.3, 41.5)
+  })
+
+  it('waits for hysteresis, cancels for a second touch, and restores map gestures', () => {
+    const onWaypointMoveStart = vi.fn()
+    const onWaypointMove = vi.fn(() => true)
+    const onWaypointMoveCancel = vi.fn()
+    const { overview, instance } = setup({ onWaypointMoveStart, onWaypointMove, onWaypointMoveCancel })
+    overview.setPlannerMode(true)
+    overview.update({ waypoints: [{ id: 'a', lon: 113, lat: 41.2 }, { id: 'b', lon: 113.2, lat: 41.4 }] }, null, VIEWPORT)
+    const marker = { layer: { id: 'trip-waypoint-circles', source: 'trip-route-waypoints' }, properties: { waypointId: 'a' } }
+
+    instance.emit('touchstart', { features: [marker], point: { x: 10, y: 10 }, lngLat: { lng: 113, lat: 41.2 }, originalEvent: { touches: [{}] } })
+    instance.emit('touchmove', { point: { x: 18, y: 10 }, lngLat: { lng: 113.01, lat: 41.21 }, originalEvent: { touches: [{}] } })
+    expect(onWaypointMoveStart).not.toHaveBeenCalled()
+    expect(onWaypointMove).not.toHaveBeenCalled()
+    expect(instance.dragPan.disable).not.toHaveBeenCalled()
+
+    instance.emit('touchmove', { point: { x: 22, y: 10 }, lngLat: { lng: 113.02, lat: 41.22 }, originalEvent: { touches: [{}] } })
+    expect(onWaypointMoveStart).toHaveBeenCalledWith('a')
+    expect(onWaypointMove).toHaveBeenCalledWith('a', 113.02, 41.22)
+    instance.emit('touchstart', { originalEvent: { touches: [{}, {}] } })
+    expect(onWaypointMoveCancel).toHaveBeenCalledWith('a', 113, 41.2)
+    expect(instance.dragPan.enable).toHaveBeenCalledOnce()
+    expect(instance.touchZoomRotate.enable).toHaveBeenCalledOnce()
+  })
+
+  it('suppresses only the drag release click, then accepts the next blank-map tap', () => {
+    const onPlanAdd = vi.fn()
+    const { overview, instance } = setup({ onPlanAdd, onWaypointMove: vi.fn(() => true) })
+    overview.setPlannerMode(true)
+    overview.update({ waypoints: [{ id: 'a', lon: 113, lat: 41.2 }, { id: 'b', lon: 113.2, lat: 41.4 }] }, null, VIEWPORT)
+    const marker = { layer: { id: 'trip-waypoint-circles', source: 'trip-route-waypoints' }, properties: { waypointId: 'a' } }
+    instance.emit('mousedown', { features: [marker], point: { x: 10, y: 10 }, lngLat: { lng: 113, lat: 41.2 } })
+    instance.emit('mousemove', { point: { x: 24, y: 10 }, lngLat: { lng: 113.04, lat: 41.24 } })
+    instance.emit('mouseup')
+    instance.emit('click', { point: { x: 24, y: 10 }, lngLat: { lng: 113.04, lat: 41.24 } })
+    expect(onPlanAdd).not.toHaveBeenCalled()
+    instance.emit('click', { point: { x: 80, y: 40 }, lngLat: { lng: 113.3, lat: 41.5 } })
+    expect(onPlanAdd).toHaveBeenCalledWith(113.3, 41.5)
+  })
+
+  it('cancels an active preview on Escape, blur, and stage changes', () => {
+    const onWaypointMoveCancel = vi.fn()
+    const { overview, instance } = setup({ onWaypointMove: vi.fn(() => true), onWaypointMoveCancel })
+    overview.setPlannerMode(true)
+    overview.update({ waypoints: [{ id: 'a', lon: 113, lat: 41.2 }, { id: 'b', lon: 113.2, lat: 41.4 }] }, null, VIEWPORT)
+    const marker = { layer: { id: 'trip-waypoint-circles', source: 'trip-route-waypoints' }, properties: { waypointId: 'a' } }
+    const start = () => {
+      instance.emit('mousedown', { features: [marker], point: { x: 10, y: 10 }, lngLat: { lng: 113, lat: 41.2 } })
+      instance.emit('mousemove', { point: { x: 24, y: 10 }, lngLat: { lng: 113.04, lat: 41.24 } })
+    }
+    start()
+    instance.canvas.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    start()
+    globalThis.dispatchEvent(new Event('blur'))
+    start()
+    overview.setPlannerView('3d')
+    expect(onWaypointMoveCancel).toHaveBeenCalledTimes(3)
+    expect(instance.dragPan.enable).toHaveBeenCalledTimes(3)
   })
 
   it('restores map panning and discards a preview when a touch drag is cancelled', () => {

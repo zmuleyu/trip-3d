@@ -2279,6 +2279,9 @@ plannerWorkspace = createPlannerWorkspace({
     }
     overviewMap.setDockExpanded(false)
   },
+  onMenuChange: (_menu, open) => {
+    if (open && globalThis.matchMedia?.('(max-width: 1023px)')?.matches) panelHost.setSheetState('peek')
+  },
 })
 document.body.appendChild(plannerWorkspace.el)
 fluidLayout.register(plannerWorkspace.el.querySelector('.ui-trip-spine'), {
