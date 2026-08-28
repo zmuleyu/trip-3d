@@ -2,7 +2,7 @@
 
 > **在线访问**: https://trip-3d.pages.dev (Cloudflare Pages)
 
-TRIP 3D 是以地图和路线为核心的旅行规划与记录工具：在 3D 地形上规划线路、查看高程剖面与沿途天气，并可使用本地线路库、GPX 导入导出和 URL 分享。
+TRIP 3D 是以地图和路线为核心的旅行规划与记录工具。用户在 Plan 中编辑同一条路线，在 Analyze 中查看同一空间状态的地形与高程；路线库、沿途天气、GPX、保存和分享都围绕同一个 trip model 工作。
 
 本项目基于 [monolith-terrain](https://github.com/kaolti/monolith-terrain) 的 MIT 许可基础演进而来；其地形渲染与数据来源说明保留在本文档中。
 
@@ -16,32 +16,31 @@ TRIP 3D 是以地图和路线为核心的旅行规划与记录工具：在 3D �
 > npm run build                # 构建
 > ```
 
-An interactive, real-time 3D terrain map in the style of a vintage USGS topographic sheet, crossed with a sci-fi FUI overlay. Load **real-world elevation data** for anywhere on Earth, or generate procedural mountain ranges — then explore them with contour lines, hypsometric tinting, survey grids, spot elevations, clickable peak markers, radar scans, and cinematic camera tours.
+The project grew from the upstream terrain experiment, but its current product surface is a map-centered trip workspace rather than a standalone terrain demo. The original procedural terrain, poster, flyover, HUD, and advanced parameter capabilities remain reachable legacy tools; they are not the primary planning information architecture.
 
 **上游演示:** https://kaolti.github.io/monolith-terrain/
 
 ## How to use
 
-| Action | How |
+| Task | Current path |
 |---|---|
-| Look around | Drag to orbit, scroll to zoom, right-drag to pan |
-| Inspect a peak / basin | Click a `PK-xx` / `DEP-xx` marker — the camera flies in and a data panel opens |
-| Go back | Click ✕ on the panel — the camera returns to where you were |
-| Cinematic flyover | Open **Tour**, pick *from* / *to*, press **▶ start tour** (drag to cancel mid-flight) |
-| Radar scan | **HUD → trigger scan** — a wave sweeps the terrain and physically lifts the surface |
-| Change location | **Terrain source → location** presets, or *Custom* + latitude/longitude, then **load location** |
-| Save your settings | **copy parameters** puts the full state on your clipboard as JSON |
+| Plan a route | Enter **Plan**, search or click the map, then add, select, drag, reorder, reverse, or close waypoints. |
+| Choose routing | Use Direct, Walk, or Drive; provider limitations and unavailable duration/elevation remain explicit. |
+| Inspect terrain | Switch to **Analyze**. The same route and camera context continue into native MapLibre terrain and the elevation profile. |
+| Review weather | Open Weather from the destination rail; the panel uses the current route and selected date. |
+| Save or reopen | Save to the browser-local route library. There is no account or server synchronization. |
+| Import, export, share | Use GPX import/export, supported Amap links, URL sharing, or poster output from the global actions menu. |
+| Adjust the workspace | Desktop information instruments can be moved, resized, brought forward, and reset; compact viewports retain the mobile sheet. |
 
-### Terrain sources
+## Current architecture
 
-- **real world (DEM)** — fetches elevation tiles for the chosen coordinates and rebuilds the map with true landforms. Spot elevations and peak data show real values.
-  - **detail (zoom)** — z10–14: how large an area you get (z12 ≈ 28 km across, z13 ≈ 14 km)
-  - **vertical scale** — relief exaggeration; real proportions read flat at map scale, so 1.5–3 is typical
-- **procedural noise** — seeded multi-octave simplex terrain with a hovering monolith and an excavated instrument basin. Every knob (octaves, warp, amplitude…) is live.
+- **Trip state:** `src/main.js` currently coordinates the shared route, history, analysis, providers, storage, share, and renderer adapters. The next architecture phase is to extract these responsibilities incrementally without creating a second state model.
+- **Plan / Analyze map:** MapLibre owns the map workspace, 2D planning, native terrain, route/waypoint overlays, weather markers, fit padding, and truthful terrain fallback.
+- **Legacy Three tools:** Three terrain and its frame scheduler still support procedural terrain, poster/flyover output, advanced settings, and legacy instruments. Plan stops its continuous legacy RAF; Analyze and short camera work wake it when required.
+- **UI:** one Planner workspace, destination rail, shared Inspector host, fluid desktop information instruments, and a mobile peek/half/full sheet.
+- **Providers and persistence:** routing, geocoding, weather, DEM, administrative overlays, IndexedDB route storage, GPX, and compressed URL sharing remain separate seams around the shared trip.
 
-### Parameter folders
-
-**Map overlay** (hypsometric gradient stops, contour interval/color, survey grid) · **Surface material** (roughness, micro bump) · **Camera & focus** (real depth of field with autofocus) · **Look** (exposure, contrast, grain, fog) · **HUD** (accent/ink colors, scan wave shape + displacement) · **Motion / Tour** (fly-to easing, tour path smoothing, banking, look-ahead) · **Performance** (render scale, static shadows, shadow resolution) · **Light** (sun azimuth/elevation, shadow softness).
+See [PRODUCT.md](PRODUCT.md) for product behavior, [DESIGN.md](DESIGN.md) for visual authority, and [docs/followups.md](docs/followups.md) for the staged architecture path and deferred capabilities.
 
 ## Run locally
 
@@ -97,12 +96,13 @@ npx wrangler pages deploy dist --project-name trip-3d
 
 ## Tech
 
-- [three.js](https://threejs.org) — rendering; terrain map styling (gradient, contours, grid, scan wave) is injected into the standard PBR shader via `onBeforeCompile`
-- [postprocessing](https://github.com/pmndrs/postprocessing) — real depth-buffer DOF, ACES tone mapping, grain, vignette, SMAA
-- [lil-gui](https://lil-gui.georgealways.com) — parameter panel
+- [MapLibre GL JS](https://maplibre.org/) — Plan/Analyze map workspace, native terrain, route/waypoint layers, map controls, and responsive camera fitting
+- [three.js](https://threejs.org) — procedural/legacy terrain tools, poster/flyover output, and advanced terrain rendering
+- [postprocessing](https://github.com/pmndrs/postprocessing) — legacy Three depth-buffer DOF, tone mapping, grain, vignette, and SMAA
+- [lil-gui](https://lil-gui.georgealways.com) — advanced parameter controls embedded under Settings
 - [Vite](https://vitejs.dev) — build; plain JavaScript, no framework
-- Hand-rolled seeded simplex noise / FBM / ridged multifractal for procedural terrain
-- Tours: Catmull-Rom path sampled by arc length, trapezoidal velocity profile, damped-gimbal rotation controller
+- Browser-local IndexedDB route storage, GPX import/export, compressed URL sharing, Open-Meteo weather, OSRM routing, and Nominatim/Photon geocoding
+- Hand-rolled seeded simplex noise / FBM / ridged multifractal and Catmull-Rom flyover tooling remain available to the legacy terrain path
 
 ## Elevation data & attribution
 
