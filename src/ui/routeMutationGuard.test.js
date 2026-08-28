@@ -4,13 +4,12 @@ import { runRouteMutationInPlan } from './routeMutationGuard.js'
 describe('Analyze route mutation guard', () => {
   const guardedMutation = (operation) => {
     let stage = 'analyze'
-    let editing = false
     const order = []
     const mutate = vi.fn(() => order.push(operation))
 
     const accepted = runRouteMutationInPlan({
-      enterPlanForEditing: () => { stage = 'plan'; editing = true; order.push('plan') },
-      isPlanEditing: () => stage === 'plan' && editing,
+      enterPlan: () => { stage = 'plan'; order.push('plan') },
+      isPlan: () => stage === 'plan',
       mutate,
     })
 
@@ -19,16 +18,16 @@ describe('Analyze route mutation guard', () => {
     expect(order).toEqual(['plan', operation])
   }
 
-  it('runs GPX import only after returning to Plan editing', () => guardedMutation('gpx-import'))
-  it('runs library load only after returning to Plan editing', () => guardedMutation('library-load'))
-  it('runs undo only after returning to Plan editing', () => guardedMutation('undo'))
-  it('runs redo only after returning to Plan editing', () => guardedMutation('redo'))
+  it('runs GPX import only after returning to Plan', () => guardedMutation('gpx-import'))
+  it('runs library load only after returning to Plan', () => guardedMutation('library-load'))
+  it('runs undo only after returning to Plan', () => guardedMutation('undo'))
+  it('runs redo only after returning to Plan', () => guardedMutation('redo'))
 
-  it('rejects a mutation when Plan editing could not be restored', () => {
+  it('rejects a mutation when Plan could not be restored', () => {
     const mutate = vi.fn()
     const accepted = runRouteMutationInPlan({
-      enterPlanForEditing: vi.fn(),
-      isPlanEditing: () => false,
+      enterPlan: vi.fn(),
+      isPlan: () => false,
       mutate,
     })
 

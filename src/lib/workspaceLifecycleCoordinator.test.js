@@ -13,7 +13,7 @@ describe('workspace lifecycle coordinator', () => {
     const coordinator = createWorkspaceLifecycleCoordinator({ hasLegacyFrameWork: () => legacyWork })
 
     coordinator.attachFrameScheduler(scheduler)
-    coordinator.setMapWorkspace({ view: '2d', editing: true })
+    coordinator.setMapWorkspace()
     coordinator.settleLegacyFrames()
     expect(scheduler.stop).toHaveBeenCalled()
     expect(scheduler.start).not.toHaveBeenCalled()
@@ -35,7 +35,7 @@ describe('workspace lifecycle coordinator', () => {
 
     coordinator.attachFrameScheduler(scheduler)
     expect(coordinator.setStage(WORKFLOW_STAGES.ANALYZE)).toBe(true)
-    expect(coordinator.applyPlannerView('3d')).toBe('3d')
+    expect(coordinator.setMapWorkspace()).toBe('3d')
     expect(requestView).toHaveBeenCalledWith('3d')
     expect(scheduler.start).not.toHaveBeenCalled()
   })
@@ -49,7 +49,7 @@ describe('workspace lifecycle coordinator', () => {
       onWorkspaceSettled: () => calls.push('settle'),
     })
 
-    coordinator.setMapWorkspace({ weather: false, editing: true, view: '2d' })
+    coordinator.setMapWorkspace()
 
     expect(calls).toEqual(['workspace', 'request-view', 'apply-view', 'settle'])
   })
@@ -62,8 +62,30 @@ describe('workspace lifecycle coordinator', () => {
     })
 
     coordinator.setStage(WORKFLOW_STAGES.ANALYZE)
-    expect(coordinator.applyPlannerView('3d')).toBe('2d')
+    expect(coordinator.setMapWorkspace()).toBe('2d')
     expect(coordinator.fallback('terrain-unavailable')).toBe(true)
     expect(coordinator.stage).toBe(WORKFLOW_STAGES.PLAN)
+  })
+
+  it('derives view and editability only from Plan or Analyze while weather stays an overlay', () => {
+    const route = { waypoints: [{ id: 'start' }, { id: 'finish' }] }
+    const states = []
+    const views = []
+    const coordinator = createWorkspaceLifecycleCoordinator({
+      getRoute: () => route,
+      onWorkspaceChange: (state) => states.push(state),
+      onPlannerViewRequest: (view) => { views.push(view); return true },
+    })
+
+    coordinator.setMapWorkspace({ weather: true })
+    coordinator.setStage(WORKFLOW_STAGES.ANALYZE)
+    coordinator.setMapWorkspace({ weather: true })
+
+    expect(states.map(({ weather, editing }) => ({ weather, editing }))).toEqual([
+      { weather: true, editing: true },
+      { weather: true, editing: false },
+    ])
+    expect(views).toEqual(['2d', '3d'])
+    expect(coordinator.applyPlannerView).toBeUndefined()
   })
 })
