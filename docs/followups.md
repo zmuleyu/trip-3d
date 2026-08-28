@@ -11,8 +11,8 @@ Goal at a time; do not combine these phases into a broad rewrite.
   stored-route, share-link, GPX, provider, MapLibre, Three, and UI behavior.
 - [x] S2: after S1 review, extract a workspace lifecycle coordinator for Plan/Analyze,
   frame scheduling, renderer activation, fit/safe-area, and fallback transitions.
-- [ ] S3: isolate poster, flyover, procedural terrain, and legacy HUD consumers behind
-  a legacy-tools adapter without creating a second trip state.
+- [x] S3: isolate poster, flyover, procedural terrain, and legacy HUD consumers behind
+  `LegacyTerrainToolsAdapter` ports without creating a second trip state or an idle RAF path.
 - [ ] S4: only after measured consumer and bundle/runtime evidence, decide whether each
   legacy Three/HUD capability remains eager, becomes optional/lazy, or is retired.
 

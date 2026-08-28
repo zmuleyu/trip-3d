@@ -68,6 +68,7 @@ import { createFrameScheduler } from './lib/frameScheduler.js'
 import { routeCanBeAnalyzed, WORKFLOW_STAGES } from './ui/workflowStage.js'
 import { runRouteMutationInPlan } from './ui/routeMutationGuard.js'
 import { createWorkspaceLifecycleCoordinator } from './lib/workspaceLifecycleCoordinator.js'
+import { createLegacyTerrainToolsAdapter } from './lib/legacyTerrainToolsAdapter.js'
 
 // ------------------------------------------------------------------ params
 
@@ -326,6 +327,7 @@ let selectedPoi = -1
 let fps = 60
 let scanStart = -1
 let workspaceLifecycle = null
+let legacyTerrainTools = null
 
 function requestLegacyFrames() {
   workspaceLifecycle?.wakeLegacyFrames()
@@ -346,7 +348,7 @@ function flyTo(pos, target) {
   tween.t1.copy(target)
   tween.t = 0
   tween.active = true
-  requestLegacyFrames()
+  legacyTerrainTools?.wakeCamera()
 }
 
 // pose to restore when a selection is closed: wherever the camera was pre-click
@@ -411,7 +413,7 @@ function trapezoid(t, r) {
 function startTour() {
   const A = pois.find((p) => p.id === params.tourFrom)
   const B = pois.find((p) => p.id === params.tourTo)
-  if (!A || !B || A === B) return
+  if (!A || !B || A === B) return false
 
   // ground path A → standoff short of B (ending on B itself would degenerate
   // to a vertical view), arced sideways for a more interesting line
@@ -472,7 +474,7 @@ function startTour() {
   tour.t = 0
   tour.active = true
   tween.active = false
-  requestLegacyFrames()
+  return true
 }
 
 // gaze target along the flight: frame the FROM poi on approach, then look
@@ -528,9 +530,7 @@ const hud2 = createHud2D({
     returnPose.saved = false
   },
   onScan() {
-    scanStart = performance.now() / 1000
-    cone.kick(3)
-    requestLegacyFrames()
+    legacyTerrainTools?.triggerScan()
   },
 })
 hud2.setPois(pois)
@@ -810,14 +810,13 @@ async function loadRealTerrain() {
     geo = makeGeoContext(dem)
     ensureRouteLayer()
     buildMapOverlay(dem, terrainGen) // fire-and-forget, generation-guarded
-    // NO refreshRoute() here: terrain.rebuild() hasn't run yet — refresh happens
-    // in regenerateTerrain()'s completion callback below
+    // NO refreshRoute() here: the legacy adapter rebuild callback drapes the route.
     params.source = 'real'
     gui.controllersRecursive().forEach((c) => c.updateDisplay())
     syncSettingsControls()
     loadingEl.textContent = 'generating terrain…'
     const loadedGen = terrainGen
-    regenerateTerrain()
+    legacyTerrainTools.rebuildTerrain()
     whenTerrainBuilt(loadedGen).then((built) => {
       if (built >= loadedGen) settingsPanel?.setTerrainStatus('ready', '地形已更新')
     })
@@ -841,9 +840,6 @@ async function loadRealTerrain() {
     if (requestId === demRequestId) demBusy = false
   }
 }
-
-let rebuildPending = false
-let rebuildQueued = false
 
 // OSM street-tile overlay for the terrain (same slippy grid as the DEM).
 // Per-tile failure leaves a blank cell; stale results are dropped by generation.
@@ -1053,37 +1049,6 @@ async function loadAdminBoundaries() {
     adminState.loading = false
     refreshAdminUI()
   }
-}
-
-function regenerateTerrain() {
-  if (rebuildPending) { rebuildQueued = true; return }
-  rebuildPending = true
-  loadingEl.classList.remove('hidden')
-  // let the indicator paint before the synchronous rebuild blocks the thread
-  requestAnimationFrame(() =>
-    setTimeout(() => {
-      terrain.rebuild(params)
-      terrain.rebuildRoughness(params)
-      regenerateLabels()
-      regenerateHud()
-      refreshRoute() // drape route onto the NEW sampler after every rebuild
-      if (adminNeedsReload({ enabled: adminState.on, loadedKey: adminState.demKey, currentKey: currentDemKey() })) loadAdminBoundaries()
-      if (params.shadowMode === 'static') renderer.shadowMap.needsUpdate = true
-      rebuildPending = false
-      if (rebuildQueued) {
-        rebuildQueued = false
-        regenerateTerrain()
-        return
-      }
-      loadingEl.classList.add('hidden')
-      if (settingsTerrainReadyText) {
-        settingsPanel?.setTerrainStatus('ready', settingsTerrainReadyText)
-        settingsTerrainReadyText = ''
-      }
-      // resolve terrain-ready waiters with the generation that just built
-      for (const w of terrainWaiters.splice(0)) w.res(terrainGen)
-    }, 30)
-  )
 }
 
 // ------------------------------------------------------------------ route planning
@@ -1484,7 +1449,7 @@ fSource
     else {
       settingsPanel?.setTerrainStatus('loading', '正在生成程序化地形…')
       settingsTerrainReadyText = '已切换到程序化地形'
-      regenerateTerrain()
+      legacyTerrainTools.rebuildTerrain()
     }
     syncSettingsControls()
   })
@@ -1516,7 +1481,7 @@ fSource
   .add(params, 'demExaggeration', 0.5, 5, 0.1)
   .name('vertical scale')
   .onFinishChange(() => {
-    if (params.source === 'real') regenerateTerrain()
+    if (params.source === 'real') legacyTerrainTools.rebuildTerrain()
     overviewMap?.setTerrainExaggeration(params.demExaggeration)
     syncSettingsControls()
   })
@@ -1529,28 +1494,28 @@ fRouteStyle.add(params, 'routeArrows').name('direction arrows').onChange(refresh
 fRouteStyle.add(params, 'routeTicks').name('distance ticks').onChange(refreshRouteSetting)
 
 const fTerrain = gui.addFolder('Terrain')
-fTerrain.add(params, 'seed', 1, 9999, 1).onFinishChange(regenerateTerrain)
+fTerrain.add(params, 'seed', 1, 9999, 1).onFinishChange(() => legacyTerrainTools.rebuildTerrain())
 fTerrain
   .add(
     {
       randomize() {
         params.seed = Math.floor(Math.random() * 9999) + 1
         gui.controllersRecursive().forEach((c) => c.updateDisplay())
-        regenerateTerrain()
+        legacyTerrainTools.rebuildTerrain()
       },
     },
     'randomize'
   )
   .name('randomize seed')
-fTerrain.add(params, 'scale', 0.04, 0.4, 0.005).onFinishChange(regenerateTerrain)
-fTerrain.add(params, 'octaves', 2, 8, 1).onFinishChange(regenerateTerrain)
-fTerrain.add(params, 'lacunarity', 1.6, 3.2, 0.05).onFinishChange(regenerateTerrain)
-fTerrain.add(params, 'gain', 0.3, 0.7, 0.01).onFinishChange(regenerateTerrain)
-fTerrain.add(params, 'amplitude', 0.5, 7, 0.1).onFinishChange(regenerateTerrain)
-fTerrain.add(params, 'warp', 0, 6, 0.1).name('domain warp').onFinishChange(regenerateTerrain)
-fTerrain.add(params, 'detail', 0, 0.8, 0.01).name('fine detail').onFinishChange(regenerateTerrain)
-fTerrain.add(params, 'detailScale', 0.5, 6, 0.1).onFinishChange(regenerateTerrain)
-fTerrain.add(params, 'resolution', [256, 384, 512, 768, 1024]).onFinishChange(regenerateTerrain)
+fTerrain.add(params, 'scale', 0.04, 0.4, 0.005).onFinishChange(() => legacyTerrainTools.rebuildTerrain())
+fTerrain.add(params, 'octaves', 2, 8, 1).onFinishChange(() => legacyTerrainTools.rebuildTerrain())
+fTerrain.add(params, 'lacunarity', 1.6, 3.2, 0.05).onFinishChange(() => legacyTerrainTools.rebuildTerrain())
+fTerrain.add(params, 'gain', 0.3, 0.7, 0.01).onFinishChange(() => legacyTerrainTools.rebuildTerrain())
+fTerrain.add(params, 'amplitude', 0.5, 7, 0.1).onFinishChange(() => legacyTerrainTools.rebuildTerrain())
+fTerrain.add(params, 'warp', 0, 6, 0.1).name('domain warp').onFinishChange(() => legacyTerrainTools.rebuildTerrain())
+fTerrain.add(params, 'detail', 0, 0.8, 0.01).name('fine detail').onFinishChange(() => legacyTerrainTools.rebuildTerrain())
+fTerrain.add(params, 'detailScale', 0.5, 6, 0.1).onFinishChange(() => legacyTerrainTools.rebuildTerrain())
+fTerrain.add(params, 'resolution', [256, 384, 512, 768, 1024]).onFinishChange(() => legacyTerrainTools.rebuildTerrain())
 
 const fSurface = gui.addFolder('Surface material')
 fSurface.addColor(params, 'color').onChange(() => terrain.updateMaterial(params))
@@ -1633,7 +1598,7 @@ fLook.addColor(params, 'fogColor').onChange((v) => {
 fLook.add(params, 'surveyLines').name('survey circles').onChange((v) => (hud3.lines.visible = v))
 
 const fHud = gui.addFolder('HUD')
-const hudCtrl = fHud.add(params, 'hud').name('show HUD').onChange((v) => { hud2.setVisible(v); reflectLayerSetting('hud', v) })
+const hudCtrl = fHud.add(params, 'hud').name('show HUD').onChange((v) => legacyTerrainTools.setHudVisible(v))
 fHud.add(params, 'hudOpacity', 0, 1, 0.02).name('HUD opacity').onChange((v) => hud2.setOpacity(v))
 fHud
   .add(params, 'uiBlur', 0, 30, 1)
@@ -1648,14 +1613,14 @@ fHud
   .name('accent color')
   .onChange((v) => {
     document.documentElement.style.setProperty('--hud-accent', v)
-    regenerateHud()
+    legacyTerrainTools.regenerateHud()
   })
 fHud
   .addColor(params, 'hudInk')
   .name('ink color')
   .onChange((v) => {
     document.documentElement.style.setProperty('--hud-ink', v)
-    regenerateHud()
+    legacyTerrainTools.regenerateHud()
   })
 fHud.add(params, 'sweepSpeed', 0, 3, 0.05).name('sweep speed')
 fHud
@@ -1679,7 +1644,7 @@ fHud
   .add(params, 'scanDispFalloff', 0.1, 6, 0.05)
   .name('wave falloff')
   .onChange((v) => (terrain.mapUniforms.uScanDispW.value = v))
-fHud.add({ scan: () => { scanStart = performance.now() / 1000; requestLegacyFrames() } }, 'scan').name('trigger scan')
+fHud.add({ scan: () => legacyTerrainTools.triggerScan() }, 'scan').name('trigger scan')
 
 const fMotion = gui.addFolder('Motion')
 fMotion.add(params, 'coneSpin', 0, 3, 0.05).name('cone spin')
@@ -1699,12 +1664,11 @@ fTour.add(params, 'tourAltitude', 0.8, 10, 0.1).name('altitude')
 fTour.add(params, 'tourSmoothing', 0, 1, 0.02).name('path smoothing')
 fTour.add(params, 'tourLook', 0.02, 0.3, 0.01).name('look ahead')
 fTour.add(params, 'tourBank', 0, 3, 0.05).name('bank into turns')
-fTour.add({ start: startTour }, 'start').name('▶ start tour')
+fTour.add({ start: () => legacyTerrainTools.startTour() }, 'start').name('▶ start tour')
 fTour.add(
   {
     stop: () => {
-      tour.active = false
-      camera.up.set(0, 1, 0)
+      legacyTerrainTools.stopTour()
     },
   },
   'stop'
@@ -2085,7 +2049,7 @@ function flyToLonLat(lon, lat, dist = 8) {
 }
 
 async function searchGo(r) {
-  if (demBusy || rebuildPending) { toast.show('地形加载中,稍后再试'); return }
+  if (demBusy || legacyTerrainTools.rebuildState.rebuildPending) { toast.show('地形加载中,稍后再试'); return }
   if (geo && dem) {
     const { px, py } = geo.lonLatToPx(r.lon, r.lat)
     if (px >= 0 && px <= dem.size - 1 && py >= 0 && py <= dem.size - 1) {
@@ -2104,7 +2068,7 @@ async function searchGo(r) {
 }
 
 async function searchAdd(r) {
-  if (demBusy || rebuildPending) { toast.show('地形加载中,稍后再试'); return }
+  if (demBusy || legacyTerrainTools.rebuildState.rebuildPending) { toast.show('地形加载中,稍后再试'); return }
   let inBounds = false
   if (geo && dem) {
     const { px, py } = geo.lonLatToPx(r.lon, r.lat)
@@ -2176,7 +2140,7 @@ async function importAmapLink(urlStr) {
   if (!parsed) { toast.show('无法解析:支持 amap.com 行程分享链接'); return }
   const pts = [parsed.from, ...parsed.vias, parsed.to].filter(Boolean)
   if (!pts.length) { toast.show('链接中无有效地点'); return }
-  if (demBusy || rebuildPending) { toast.show('地形加载中,稍后再试'); return }
+  if (demBusy || legacyTerrainTools.rebuildState.rebuildPending) { toast.show('地形加载中,稍后再试'); return }
   snapState.requestId++ // atomic import: void any in-flight snap for the old route
   const cx = pts.reduce((s, p) => s + p.lon, 0) / pts.length
   const cy = pts.reduce((s, p) => s + p.lat, 0) / pts.length
@@ -2284,29 +2248,6 @@ function buildShareUrl() {
   return `${location.origin}${location.pathname}#r=${encodeShare(route, { dem })}`
 }
 
-async function exportPoster() {
-  if (route.waypoints.length < 2) { toast.show('先规划线路再生成海报'); return }
-  toast.show('正在生成海报…')
-  // same-task render → toDataURL works without preserveDrawingBuffer
-  composer.render()
-  const img = new Image()
-  img.src = renderer.domElement.toDataURL('image/png')
-  await img.decode()
-  const stats = lastRoutePts.length ? route.deriveStats(lastRoutePts) : null
-  const wx = weatherState.result && weatherState.revision === route.revision ? weatherState.result : null
-  const data = buildPosterData({ route, stats, legs: currentLegs(lastRoutePts), weather: wx, profile: snapProfile })
-  const canvas = renderPoster({ screenshot: img, data, shareUrl: buildShareUrl() })
-  canvas.toBlob((blob) => {
-    if (!blob) { toast.show('海报生成失败'); return }
-    const a = document.createElement('a')
-    a.href = URL.createObjectURL(blob)
-    a.download = `${(route.name || 'route').replace(/[\\/:*?"<>|]/g, '_')}-poster.png`
-    a.click()
-    setTimeout(() => URL.revokeObjectURL(a.href), 5000)
-    toast.show('海报已下载')
-  }, 'image/png')
-}
-
 const sharePanel = createSharePanel({
   onCopyLink: () => routeActions.onShare(),
   onQr: () => {
@@ -2315,74 +2256,115 @@ const sharePanel = createSharePanel({
   },
   onExportGpx: () => routeActions.onExportGpx(),
   onExportAmap: exportAmapLink,
-  onDownloadPoster: exportPoster,
-  onFlyover: startFlyover,
+  onDownloadPoster: () => legacyTerrainTools.exportPoster(),
+  onFlyover: () => legacyTerrainTools.startFlyover(),
 })
 sharePanel.update('规划线路后,这里聚合全部分享出口')
-
-// ------------------------------------------------------------------ flyover video
-// MediaRecorder over canvas.captureStream; camera walks the route path in tick.
-const flyState = { active: false, rec: null, chunks: [], t: 0, dur: 0, path: null, ground: null, discard: false }
-let flyPrevCam = null
 
 const flyOverlay = document.createElement('div')
 flyOverlay.className = 'ui-fly-overlay hidden'
 flyOverlay.innerHTML = '<div class="fly-card"><div class="ttl">正在录制飞越视频</div><div class="bar"><div class="fill"></div></div><button class="fly-cancel">取消</button></div>'
 document.body.appendChild(flyOverlay)
-flyOverlay.querySelector('.fly-cancel').onclick = () => stopFlyover(false)
 
-function startFlyover() {
-  if (flyState.active) return
-  if (lastRoutePts.length < 2) { toast.show('先规划线路再录制'); return }
-  if (typeof MediaRecorder === 'undefined') { toast.show('当前浏览器不支持视频录制'); return }
-  const totalDist = lastRoutePts[lastRoutePts.length - 1].cumDistM
-  const dur = flyoverDuration(totalDist, { mPerSec: 400, minS: 12, maxS: 60 })
-  const path = resamplePath(lastRoutePts, Math.max(60, Math.round(dur * 12)))
-  const ground = (x, z) => terrain.sample(x, z)
-  const stream = renderer.domElement.captureStream(30)
-  let rec
-  try {
-    rec = new MediaRecorder(stream, {
+legacyTerrainTools = createLegacyTerrainToolsAdapter({
+  getTripSnapshot: () => route.route,
+  getPosterSnapshot: () => ({
+    route: route.route,
+    stats: lastRoutePts.length ? route.deriveStats(lastRoutePts) : null,
+    legs: currentLegs(lastRoutePts),
+    weather: weatherState.result && weatherState.revision === route.revision ? weatherState.result : null,
+    profile: snapProfile,
+  }),
+  getFlyoverSnapshot: () => ({ points: lastRoutePts, name: route.name }),
+  poster: {
+    unavailable: () => toast.show('先规划线路再生成海报'),
+    pending: () => toast.show('正在生成海报…'),
+    captureImage: async () => {
+      composer.render()
+      const image = new Image()
+      image.src = renderer.domElement.toDataURL('image/png')
+      await image.decode()
+      return image
+    },
+    render: ({ image, ...snapshot }) => renderPoster({ screenshot: image, data: buildPosterData(snapshot), shareUrl: buildShareUrl() }),
+    download: (canvas, name) => canvas.toBlob((blob) => {
+      if (!blob) { toast.show('海报生成失败'); return }
+      const link = document.createElement('a')
+      link.href = URL.createObjectURL(blob)
+      link.download = `${(name || 'route').replace(/[\\/:*?"<>|]/g, '_')}-poster.png`
+      link.click()
+      setTimeout(() => URL.revokeObjectURL(link.href), 5000)
+      toast.show('海报已下载')
+    }, 'image/png'),
+  },
+  flyover: {
+    routeInsufficient: () => toast.show('先规划线路再录制'),
+    isSupported: () => typeof MediaRecorder !== 'undefined',
+    unsupported: () => toast.show('当前浏览器不支持视频录制'),
+    durationFor: (points) => flyoverDuration(points[points.length - 1].cumDistM, { mPerSec: 400, minS: 12, maxS: 60 }),
+    resample: resamplePath,
+    ground: (x, z) => terrain.sample(x, z),
+    createRecorder: () => new MediaRecorder(renderer.domElement.captureStream(30), {
       mimeType: MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9' : 'video/webm',
       videoBitsPerSecond: 6_000_000,
-    })
-  } catch { toast.show('当前浏览器不支持视频录制'); return }
-  flyState.chunks = []
-  rec.ondataavailable = (e) => { if (e.data.size) flyState.chunks.push(e.data) }
-  rec.onstop = () => {
-    if (!flyState.discard && flyState.chunks.length) {
-      const blob = new Blob(flyState.chunks, { type: 'video/webm' })
-      const a = document.createElement('a')
-      a.href = URL.createObjectURL(blob)
-      a.download = `${(route.name || 'route').replace(/[\\/:*?"<>|]/g, '_')}-flyover.webm`
-      a.click()
-      setTimeout(() => URL.revokeObjectURL(a.href), 8000)
+    }),
+    captureCamera: () => ({ pos: camera.position.clone(), target: controls.target.clone() }),
+    activate: () => { controls.enabled = false; flyOverlay.classList.remove('hidden') },
+    deactivate: (previous) => {
+      controls.enabled = true
+      if (previous) { camera.position.copy(previous.pos); controls.target.copy(previous.target) }
+      flyOverlay.classList.add('hidden')
+    },
+    applyFrame: (path, index, ground) => {
+      const frame = cameraFrame(path, index, ground, { height: 2.6, lookAhead: 2, targetLift: 0.35 })
+      camera.position.set(frame.pos.x, frame.pos.y, frame.pos.z)
+      camera.up.set(0, 1, 0)
+      camera.lookAt(frame.target.x, frame.target.y, frame.target.z)
+      controls.target.set(frame.target.x, frame.target.y, frame.target.z)
+    },
+    setProgress: (fraction) => { flyOverlay.querySelector('.fill').style.transform = `scaleX(${fraction.toFixed(3)})` },
+    started: (duration) => toast.show(`录制中(${Math.round(duration)}s),可取消`),
+    download: (chunks, name) => {
+      const link = document.createElement('a')
+      link.href = URL.createObjectURL(new Blob(chunks, { type: 'video/webm' }))
+      link.download = `${(name || 'route').replace(/[\\/:*?"<>|]/g, '_')}-flyover.webm`
+      link.click()
+      setTimeout(() => URL.revokeObjectURL(link.href), 8000)
       toast.show('飞越视频已下载')
-    }
-  }
-  Object.assign(flyState, { active: true, rec, t: 0, dur, path, ground, discard: false })
-  flyPrevCam = { pos: camera.position.clone(), target: controls.target.clone() }
-  tour.active = false
-  tween.active = false
-  controls.enabled = false
-  flyOverlay.classList.remove('hidden')
-  rec.start(250)
-  requestLegacyFrames()
-  toast.show(`录制中(${Math.round(dur)}s),可取消`)
-}
-
-function stopFlyover(finish) {
-  if (!flyState.active) return
-  flyState.discard = !finish
-  flyState.active = false
-  try { flyState.rec.stop() } catch { /* already stopped */ }
-  controls.enabled = true
-  if (flyPrevCam) {
-    camera.position.copy(flyPrevCam.pos)
-    controls.target.copy(flyPrevCam.target)
-  }
-  flyOverlay.classList.add('hidden')
-}
+    },
+  },
+  terrain: {
+    showLoading: () => loadingEl.classList.remove('hidden'),
+    schedule: (work) => requestAnimationFrame(() => setTimeout(work, 30)),
+    rebuild: () => { terrain.rebuild(params); terrain.rebuildRoughness(params); regenerateLabels() },
+    refreshRoute: () => refreshRoute(),
+    reloadAdminIfNeeded: () => {
+      if (adminNeedsReload({ enabled: adminState.on, loadedKey: adminState.demKey, currentKey: currentDemKey() })) loadAdminBoundaries()
+    },
+    refreshStaticShadow: () => { if (params.shadowMode === 'static') renderer.shadowMap.needsUpdate = true },
+    hideLoading: () => loadingEl.classList.add('hidden'),
+    reportReady: () => {
+      if (settingsTerrainReadyText) {
+        settingsPanel?.setTerrainStatus('ready', settingsTerrainReadyText)
+        settingsTerrainReadyText = ''
+      }
+    },
+    resolveWaiters: () => { for (const waiter of terrainWaiters.splice(0)) waiter.res(terrainGen) },
+  },
+  hud: {
+    regenerate: regenerateHud,
+    setVisible: (visible) => { hud2.setVisible(visible); reflectLayerSetting('hud', visible) },
+    triggerScan: () => { scanStart = performance.now() / 1000; cone.kick(3) },
+  },
+  camera: {
+    cancelMotion: () => { tour.active = false; tween.active = false },
+    startTour,
+    stopTour: () => { tour.active = false; camera.up.set(0, 1, 0) },
+  },
+  advanced: { sync: () => gui.controllersRecursive().forEach((controller) => controller.updateDisplay()) },
+  requestLegacyFrames,
+})
+flyOverlay.querySelector('.fly-cancel').onclick = () => legacyTerrainTools.stopFlyover(false)
 
 async function refreshLibrary() {
   const s = await routeStoreReady
@@ -2964,7 +2946,7 @@ function reflectLayerSetting(id, on) {
 }
 
 function updateLegacySettings() {
-  gui.controllersRecursive().forEach((controller) => controller.updateDisplay())
+  legacyTerrainTools.syncAdvancedSettings()
 }
 
 function applyNativeSetting(key, value, { commit = true } = {}) {
@@ -2976,7 +2958,7 @@ function applyNativeSetting(key, value, { commit = true } = {}) {
     else {
       settingsPanel?.setTerrainStatus('loading', '正在生成程序化地形…')
       settingsTerrainReadyText = '已切换到程序化地形'
-      regenerateTerrain()
+      legacyTerrainTools.rebuildTerrain()
     }
   } else if (key === 'demLocation') {
     params.demLocation = value
@@ -2996,7 +2978,7 @@ function applyNativeSetting(key, value, { commit = true } = {}) {
   } else if (key === 'demExaggeration') {
     params.demExaggeration = value
     overviewMap?.setTerrainExaggeration(value)
-    if (commit && params.source === 'real') regenerateTerrain()
+    if (commit && params.source === 'real') legacyTerrainTools.rebuildTerrain()
   } else if (['routeSlopeColors', 'routeArrows', 'routeTicks'].includes(key)) {
     params[key] = !!value
     refreshRoute()
@@ -3031,7 +3013,7 @@ function loadCurrentSettingsTerrain() {
   else {
     settingsPanel?.setTerrainStatus('loading', '正在生成程序化地形…')
     settingsTerrainReadyText = '程序化地形已更新'
-    regenerateTerrain()
+    legacyTerrainTools.rebuildTerrain()
   }
 }
 
@@ -3141,7 +3123,7 @@ if (params.planning) {
 }
 
 // console access for debugging/scripting
-window.__exp = { scene, camera, controls, params, terrain, loadRealTerrain, loadAdminBoundaries, expandTerrainToRoute, plannerWorkspace, overviewMap, get renderStats() { const frames = workspaceLifecycle?.frameScheduler; return { legacyFps: fps, legacyFrames: frames?.frameCount ?? 0, legacyFrameLoopRunning: frames?.running ?? false, plannerTerrain: overviewMap.terrainState } }, get routeCoverage() { return lastRouteCoverage }, get routeAnalysis() { return lastRouteAnalysis }, get routeDemCoverage() { return { state: routeCorridorState, cache: routeDemCoverage.stats() } }, get terrainState() { return { demBusy, demRequestId, rebuildPending, rebuildQueued, terrainGen } }, get routingState() { return { on: snapState.on, profile: snapProfile, version: snapState.version, demKey: snapState.demKey } }, get adminState() { return adminState }, get adminInteraction() { return adminInteraction }, get adminLayer() { return adminLayer }, get labels() { return labels }, get route() { return route.route }, get geo() { return geo }, get dem() { return dem } }
+window.__exp = { scene, camera, controls, params, terrain, loadRealTerrain, loadAdminBoundaries, expandTerrainToRoute, plannerWorkspace, overviewMap, get renderStats() { const frames = workspaceLifecycle?.frameScheduler; return { legacyFps: fps, legacyFrames: frames?.frameCount ?? 0, legacyFrameLoopRunning: frames?.running ?? false, plannerTerrain: overviewMap.terrainState } }, get routeCoverage() { return lastRouteCoverage }, get routeAnalysis() { return lastRouteAnalysis }, get routeDemCoverage() { return { state: routeCorridorState, cache: routeDemCoverage.stats() } }, get terrainState() { return { demBusy, demRequestId, ...legacyTerrainTools.rebuildState, terrainGen } }, get routingState() { return { on: snapState.on, profile: snapProfile, version: snapState.version, demKey: snapState.demKey } }, get adminState() { return adminState }, get adminInteraction() { return adminInteraction }, get adminLayer() { return adminLayer }, get labels() { return labels }, get route() { return route.route }, get geo() { return geo }, get dem() { return dem } }
 
 // real world is the default source — fetch its tiles on startup
 if (params.source === 'real') loadRealTerrain()
@@ -3157,7 +3139,7 @@ whenTerrainBuilt(1).then(() => {
 const clock = new THREE.Clock()
 
 function hasLegacyFrameWork() {
-  return flyState.active || tour.active || tween.active || scanStart >= 0
+  return legacyTerrainTools.flyoverActive || tour.active || tween.active || scanStart >= 0
 }
 
 function tick() {
@@ -3166,19 +3148,9 @@ function tick() {
 
   // cinematic tour: arc-length uniform speed + trapezoid profile + damped gimbal
   // focus mode: tours & recordings hide all UI floats (single toggle per frame)
-  document.body.classList.toggle('focus-mode', tour.active || flyState.active)
-  if (flyState.active) {
-    // flyover recording: camera walks the route path; highest priority
-    flyState.t += dt
-    const frac = Math.min(1, flyState.t / flyState.dur)
-    const idx = Math.min(flyState.path.length - 1, Math.floor(frac * (flyState.path.length - 1)))
-    const f = cameraFrame(flyState.path, idx, flyState.ground, { height: 2.6, lookAhead: 2, targetLift: 0.35 })
-    camera.position.set(f.pos.x, f.pos.y, f.pos.z)
-    camera.up.set(0, 1, 0)
-    camera.lookAt(f.target.x, f.target.y, f.target.z)
-    controls.target.set(f.target.x, f.target.y, f.target.z)
-    flyOverlay.querySelector('.fill').style.transform = `scaleX(${frac.toFixed(3)})`
-    if (frac >= 1) stopFlyover(true)
+  document.body.classList.toggle('focus-mode', tour.active || legacyTerrainTools.flyoverActive)
+  if (legacyTerrainTools.tickFlyover(dt)) {
+    // Flyover camera/recording state remains inside the adapter.
   } else if (tour.active) {
     tour.t = Math.min(1, tour.t + dt / params.tourDuration)
     const s = trapezoid(tour.t, 0.18)
@@ -3264,7 +3236,7 @@ function tick() {
     })
   }
 
-  if ((!params.planning && !workspaceLifecycle?.mapWorkspaceActive) || flyState.active) composer.render(dt)
+  if ((!params.planning && !workspaceLifecycle?.mapWorkspaceActive) || legacyTerrainTools.flyoverActive) composer.render(dt)
   workspaceLifecycle?.settleLegacyFrames()
 }
 
