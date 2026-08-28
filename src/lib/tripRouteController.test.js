@@ -40,6 +40,20 @@ describe('TripRouteController', () => {
     expect(controller.geometryRevision).toBe(5)
   })
 
+  it('replaces a searched endpoint through the controller without creating another route', () => {
+    const controller = new TripRouteController()
+    const start = controller.addWaypoint(102.1, 31.1, 3200, '原起点')
+    const finish = controller.addWaypoint(102.2, 31.2, 3400, '原终点')
+    const route = controller.route
+
+    expect(controller.replaceWaypoint(finish.id, 103.1, 32.1, 3500, '新终点')).toMatchObject({ id: finish.id, name: '新终点' })
+    expect(controller.route).toBe(route)
+    expect(controller.waypoints).toEqual([
+      expect.objectContaining({ id: start.id, name: '原起点' }),
+      expect.objectContaining({ id: finish.id, lon: 103.1, lat: 32.1, ele: 3500, name: '新终点' }),
+    ])
+  })
+
   it('owns day boundaries and derived route stats', () => {
     const controller = new TripRouteController()
     controller.addWaypoint(100, 30, 0, 'A')

@@ -39,6 +39,8 @@ import { initialAnalysisCursorDistance } from './lib/analysisCursor.js'
 import { sunPosition, shadeFraction } from './lib/sun.js'
 import { resamplePath, flyoverDuration, cameraFrame } from './lib/flyover.js'
 import { TripRouteController } from './lib/tripRouteController.js'
+import { assignSearchRouteRole } from './lib/searchRouteIntent.js'
+import { routeProviderStatus } from './lib/routeStatus.js'
 import { computeLegs, computeLegsFromPts, normalizeOsrmLegs } from './lib/legs.js'
 import { RouteLayer } from './route/RouteLayer.js'
 import { openRouteStore } from './lib/store.js'
@@ -48,6 +50,7 @@ import { createModeMachine, MODES } from './ui/mode.js'
 import { createRail, createPanelHost, createLayerButtons, createToast } from './ui/chrome.js'
 import { iconSvg } from './ui/icons.js'
 import { createPlanningPanel, createLibraryPanel, createProfileCard } from './ui/panels.js'
+import { createSearchSession } from './ui/searchSession.js'
 import { createWeatherPanel } from './ui/weatherPanel.js'
 import { createSettingsPanel } from './ui/settingsPanel.js'
 import { formatSummary, loadSummaryPreferences, saveSummaryPreferences } from './ui/summaryPreferences.js'
@@ -1024,7 +1027,7 @@ async function runSnap() {
   const reqId = ++snapState.requestId
   const cached = snapCache.get(key)
   if (cached) { commitSnap(cached.geometry, cached.legs, ver, reqId); return }
-  planningPanel.setRouteMode(route.mode, '吸附中…')
+  planningPanel.setRouteMode(route.mode, routeProviderStatus({ state: 'calculating' }))
   try {
     const { geometry, legs } = await snapFetch(key, wps)
     if (reqId !== snapState.requestId || ver !== snapVersion()) return
@@ -1035,8 +1038,8 @@ async function runSnap() {
     snapState.geometry = null
     snapState.legs = null
     snapState.version = ver
-    planningPanel.setRouteMode(route.mode, '吸附失败；直线回退段不计时')
-    toast.show('路网吸附失败,已回退直线')
+    planningPanel.setRouteMode(route.mode, routeProviderStatus({ state: 'unavailable' }))
+    toast.show('路网暂不可用：当前为直线示意，无时长')
     refreshRoute()
   }
 }
@@ -1098,7 +1101,7 @@ function commitSnap(geometry, legs, ver, reqId) {
   snapState.version = ver
   snapState.demKey = currentDemKey()
   const routed = legs.filter((leg) => leg?.real !== false).length
-  planningPanel.setRouteMode(route.mode, `路网覆盖 ${routed}/${legs.length} 段`)
+  planningPanel.setRouteMode(route.mode, routeProviderStatus({ routed, total: legs.length }))
   refreshRoute()
 }
 
@@ -1422,6 +1425,8 @@ function showHourlyWeatherDetails(properties = {}) {
 // autocomplete. 1 req/s client throttle; nominatim primary, photon fallback.
 const geocoder = createGeocodeProvider('nominatim')
 const geocoderBackup = createGeocodeProvider('photon')
+const searchSession = createSearchSession()
+const searchRouteRoles = { startId: null, endId: null }
 let searchReqId = 0
 let lastSearchAt = 0
 
@@ -1432,7 +1437,7 @@ async function runSearch(query) {
   if (now - lastSearchAt < 1100) { toast.show('搜索限流 1 次/秒,稍候'); return }
   lastSearchAt = now
   const reqId = ++searchReqId
-  planningPanel.setSearchBusy(true)
+  planningPanel.setSearchSession(searchSession.begin(query))
   try {
     let list
     try {
@@ -1441,14 +1446,12 @@ async function runSearch(query) {
       list = await geocoderBackup.search(query)
     }
     if (reqId !== searchReqId) return
-    planningPanel.setSearchResults(list, query)
+    planningPanel.setSearchSession(searchSession.resolve(list))
   } catch (err) {
     if (reqId !== searchReqId) return
     console.warn('search failed', err)
-    planningPanel.setSearchResults([], query)
-    toast.show(`搜索失败:${err.message}`)
-  } finally {
-    if (reqId === searchReqId) planningPanel.setSearchBusy(false)
+    planningPanel.setSearchSession(searchSession.fail())
+    toast.show('搜索暂不可用，请稍后重试')
   }
 }
 
@@ -1477,7 +1480,12 @@ async function searchGo(r) {
   flyToLonLat(r.lon, r.lat)
 }
 
-async function searchAdd(r) {
+async function searchAssign(r, role) {
+  if (role === 'view') {
+    await searchGo(r)
+    planningPanel.setSearchSession(searchSession.dismissSelection())
+    return
+  }
   if (demBusy || legacyTerrainTools.rebuildState.rebuildPending) { toast.show('地形加载中,稍后再试'); return }
   let inBounds = false
   if (geo && dem) {
@@ -1495,12 +1503,16 @@ async function searchAdd(r) {
   }
   ensureRouteLayer()
   const { x, z } = lonLatToWorld(geo, r.lon, r.lat)
-  const wp = route.addWaypoint(r.lon, r.lat, Math.round(elevOfWorld(x, z)), r.name || 'POI')
-  if (!wp) { toast.show('已达途经点上限 32'); return }
+  const ele = Math.round(elevOfWorld(x, z))
+  const assignment = assignSearchRouteRole({ controller: route, roleIds: searchRouteRoles, role, place: r, elevation: ele })
+  if (assignment.reason === 'missing-endpoints') { toast.show('请先设置起点和终点，再添加途经点'); return }
+  if (!assignment.waypoint) { toast.show('已达途经点上限 32'); return }
   if (!mode.isPlanning()) mode.enterPlanning()
   refreshRoute()
   scheduleSnap()
-  toast.show(`已加途经点:${r.name || 'POI'}`)
+  planningPanel.setSearchSession(searchSession.dismissSelection())
+  const label = role === 'start' ? '已设为起点' : role === 'end' ? '已设为终点' : '已添加途经点'
+  toast.show(`${label}:${r.name || '地点'}`)
 }
 
 // ------------------------------------------------------------------ amap link interop
@@ -1808,7 +1820,8 @@ const routeActions = {
   dayNumberAt: (i) => route.dayNumberAt(i),
   onSearch: runSearch,
   onSearchGo: searchGo,
-  onSearchAdd: searchAdd,
+  onSearchSelect: (place) => planningPanel.setSearchSession(searchSession.select(place)),
+  onSearchRole: (role) => searchAssign(searchSession.selected, role),
   onImportAmap: importAmapLink,
   onExportAmap: exportAmapLink,
   onWpRemove: (i) => { route.removeWaypoint(i); refreshRoute(); scheduleSnap() },
@@ -2051,6 +2064,7 @@ plannerWorkspace = createPlannerWorkspace({
   },
   onSearch: (query) => {
     enterPlanForEditing()
+    showTab('planning')
     panelHost.setCollapsed(false)
     planningPanel.search(query)
   },
@@ -2252,6 +2266,7 @@ function showTab(id) {
   if (id === 'planning') {
     setWeatherWorkspace(false)
     enterPlanForEditing()
+    panelHost.show('planning', '规划行程', 'ESC 退出', planningPanel.el)
     panelHost.setCollapsed(false)
     rail.setActive('planning')
     return
