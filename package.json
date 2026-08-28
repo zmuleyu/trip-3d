@@ -4,10 +4,14 @@
   "version": "0.3.3",
   "type": "module",
   "scripts": {
+    "setup:worktree": "node scripts/bootstrap.mjs",
     "dev": "vite",
+    "dev:acceptance": "vite --host 127.0.0.1 --port 4173 --strictPort",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:ui": "vitest run src/ui/chrome.test.js src/ui/fluidLayout.test.js src/ui/overviewMap.test.js src/ui/plannerWorkspace.test.js",
+    "acceptance": "node scripts/acceptance.mjs"
   },
   "dependencies": {
     "lil-gui": "^0.20.0",
