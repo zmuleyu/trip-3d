@@ -1,6 +1,6 @@
 # trip-3d followups (v1.1+)
 
-Current active delivery: [R1 search and route intent flow](specs/2026-08-28-search-route-flow-roadmap.md).
+Current active delivery: [R2 non-blocking route enrichment](specs/2026-08-28-search-route-flow-roadmap.md).
 
 ## Architecture evolution
 

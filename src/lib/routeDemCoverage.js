@@ -32,9 +32,11 @@ export class RouteDemError extends Error {
   }
 }
 
-export function createRouteDemRunIdentity({ routeKey, zoom, sourceIdentity = TERRARIUM_SOURCE_ID } = {}) {
-  if (!routeKey || !Number.isFinite(zoom) || !sourceIdentity) throw new RouteDemError('run-unavailable', '路线地形状态无效')
-  return `${routeKey}:z${zoom}:source:${sourceIdentity}`
+export function createRouteDemRunIdentity({ routeId, geometryRevision, geometryKey = 'raw', zoom, sourceIdentity = TERRARIUM_SOURCE_ID } = {}) {
+  if (!routeId || !Number.isInteger(geometryRevision) || geometryRevision < 0 || !geometryKey || !Number.isFinite(zoom) || !sourceIdentity) {
+    throw new RouteDemError('run-unavailable', '路线地形状态无效')
+  }
+  return `route:${routeId}:geometry:${geometryRevision}:${geometryKey}:z${zoom}:source:${sourceIdentity}`
 }
 
 function nowMs() {
@@ -357,19 +359,19 @@ export function createRouteDemAnalysisController({ loadCoverage, onState } = {})
       current?.controller.abort()
       current = null
     },
-    async start({ key, points, zoom, sourceIdentity, analyze } = {}) {
+    async start({ key, routeId, geometryRevision, points, zoom, sourceIdentity, analyze } = {}) {
       this.cancel()
-      const run = { key, zoom, sourceIdentity, version, controller: new AbortController() }
+      const run = { key, routeId, geometryRevision, zoom, sourceIdentity, version, controller: new AbortController() }
       run.version = version
       current = run
-      onState?.({ status: 'loading', key, zoom, sourceIdentity, version: run.version })
+      onState?.({ status: 'loading', key, routeId, geometryRevision, zoom, sourceIdentity, version: run.version })
       try {
         const coverage = await loadCoverage({ points, zoom, sourceIdentity, signal: run.controller.signal })
         if (!isCurrent(run)) return { status: 'stale', key }
         const analysis = await analyze(coverage)
         if (!isCurrent(run)) return { status: 'stale', key }
         if (analysis?.status !== 'ready') throw new RouteDemError('unavailable', '路线高程暂不可用')
-        const state = { status: 'ready', key, zoom, sourceIdentity, analysis, coverage }
+        const state = { status: 'ready', key, routeId, geometryRevision, zoom, sourceIdentity, analysis, coverage }
         current = null
         onState?.(state)
         return state
@@ -378,7 +380,7 @@ export function createRouteDemAnalysisController({ loadCoverage, onState } = {})
         const routeError = error instanceof RouteDemError
           ? error
           : new RouteDemError('unavailable', '路线高程暂不可用', { cause: error })
-        const state = { status: 'error', key, zoom, sourceIdentity, error: routeError }
+        const state = { status: 'error', key, routeId, geometryRevision, zoom, sourceIdentity, error: routeError }
         current = null
         onState?.(state)
         return state
