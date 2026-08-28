@@ -784,7 +784,7 @@ body.focus-mode .ui-profile { opacity: 0 !important; pointer-events: none !impor
 body.admin-inspecting canvas { cursor: crosshair; }
 body.focus-mode .admin-panel, body.focus-mode .admin-modebar, body.focus-mode .admin-empty, body.focus-mode .admin-detail { opacity: 0; pointer-events: none; }
 
-@media (max-width: 720px) {
+@media (max-width: 1023px) {
   .admin-panel { top: auto; left: 52px; right: 0; bottom: 0; z-index: 45; width: auto; max-height: min(68vh, 470px); overflow-y: auto; border-radius: 18px 0 0 0; border-width: 1px 0 0 1px; padding-top: 10px; }
   .admin-panel::before { content: ''; display: block; width: 38px; height: 4px; border-radius: 3px; background: #b9bdbe; margin: 0 auto 5px; }
   .admin-head { min-height: 44px; }
@@ -875,7 +875,7 @@ body.planner-operate.planner-layers-open .ui-layers {
 }
 body.planner-operate.planner-layers-open .ui-layer-tip { display: none; }
 
-@media (max-width: 720px) {
+@media (max-width: 1023px) {
   .ui-planner-bar { left: 0; height: 56px; padding: 0 10px; gap: 8px; }
   .ui-planner-brand { display: none; }
   .ui-view-switch { flex: 1; }
@@ -1300,7 +1300,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
   .ui-planner-primary { padding-inline: 12px; }
 }
 
-@media (max-width: 720px) {
+@media (max-width: 1023px) {
   .ui-planner-bar { left: 0; height: 56px; padding: 0 8px; gap: 6px; grid-template-columns: auto 1fr auto auto; }
   .ui-planner-brand { min-width: 72px; }
   .ui-planner-brand b { font-size: 16px; }
@@ -1512,7 +1512,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
   .settings-open .ui-overview.planner .ui-map-controls { display: none; }
 }
 
-@media (max-width: 720px) {
+@media (max-width: 1023px) {
   .ui-planner-bar {
     height: 56px; display: grid; grid-template-columns: auto minmax(0,1fr) auto; gap: 6px;
     padding: 0 8px; background: rgba(21,28,32,.96); pointer-events: auto;
@@ -1607,7 +1607,7 @@ body.planner-operate .ui-panel-body { height: calc(100% - 58px); padding: 18px 1
 .wx-go:disabled { border: 0; background: rgba(37,37,33,.08); color: var(--text-dark-muted); cursor: not-allowed; }
 .wx-attr { margin-top: -8px; color: var(--trip-ink-soft); }
 
-@media (max-width: 720px) {
+@media (max-width: 1023px) {
   body.planner-operate .ui-panel, body.weather-operate .ui-panel { width: 100%; border-radius: 18px 18px 0 0; }
   body.planner-operate .ui-panel h2, body.weather-operate .ui-panel h2 { min-height: 64px; padding: 0 18px; font-size: 19px; }
   body.planner-operate .ui-panel-body, body.weather-operate .ui-panel-body { height: calc(100% - 64px); padding: 20px 16px 28px; }
@@ -1752,7 +1752,7 @@ body.planner-operate .ui-panel-body { height: calc(100% - 58px); padding: 18px 1
   .settings-open .ui-overview.planner .ui-map-controls { right: 374px; }
 }
 
-@media (max-width: 720px) {
+@media (max-width: 1023px) {
   .ui-trip-spine { display: none; }
   .ui-panel-tabs { min-height: 42px; padding-inline: 12px; }
   .ui-panel h2 { grid-template-columns: minmax(0,1fr) auto; }
@@ -1771,7 +1771,7 @@ body.planner-operate.analyze-operate .ui-profile {
   transform: translateX(-50%);
 }
 
-@media (max-width: 720px) {
+@media (max-width: 1023px) {
   body.planner-operate.analyze-operate .ui-profile {
     display: block !important; left: 10px; right: 10px; bottom: calc(70px + env(safe-area-inset-bottom)); width: auto; max-width: none;
     transform: none; border-radius: 14px;
@@ -2139,7 +2139,7 @@ body.weather-operate .ui-panel-body { padding: 18px 16px 22px; }
   body:has(.ui-panel:not(.hidden):not(.collapsed)) .ui-overview.planner .ui-map-footprint-legend { right: 376px; }
 }
 
-@media (max-width: 720px) {
+@media (max-width: 1023px) {
   .ui-planner-bar {
     height: 58px;
     grid-template-columns: 74px minmax(0, 1fr) 44px;
@@ -2240,7 +2240,7 @@ body.planner-operate.analyze-operate .profile-details-toggle::after { color: var
 body.planner-operate.analyze-operate .profile-details-toggle { border-top-color: var(--instrument-line); }
 body.planner-operate.analyze-operate .profile-recovery { border-color: var(--instrument-line); color: var(--instrument-text); }
 
-@media (max-width: 720px) {
+@media (max-width: 1023px) {
   body.planner-operate.analyze-operate .ui-profile {
     left: 10px;
     right: 10px;
@@ -2248,4 +2248,205 @@ body.planner-operate.analyze-operate .profile-recovery { border-color: var(--ins
     width: auto;
     transform: none;
   }
+}
+
+/* Fluid instruments v1: one map-first spatial system at desktop widths. */
+.ui-fluid-surface { box-sizing: border-box; }
+.ui-fluid-grip,
+.ui-fluid-resize { display: none; }
+.ui-panel-body { scrollbar-width: none; }
+.ui-panel-body::-webkit-scrollbar { display: none; width: 0; height: 0; }
+
+@media (min-width: 1024px) {
+  .ui-fluid-surface[data-fluid-enabled="true"] {
+    position: fixed !important;
+    inset: auto !important;
+    left: 0 !important;
+    top: 0 !important;
+    right: auto !important;
+    bottom: auto !important;
+    width: var(--fluid-width) !important;
+    height: var(--fluid-height) !important;
+    transform: translate3d(var(--fluid-x), var(--fluid-y), 0) !important;
+    will-change: transform, width, height;
+  }
+
+  .ui-fluid-grip {
+    position: absolute;
+    left: 50%;
+    top: 8px;
+    z-index: 6;
+    display: block;
+    width: 18px;
+    height: 12px;
+    transform: translateX(-50%);
+    color: currentColor;
+    opacity: .42;
+    cursor: grab;
+    touch-action: none;
+  }
+  .ui-fluid-grip::before {
+    content: '';
+    position: absolute;
+    left: 4px;
+    top: 3px;
+    width: 2px;
+    height: 2px;
+    border-radius: 50%;
+    background: currentColor;
+    box-shadow: 5px 0 currentColor, 10px 0 currentColor, 0 5px currentColor, 5px 5px currentColor, 10px 5px currentColor;
+  }
+  .ui-fluid-grip:hover { opacity: .78; }
+  .fluid-interacting .ui-fluid-grip { cursor: grabbing; opacity: .9; }
+
+  .ui-fluid-resize {
+    position: absolute;
+    right: 7px;
+    bottom: 7px;
+    z-index: 6;
+    display: block;
+    width: 13px;
+    height: 13px;
+    border-right: 1px solid currentColor;
+    border-bottom: 1px solid currentColor;
+    opacity: .46;
+    cursor: nwse-resize;
+    touch-action: none;
+  }
+  .fluid-interacting { user-select: none; opacity: .94; }
+
+  body.planner-operate .ui-panel:not(.collapsed),
+  body.weather-operate .ui-panel:not(.collapsed),
+  .ui-panel:not(.collapsed) {
+    overflow: hidden;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 14px;
+    background: var(--panel-surface) !important;
+    box-shadow: 0 18px 50px rgba(25, 24, 20, .18);
+  }
+  body.planner-operate .ui-panel h2,
+  body.weather-operate .ui-panel h2 {
+    min-height: 58px;
+    padding: 0 14px 0 18px;
+    border: 0;
+    border-radius: 14px 14px 0 0;
+    background: #1a2023;
+  }
+  body.planner-operate .ui-panel-body,
+  body.weather-operate .ui-panel-body {
+    height: calc(100% - 58px);
+    padding: 14px 16px 18px;
+    overflow-y: auto;
+    scrollbar-width: none;
+  }
+  body.planner-operate .ui-panel-body::-webkit-scrollbar,
+  body.weather-operate .ui-panel-body::-webkit-scrollbar { width: 0; height: 0; }
+  body.planner-operate .ui-panel-body::-webkit-scrollbar-track,
+  body.weather-operate .ui-panel-body::-webkit-scrollbar-track { background: transparent; }
+  body.planner-operate .ui-panel-body::-webkit-scrollbar-thumb,
+  body.weather-operate .ui-panel-body::-webkit-scrollbar-thumb { border-radius: 8px; background: rgba(31, 36, 40, .24); }
+  .pp-root .ui-wp-list,
+  .pp-root .pp-secondary-tools,
+  .pp-root .pp-journey-list {
+    border-color: transparent;
+    border-radius: 0;
+    background: transparent;
+  }
+  .pp-root { overflow: visible; }
+  .pp-root .pp-tl-item,
+  .pp-root .pp-secondary-tools > summary { padding-inline: 4px; }
+  .pp-root .pp-section + .pp-section { border-top: 0; }
+
+  .ui-trip-spine[data-fluid-enabled="true"] {
+    display: grid;
+    min-height: 0;
+    overflow: hidden;
+    grid-template-columns: auto minmax(150px, 210px) minmax(0, 1fr) auto;
+    border: 0;
+    border-radius: 12px;
+    background: var(--instrument-surface);
+    color: var(--instrument-text);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .18);
+  }
+  .ui-trip-spine[data-fluid-enabled="true"] .ui-fluid-grip { left: 28%; }
+
+  body.planner-operate.analyze-operate .ui-profile[data-fluid-enabled="true"] {
+    overflow: hidden;
+    border: 0;
+    border-radius: 12px;
+    background: var(--instrument-surface);
+    color: var(--instrument-text);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, .2);
+  }
+
+  .ui-weather-card[data-fluid-enabled="true"] {
+    overflow: hidden;
+    border: 0;
+    border-radius: 14px;
+    box-shadow: 0 12px 32px rgba(6, 10, 12, .22);
+  }
+  .ui-weather-card[data-fluid-enabled="true"] .ui-fluid-grip { color: var(--trip-ink); }
+
+  .ui-planner-action-island,
+  .ui-planner-context-tools,
+  .ui-planner-primary { display: none !important; }
+
+  .ui-overview.planner .ui-map-controls.ui-map-dock {
+    right: 24px !important;
+    top: 112px;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    padding: 4px;
+    border: 0;
+    border-radius: 10px;
+    background: var(--instrument-surface);
+    box-shadow: var(--instrument-shadow);
+  }
+  .ui-overview.planner .ui-map-controls.ui-map-dock button {
+    width: 40px;
+    min-width: 40px;
+    height: 40px;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--instrument-text);
+    box-shadow: none;
+  }
+  .ui-overview.planner .ui-map-controls.ui-map-dock button + button { border-top: 1px solid var(--instrument-line); }
+  .ui-overview.planner .ui-map-controls.ui-map-dock button:hover,
+  .ui-overview.planner .ui-map-controls.ui-map-dock button[aria-expanded="true"] { background: var(--instrument-surface-hover); }
+  .ui-overview.planner .ui-map-controls.ui-map-dock .ui-map-fit span { display: none; }
+
+  .ui-planner-more-menu {
+    right: 84px;
+    top: 112px;
+    max-height: min(520px, calc(100vh - 136px));
+    overflow-y: auto;
+  }
+  body.planner-operate.planner-layers-open .ui-layers {
+    right: 84px;
+    top: 160px;
+    max-width: 236px;
+  }
+
+  .ui-overview.planner .ui-map-empty {
+    left: max(96px, calc(var(--trip-safe-left, 88px) + 12px));
+    right: auto;
+    top: auto;
+    bottom: max(110px, calc(var(--trip-safe-bottom, 24px) + 12px));
+    transform: none;
+  }
+}
+
+@media (max-width: 1023px) {
+  .ui-fluid-grip,
+  .ui-fluid-resize { display: none !important; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-fluid-surface { transition: opacity 120ms ease-out !important; }
+  .fluid-interacting { transition: none !important; }
 }

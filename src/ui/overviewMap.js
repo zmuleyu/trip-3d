@@ -13,7 +13,7 @@ const OPENFREEMAP_STYLE = 'https://tiles.openfreemap.org/styles/positron'
 const FALLBACK_STYLE = {
   version: 8,
   sources: {},
-  layers: [{ id: 'planner-fallback-background', type: 'background', paint: { 'background-color': '#f4f0e6' } }],
+  layers: [{ id: 'planner-fallback-background', type: 'background', paint: { 'background-color': '#eef0ee' } }],
 }
 const ACCENT = '#ff4d00'
 const TERRAIN_PITCH = 55
@@ -99,16 +99,16 @@ function tuneBaseStyle(map) {
         map.setLayoutProperty(layer.id, 'visibility', 'none')
         continue
       }
-      if (layer.type === 'background') map.setPaintProperty(layer.id, 'background-color', '#f4f0e6')
-      if (layer.type === 'fill' && /water/.test(semanticName)) map.setPaintProperty(layer.id, 'fill-color', '#dce5e2')
-      if (layer.type === 'fill' && /park|wood|grass|landcover/.test(semanticName)) map.setPaintProperty(layer.id, 'fill-color', '#e5e7dc')
-      if (layer.type === 'fill' && /building|residential/.test(semanticName)) map.setPaintProperty(layer.id, 'fill-color', '#e8e4dc')
+      if (layer.type === 'background') map.setPaintProperty(layer.id, 'background-color', '#eef0ee')
+      if (layer.type === 'fill' && /water/.test(semanticName)) map.setPaintProperty(layer.id, 'fill-color', '#dbe5e7')
+      if (layer.type === 'fill' && /park|wood|grass|landcover/.test(semanticName)) map.setPaintProperty(layer.id, 'fill-color', '#e3e8e3')
+      if (layer.type === 'fill' && /building|residential/.test(semanticName)) map.setPaintProperty(layer.id, 'fill-color', '#e7e8e5')
       if (layer.type === 'line' && /motorway|highway|road|street|bridge|tunnel/.test(semanticName)) {
-        map.setPaintProperty(layer.id, 'line-color', '#9a9b95')
+        map.setPaintProperty(layer.id, 'line-color', '#929a99')
       }
       if (layer.type === 'symbol') {
         map.setPaintProperty(layer.id, 'text-color', '#4c5150')
-        map.setPaintProperty(layer.id, 'text-halo-color', '#f4f0e6')
+        map.setPaintProperty(layer.id, 'text-halo-color', '#eef0ee')
       }
     } catch {
       // Some upstream layers use property sets that do not accept these paint
@@ -140,9 +140,9 @@ function addPlannerLayers(map) {
     layout: { visibility: 'none' },
     paint: {
       'hillshade-exaggeration': 0.34,
-      'hillshade-shadow-color': '#80684f',
-      'hillshade-accent-color': '#b29a7c',
-      'hillshade-highlight-color': '#fff9ed',
+      'hillshade-shadow-color': '#66706f',
+      'hillshade-accent-color': '#939c9a',
+      'hillshade-highlight-color': '#f7f8f5',
       'hillshade-illumination-direction': 315,
     },
   }, firstSymbolLayer)
@@ -276,7 +276,7 @@ function addPlannerLayers(map) {
 export function createOverviewMap({
   terrainExaggeration = 1.6, onTerrainUnavailable, onJump, onPlanAdd, onWaypointSelect,
   onWaypointMoveStart, onWaypointMove, onWaypointMoveEnd, onWaypointMoveCancel,
-  onWeatherDetails, onAnalysisCursor,
+  onWeatherDetails, onAnalysisCursor, onDockAction, getFitPadding,
 } = {}) {
   const el = document.createElement('div')
   el.className = 'ui-overview hidden'
@@ -293,7 +293,19 @@ export function createOverviewMap({
   mapContext.append(mapContextTitle, mapContextHint)
 
   const controls = document.createElement('div')
-  controls.className = 'ui-map-controls'
+  controls.className = 'ui-map-controls ui-map-dock'
+  const globalActions = document.createElement('button')
+  globalActions.type = 'button'
+  globalActions.className = 'ui-map-global-actions'
+  globalActions.setAttribute('aria-label', '展开保存与分享')
+  globalActions.setAttribute('aria-expanded', 'false')
+  globalActions.innerHTML = iconSvg('more')
+  const layers = document.createElement('button')
+  layers.type = 'button'
+  layers.className = 'ui-map-layers-toggle'
+  layers.setAttribute('aria-label', '打开图层工具')
+  layers.setAttribute('aria-expanded', 'false')
+  layers.innerHTML = iconSvg('layers')
   const zoomIn = document.createElement('button')
   zoomIn.type = 'button'
   zoomIn.setAttribute('aria-label', '放大地图')
@@ -307,31 +319,12 @@ export function createOverviewMap({
   fit.className = 'ui-map-fit hidden'
   fit.setAttribute('aria-label', '显示完整路线')
   fit.innerHTML = `${iconSvg('fit')}<span>完整路线</span>`
-  controls.append(zoomIn, zoomOut, fit)
+  controls.append(globalActions, layers, zoomIn, zoomOut, fit)
 
   const emptyHint = document.createElement('div')
   emptyHint.className = 'ui-map-empty'
   emptyHint.setAttribute('role', 'status')
   emptyHint.innerHTML = `${iconSvg('pin')}<div><b>设置起点</b><span aria-hidden="true"></span></div>`
-
-  let onboardingDismissed = false
-  try { onboardingDismissed = sessionStorage.getItem('trip3d.planningGuide.dismissed') === '1' } catch { /* optional session preference */ }
-  const onboarding = document.createElement('div')
-  onboarding.className = 'ui-map-onboarding'
-  onboarding.setAttribute('aria-label', '路线规划步骤')
-  onboarding.innerHTML = `
-    <ol>
-      <li data-guide-step="start"><span>1</span>起点</li>
-      <li data-guide-step="via"><span>2</span>途经点</li>
-      <li data-guide-step="confirm"><span>3</span>路线</li>
-    </ol>
-    <button type="button">跳过引导</button>`
-  onboarding.querySelector('button').onclick = () => {
-    onboardingDismissed = true
-    onboarding.classList.add('hidden')
-    emptyHint.classList.add('hidden')
-    try { sessionStorage.setItem('trip3d.planningGuide.dismissed', '1') } catch { /* optional session preference */ }
-  }
 
   const mapError = document.createElement('div')
   mapError.className = 'ui-map-error hidden'
@@ -347,7 +340,7 @@ export function createOverviewMap({
     <dl><div><dt>降水</dt><dd data-weather="precipitation">—</dd></div><div><dt>风速</dt><dd data-weather="wind">—</dd></div></dl>
     <footer><span data-weather="source">预报</span><button type="button" data-weather-action>逐小时预报</button></footer>`
 
-  el.append(mapSurface, mapContext, controls, emptyHint, onboarding, mapError, weatherCard)
+  el.append(mapSurface, mapContext, controls, emptyHint, mapError, weatherCard)
 
   const map = new MapLibreMap({
     container: mapSurface,
@@ -425,7 +418,7 @@ export function createOverviewMap({
   }
 
   function terrainPitch() {
-    return globalThis.matchMedia?.('(max-width: 720px)').matches ? MOBILE_TERRAIN_PITCH : TERRAIN_PITCH
+    return globalThis.matchMedia?.('(max-width: 1023px)').matches ? MOBILE_TERRAIN_PITCH : TERRAIN_PITCH
   }
 
   function setRouteVisualTreatment(terrain3d) {
@@ -472,7 +465,7 @@ export function createOverviewMap({
       map.jumpTo(camera)
       return
     }
-    const mobile = globalThis.matchMedia?.('(max-width: 720px)').matches
+    const mobile = globalThis.matchMedia?.('(max-width: 1023px)').matches
     map.easeTo({
       ...camera,
       duration: mobile ? MOBILE_TRANSITION_MS : DESKTOP_TRANSITION_MS,
@@ -579,7 +572,7 @@ export function createOverviewMap({
     if (!control) return
     attributionControlContainer = control
     attributionMapParent ??= control.parentElement
-    const floatAboveMobileSheet = plannerMode && globalThis.matchMedia?.('(max-width: 720px)').matches
+    const floatAboveMobileSheet = plannerMode && globalThis.matchMedia?.('(max-width: 1023px)').matches
     const target = floatAboveMobileSheet ? document.body : attributionMapParent
     if (target && control.parentElement !== target) target.append(control)
     control.classList.toggle('ui-map-attribution-floating', floatAboveMobileSheet)
@@ -696,17 +689,11 @@ export function createOverviewMap({
         : count === 1
           ? '继续点击，添加终点'
           : `${count} 个途经点 · 点击继续添加`
-    const guideVisible = plannerMode && editingMode && !terrain3d && count < 2 && !onboardingDismissed
+    const guideVisible = plannerMode && editingMode && !terrain3d && count < 2
     emptyHint.classList.toggle('hidden', !guideVisible)
     emptyHint.dataset.step = count === 0 ? 'start' : 'via'
     emptyHint.querySelector('b').textContent = count === 0 ? '设置起点' : '添加途经点'
     emptyHint.querySelector('span').textContent = ''
-    onboarding.classList.toggle('hidden', !guideVisible)
-    onboarding.querySelectorAll('[data-guide-step]').forEach((item) => {
-      const step = item.dataset.guideStep
-      item.classList.toggle('active', step === (count === 0 ? 'start' : count === 1 ? 'via' : 'confirm'))
-      item.classList.toggle('done', step === 'start' && count > 0)
-    })
     const hasRoute = count >= 2
     fit.classList.toggle('hidden', !hasRoute)
     const zoom = map.getZoom()
@@ -715,7 +702,9 @@ export function createOverviewMap({
   }
 
   function fitPadding() {
-    const mobilePlanner = plannerMode && globalThis.matchMedia?.('(max-width: 720px)').matches
+    const measured = getFitPadding?.()
+    if (measured && Object.values(measured).every(Number.isFinite)) return measured
+    const mobilePlanner = plannerMode && globalThis.matchMedia?.('(max-width: 1023px)').matches
     if (mobilePlanner && plannerView === '3d' && !editingMode) {
       return { top: 96, right: 48, bottom: 88, left: 48 }
     }
@@ -875,7 +864,7 @@ export function createOverviewMap({
   }
 
   function movePlanningGuide(event) {
-    if (!editingMode || onboardingDismissed || (lastRoute?.waypoints?.length ?? 0) >= 2 || !event.point) return
+    if (!editingMode || (lastRoute?.waypoints?.length ?? 0) >= 2 || !event.point) return
     const rect = mapSurface.getBoundingClientRect()
     const x = Math.max(92, Math.min(rect.width - 92, event.point.x + 18))
     const y = Math.max(116, Math.min(rect.height - 116, event.point.y - 18))
@@ -977,9 +966,30 @@ export function createOverviewMap({
   zoomIn.onclick = () => map.zoomIn({ duration: 160 })
   zoomOut.onclick = () => map.zoomOut({ duration: 160 })
   fit.onclick = fitCurrent
+  globalActions.onclick = () => {
+    const open = globalActions.getAttribute('aria-expanded') !== 'true'
+    globalActions.setAttribute('aria-expanded', String(open))
+    globalActions.setAttribute('aria-label', open ? '收起保存与分享' : '展开保存与分享')
+    onDockAction?.('more', open)
+  }
+  layers.onclick = () => {
+    const open = layers.getAttribute('aria-expanded') !== 'true'
+    layers.setAttribute('aria-expanded', String(open))
+    layers.setAttribute('aria-label', open ? '关闭图层工具' : '打开图层工具')
+    onDockAction?.('layers', open)
+  }
 
   return {
     el,
+    weatherCard,
+    setDockExpanded(open) {
+      globalActions.setAttribute('aria-expanded', String(!!open))
+      globalActions.setAttribute('aria-label', open ? '收起保存与分享' : '展开保存与分享')
+    },
+    setLayersOpen(open) {
+      layers.setAttribute('aria-expanded', String(!!open))
+      layers.setAttribute('aria-label', open ? '关闭图层工具' : '打开图层工具')
+    },
     get view() {
       if (!hasCamera) return null
       const center = map.getCenter()

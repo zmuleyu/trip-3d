@@ -1,6 +1,6 @@
 import { iconSvg } from './icons.js'
 
-export function createPlannerWorkspace({ onStage, onSearch, onPrimary, onWeather, onMoreAction, onSpineExpand } = {}) {
+export function createPlannerWorkspace({ onStage, onSearch, onMoreAction, onSpineExpand } = {}) {
   const el = document.createElement('div')
   el.className = 'ui-planner-workspace hidden'
   el.innerHTML = `
@@ -18,20 +18,9 @@ export function createPlannerWorkspace({ onStage, onSearch, onPrimary, onWeather
           <button type="button" role="tab" data-stage="analyze" title="至少添加起点和终点" aria-label="分析地形（至少添加起点和终点）" disabled>分析</button>
         </div>
       </div>
-      <div class="ui-planner-action-island" aria-label="线路操作">
-        <button type="button" class="ui-planner-save" aria-label="保存线路">${iconSvg('save')}<span>保存</span></button>
-        <button type="button" class="ui-planner-share" aria-label="分享线路">${iconSvg('share')}<span>分享</span></button>
-        <button type="button" class="ui-planner-more" aria-label="更多和进阶设置">${iconSvg('more')}<span>更多</span></button>
-      </div>
-      <button type="button" class="ui-planner-primary">开始规划</button>
-      <div class="ui-planner-context-tools" aria-label="地图快捷工具">
-        <button type="button" class="ui-planner-weather" aria-label="天气">${iconSvg('weather')}<span>天气</span></button>
-        <button type="button" class="ui-planner-layer-toggle" aria-controls="ui-layer-tools" aria-expanded="false" aria-label="打开图层工具">${iconSvg('layers')}<span>图层</span></button>
-      </div>
     </header>
     <div class="ui-planner-more-menu hidden" role="menu" aria-label="更多操作">
-      <span class="ui-planner-more-label" role="presentation">线路</span>
-      <button type="button" role="menuitem" data-more-action="library">线路库</button>
+      <span class="ui-planner-more-label" role="presentation">全局操作</span>
       <button type="button" role="menuitem" data-more-action="save">保存线路</button>
       <button type="button" role="menuitem" data-more-action="share">分享线路</button>
       <span class="ui-planner-more-label" role="presentation">线路传输</span>
@@ -40,6 +29,8 @@ export function createPlannerWorkspace({ onStage, onSearch, onPrimary, onWeather
       <span class="ui-planner-more-label" role="presentation">地图与显示</span>
       <button type="button" role="menuitem" data-more-action="admin">行政区划</button>
       <button type="button" role="menuitem" data-more-action="settings">进阶设置</button>
+      <button type="button" role="menuitem" data-more-action="help">快捷键与手势</button>
+      <button type="button" role="menuitem" data-more-action="reset-layout">重置面板布局</button>
     </div>
     <section class="ui-trip-spine" aria-label="路线摘要">
       <button type="button" class="ui-trip-spine-title">${iconSvg('planning')}<span>路线摘要</span></button>
@@ -53,46 +44,26 @@ export function createPlannerWorkspace({ onStage, onSearch, onPrimary, onWeather
   const buttons = [...el.querySelectorAll('[data-stage]')]
   const search = el.querySelector('.ui-command-search')
   const searchInput = search.querySelector('input')
-  const primary = el.querySelector('.ui-planner-primary')
-  const save = el.querySelector('.ui-planner-save')
   const spine = el.querySelector('.ui-trip-spine')
   const spineDays = spine.querySelector('.ui-trip-spine-days')
   search.addEventListener('submit', (event) => { event.preventDefault(); onSearch?.(searchInput.value) })
-  primary.addEventListener('click', () => onPrimary?.({ stage, analyzeAvailable }))
-  save.addEventListener('click', () => onMoreAction?.('save'))
-  el.querySelector('.ui-planner-share').addEventListener('click', () => onMoreAction?.('share'))
   spine.querySelector('.ui-trip-spine-title').addEventListener('click', () => onSpineExpand?.())
   spine.querySelector('.ui-trip-spine-expand').addEventListener('click', () => onSpineExpand?.())
-  el.querySelector('.ui-planner-weather').addEventListener('click', () => onWeather?.())
-  const more = el.querySelector('.ui-planner-more')
   const moreMenu = el.querySelector('.ui-planner-more-menu')
   const setMoreOpen = (open) => {
     moreMenu.classList.toggle('hidden', !open)
-    more.setAttribute('aria-expanded', String(open))
   }
-  more.addEventListener('click', () => setMoreOpen(more.getAttribute('aria-expanded') !== 'true'))
   moreMenu.addEventListener('click', (event) => {
     const action = event.target.closest('[data-more-action]')?.dataset.moreAction
     if (!action) return
     setMoreOpen(false)
     onMoreAction?.(action)
   })
-  const layerToggle = el.querySelector('.ui-planner-layer-toggle')
   const setLayersOpen = (open) => {
     document.body.classList.toggle('planner-layers-open', open)
-    layerToggle.setAttribute('aria-expanded', String(open))
-    layerToggle.setAttribute('aria-label', open ? '关闭图层工具' : '打开图层工具')
   }
-  layerToggle.addEventListener('click', () => setLayersOpen(layerToggle.getAttribute('aria-expanded') !== 'true'))
   const syncPrimary = () => {
-    save.disabled = !analyzeAvailable
-    save.setAttribute('aria-disabled', String(!analyzeAvailable))
-    primary.textContent = stage === 'analyze'
-      ? '返回规划'
-      : analyzeAvailable
-        ? '分析地形'
-        : '开始规划'
-    primary.classList.toggle('has-route', analyzeAvailable)
+    moreMenu.querySelector('[data-more-action="save"]').disabled = !analyzeAvailable
   }
   const applyStage = (next, notify = false) => {
     const requested = next === 'analyze' ? 'analyze' : 'plan'
@@ -116,6 +87,9 @@ export function createPlannerWorkspace({ onStage, onSearch, onPrimary, onWeather
     get stage() { return stage },
     get view() { return stage === 'analyze' ? '3d' : '2d' },
     setVisible(on) { el.classList.toggle('hidden', !on); if (!on) { setLayersOpen(false); setMoreOpen(false) } },
+    setMoreOpen,
+    toggleMore() { setMoreOpen(moreMenu.classList.contains('hidden')) },
+    get moreOpen() { return !moreMenu.classList.contains('hidden') },
     setLayersOpen,
     setStage(next) { return applyStage(next) },
     setView(next) { return applyStage(next === '3d' ? 'analyze' : 'plan') },

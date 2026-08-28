@@ -6,7 +6,7 @@ colors:
   ink-soft: "#5f696f"
   instrument: "#171c1f"
   paper: "#f7f7f4"
-  terrain-paper: "#f2eee4"
+  terrain-paper: "#eef0ee"
   context-paper: "#f6f4ee"
   paper-strong: "#ffffff"
   line: "rgba(31, 36, 40, 0.16)"
@@ -68,6 +68,11 @@ components:
     textColor: "{colors.paper-strong}"
     rounded: "{rounded.instrument}"
     padding: "4px"
+  map-dock:
+    backgroundColor: "{colors.instrument}"
+    textColor: "{colors.paper-strong}"
+    rounded: "{rounded.context}"
+    width: "48px"
   map-context:
     backgroundColor: "rgba(247,247,244,.9)"
     textColor: "{colors.ink}"
@@ -102,13 +107,13 @@ components:
 
 **Creative North Star: "The Map Is the Trip"**
 
-TRIP 3D is a restrained, authored Chinese cartography workspace. A warm terrain-and-hillshade canvas carries the route; #171c1f-class instrument surfaces make the controls legible without competing for the first glance. The route-orange line and direct state transition establish the only urgent visual voice.
+TRIP 3D is a restrained, authored Chinese cartography workspace. A neutral limestone-gray terrain-and-hillshade canvas carries the route; #171c1f-class instrument surfaces make the controls legible without competing for the first glance. The route-orange line and direct state transition establish the only urgent visual voice.
 
 The product feels like a dependable field instrument: compact rounded controls, short Chinese labels, ordered row content, and progressive disclosure let planning, terrain, time, and weather remain facets of one trip. Frosted material is reserved for information anchored to the map, so geographic context survives without turning the interface into glass decoration.
 
 **Key Characteristics:**
-- Map-first operating canvas with three desktop tool islands, a narrow rail, and a single continuous lower information layer.
-- Warm terrain/hillshade canvas, near-black instruments, and warm-paper contextual surfaces rather than dashboard-card density.
+- Map-first operating canvas with two fixed top instruments, a destination rail, one unified right dock, and movable contextual instruments.
+- Neutral terrain/hillshade canvas, near-black instruments, and warm-paper contextual surfaces rather than dashboard-card density.
 - Restrained Chinese system typography with compact metadata and tabular numerical detail.
 - Orange route selection, blue weather information, dark secondary selections, and direct truthful status colors.
 - Rounded, familiar controls; dense information remains in rows, sheets, and drawers.
@@ -127,8 +132,8 @@ The palette is terrain-neutral and high-contrast: ink and paper establish operat
 
 ### Neutral
 - **Cartographic Ink:** Anchors text and dark route-mode control.
-- **Instrument Charcoal:** #171c1f-class surfaces form the desktop three-island chrome, narrow rail, map zoom group, and Analyze profile.
-- **Terrain Paper:** #f2eee4 is the warm, low-contrast topographic canvas; it stays quieter than its terrain corridor and active route.
+- **Instrument Charcoal:** #171c1f-class surfaces form the fixed top chrome, narrow rail, unified right dock, Route Summary, and Analyze profile.
+- **Terrain Paper:** #eef0ee-class neutral limestone gray is the low-contrast topographic canvas; it stays cooler and quieter than the warm inspector paper and active route.
 - **Quiet Ink:** Holds metadata and secondary explanation at a lower visual volume.
 - **Panel Paper:** #f6f4ee forms compact inspector surfaces and stable drawers.
 - **Strong Paper:** Keeps editable fields and row interiors opaque and readable.
@@ -153,11 +158,13 @@ The palette is terrain-neutral and high-contrast: ink and paper establish operat
 
 ## Layout
 
-The map is the continuous working surface. On desktop the pinned Plan/Analyze world uses three floating top instruments—brand/search at left, Plan/Analyze state at center, and save/share/more at right—plus a narrow left rail, a compact right zoom group, and one lower information layer. These islands are fixed visual hierarchy for the operating workspace; their contents remain contextual and inspectors reflow instead of competing with the geography.
+The map is the continuous working surface. At 1024px and above, brand/search stays fixed at top-left and Plan/Analyze stays fixed at top-center. A narrow left rail owns only Plan, Route Library, and Weather destinations plus a quiet More utility. One compact right dock owns expandable Save/Share, Layers, Zoom, and Fit; no separate top-right action island or duplicate Weather trigger remains.
 
-On desktop, Analyze is map-first: the route corridor, current position, truthful terrain status, and dark Elevation Profile band remain visible together. The profile owns the lower edge in Analyze; Route Summary uses the same lower-edge territory in Plan, so switching state reads as a continuous instrument rather than a new dashboard. At 1080px, secondary weather and layer triggers recede before the map loses working area.
+Desktop contextual information uses one shared floating layout system. The 328px Inspector host, Route Summary/Elevation Profile, and marker Weather card may be moved and resized; navigation and map-operation chrome never drifts. Their live occupied rectangles feed shared safe-area variables and route-fit padding so the mode switch, rail, dock, hint, route endpoints, and one another remain unobstructed. Session-only versioned layout state is clamped on viewport or content change and reset from More.
 
-At 720px and below, map gestures retain priority. The header condenses to brand, the Plan/Analyze switch, and one 44px more target; save/share and contextual desktop tools move behind that entry. The lower layer becomes a shared 10px-inset Route Summary or Elevation Profile sheet, with 44px targets and enough map visible for route orientation. It does not reproduce desktop chrome mechanically.
+On desktop, Analyze is map-first: the route corridor, current position, truthful terrain status, and dark Elevation Profile instrument remain visible together. Route Summary and Elevation Profile share one saved placement family so switching state reads as a continuous instrument rather than a new dashboard.
+
+Below 1024px, free drag and resize are disabled. Map gestures retain priority while the Inspector continues through the existing peek/half/full bottom sheet and the lower information layer keeps 10px insets, 44px targets, and bottom-navigation clearance. This responsive state never reuses stale desktop coordinates.
 
 **The Continuous Map Rule.** Chrome floats above the map with a visible geographic margin or collapses into an analysis layer, map anchor, side context, or shared sheet according to task. No open state may fragment the trip into competing dashboard columns, form a rigid four-edge frame, or turn the map into background decoration.
 
@@ -181,6 +188,12 @@ The system is flat by default. Ordinary rows, fields, segmented controls, and li
 
 **The Contextual Frost Rule.** Blur belongs exclusively to map-anchored information and dark/light map controls, with opaque fallbacks when reduced transparency is requested.
 
+## Motion & Direct Manipulation
+
+Desktop movable instruments use Pointer Events and pointer capture. A 9px hysteresis separates press from drag; the element preserves the original grab offset and tracks the pointer 1:1 after intent is established. Bounds use progressive rubber-band resistance during movement and a final viewport/safe-area clamp on release. The active instrument comes to front.
+
+Release settles with an interruptible critically damped spring from the current presentation value, without decorative bounce. Resize shares the same lifecycle and obeys per-instrument minimum and maximum sizes. Buttons, close/back actions, fields, links, and fixed chrome never initiate drag. `prefers-reduced-motion: reduce` skips the spring and uses only a short opacity cross-fade or immediate state change.
+
 ## Shapes
 
 Forms are rounded, compact, and repeatable. Use the 8/10/12/14px geometry deliberately: 8px for internal actions and fields, 10px for compact context, 12px for desktop instruments and the lower summary/profile, and 14px for warm-paper inspectors. Mobile retains the same family with 10px screen insets; it does not introduce oversized pills. Journey rows remain square within their shared container so a route reads as a sequence rather than a grid of cards.
@@ -194,8 +207,8 @@ Forms are rounded, compact, and repeatable. Use the 8/10/12/14px geometry delibe
 - **Secondary and icon actions:** 42px transparent actions inside #171c1f instruments, split only by short fine white lines where grouped. Hover adds one restrained white veil; focus uses the route-orange 2px outline.
 - **State:** Buttons expose hover, focus-visible, active, disabled, and selected treatment. Motion is limited to color/border at 140–180ms and press-scale at 100ms.
 
-### Desktop instrument islands
-- **Shape:** Brand/search and route actions are 50px-tall, 12px-radius dark instruments; the centered stage switch is 48px tall. Brand/search stays left; Plan/Analyze remains centered; save/share/more remains right.
+### Desktop fixed instruments
+- **Shape:** Brand/search is a 50px-tall, 12px-radius dark instrument; the centered stage switch is 48px tall. Save and Share move into the expandable top segment of the right map dock.
 - **State:** The stage switch uses Route Ember for the selected state and muted text for the alternative. Search stays 238px by default and strengthens its field boundary without moving its island.
 
 ### Plan / Analyze and segmented controls
@@ -203,7 +216,7 @@ Forms are rounded, compact, and repeatable. Use the 8/10/12/14px geometry delibe
 - **State:** The active choice uses Route Ember plus white text; inactive states are muted, and disabled Analyze remains visibly unavailable until the route is ready.
 
 ### Navigation rail and map controls
-- **Style:** Desktop uses a narrow 48px, 12px-radius dark rail at the left and a compact 10px-radius dark zoom group at the right. Their 38–40px actions keep the map's terrain readable.
+- **Style:** Desktop uses a narrow 48px, 12px-radius dark destination rail at the left and a compact 10px-radius unified dock at the right. The dock groups expandable Save/Share, Layers, Zoom, and Fit with 40px actions.
 - **State:** Active work uses a two-pixel Route Ember rule and orange icon rather than a filled block. On mobile the rail disappears and its destinations re-enter through the header or lower sheet.
 
 ### Map context and controls
@@ -211,19 +224,19 @@ Forms are rounded, compact, and repeatable. Use the 8/10/12/14px geometry delibe
 - **State:** Map control hover adds only a quiet translucent light fill. The instruction appears only while planning needs it and never reads as a general card surface.
 
 ### Route Summary / Elevation Profile
-- **Style:** Plan uses a 62px empty / 78px route-state dark lower Route Summary with no decorative orange baseline; Analyze replaces it in-place with the dark Elevation Profile, orange route trace, cursor marker, and `返回规划` action. The layer spans the desktop lower edge with 12px corners and stays a single continuous information band.
+- **Style:** Plan uses a content-fitted 78px default dark Route Summary with no decorative orange baseline; Analyze continues from its layout family with the dark Elevation Profile, orange route trace, cursor marker, and `返回规划` action. Both provide low-noise drag and resize affordances on desktop.
 - **State:** Selected rows use both a thin Route Ember leading rule and a 6% orange fill. On mobile, the same content becomes one inset lower layer rather than duplicate cards.
 
 ### First-use route guidance
-- **Style:** Guidance follows the map cursor with one short action label while a compact step strip sits above the summary: `设置起点 → 添加途经点 → 确认路线`.
-- **State:** It appears only before the second point, updates immediately after the first click, offers `跳过引导`, and never blocks the central map or impersonates a modal.
+- **Style:** Guidance follows the map cursor with one short action label; the duplicate step strip and top-center Start Planning action are absent.
+- **State:** Before the second point, at most the map hint and Route Summary status express the empty state. Both read shared safe areas and never block the route endpoint.
 
 ### Weather card
-- **Style:** A marker-anchored 248px card with a 14px radius, 12px blur, fine border, one restrained shadow, and a light 90% surface on 2D maps or dark 82% surface on 3D terrain.
-- **State:** It opens and moves with 130ms opacity/transform feedback, supports dismissal, and switches to an opaque surface for reduced-transparency preferences.
+- **Style:** A marker-anchored 248px card with a 14px radius, one restrained shadow, and a light 90% surface on 2D maps or dark 82% surface on 3D terrain.
+- **State:** It participates in desktop drag, resize, bring-to-front, collision avoidance, and route-fit safe areas; it supports dismissal and switches to an opaque surface for reduced-transparency preferences.
 
 ### Settings and menus
-- **Style:** Plan and Weather desktop inspectors are 328px warm-panel contextual surfaces with a 58px #1a2023 header cap, 14px outer boundary, one scroll context, fine dividers, and 42px controls. Overflow menus remain small, anchored, and grouped by meaning.
+- **Style:** Plan, Library, Weather, and Share reuse one 316–336px warm-paper Inspector host with a 58px #1a2023 drag-region header, no pale outer shell, no nested card borders, and one visually quiet scroll context. Overflow menus remain small, anchored, and grouped by meaning.
 - **State:** Destination access uses the smallest contextual rail, overflow, anchor, or drawer that keeps the map usable; no one control placement is globally mandatory. Planning, weather, saving, sharing, export, settings, and Admin each retain a discoverable single-purpose entry without competing with default Analyze. Planning orders naming, route mode and one continuous waypoint sequence, disclosed import/edit/export tools, then its save action. Weather reads the live route only, provides Today/Tomorrow/custom-date selection, automatically uses representative route points, and presents truthful forecast or ERA5/archive availability.
 
 ## Do's and Don'ts
@@ -232,8 +245,8 @@ Forms are rounded, compact, and repeatable. Use the 8/10/12/14px geometry delibe
 - **Do** keep the map and route as the default visual proof of the product.
 - **Do** use Route Ember only for movement, explicit selection, and the one primary action.
 - **Do** keep high-frequency controls compact at 40px on desktop and reachable at 44px touch targets on mobile.
-- **Do** preserve the desktop three-island hierarchy, narrow rail, and the Route Summary→Elevation Profile lower-edge continuity.
-- **Do** let warm hillshade and contour texture carry the visual field while Route Ember remains the sharp route signal.
+- **Do** preserve the fixed brand/mode hierarchy, destination rail, unified right dock, and Route Summary→Elevation Profile spatial continuity.
+- **Do** let neutral limestone-gray hillshade and contour texture carry the visual field while Route Ember remains the sharp route signal.
 - **Do** use frosted dark or light material only for map-anchored context, with an opaque reduced-transparency fallback.
 - **Do** group itinerary, settings, and metrics into lined rows with progressive disclosure.
 

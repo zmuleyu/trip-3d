@@ -27,12 +27,13 @@ describe('planner workspace chrome', () => {
     expect(workspace.el.querySelector('.ui-route-coverage')).toBeNull()
   })
 
-  it('opens planner layer tools on demand and closes them with the workspace', () => {
+  it('keeps layers and global actions out of the top bar for the shared map dock', () => {
     const workspace = createPlannerWorkspace()
     document.body.appendChild(workspace.el)
-    const toggle = workspace.el.querySelector('.ui-planner-layer-toggle')
-    toggle.click()
-    expect(toggle.getAttribute('aria-expanded')).toBe('true')
+    expect(workspace.el.querySelector('.ui-planner-layer-toggle')).toBeNull()
+    expect(workspace.el.querySelector('.ui-planner-action-island')).toBeNull()
+    expect(workspace.el.querySelector('.ui-planner-primary')).toBeNull()
+    workspace.setLayersOpen(true)
     expect(document.body.classList.contains('planner-layers-open')).toBe(true)
     workspace.setVisible(false)
     expect(document.body.classList.contains('planner-layers-open')).toBe(false)
@@ -48,7 +49,7 @@ describe('planner workspace chrome', () => {
     search.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
     expect(onSearch).toHaveBeenCalledWith('四姑娘山')
 
-    workspace.el.querySelector('.ui-planner-more').click()
+    workspace.toggleMore()
     expect(workspace.el.querySelector('.ui-planner-more-menu').classList.contains('hidden')).toBe(false)
     workspace.el.querySelector('[data-more-action="settings"]').click()
     expect(onMoreAction).toHaveBeenCalledWith('settings')
@@ -57,7 +58,7 @@ describe('planner workspace chrome', () => {
   it('keeps secondary destinations discoverable inside the overflow menu', () => {
     const onMoreAction = vi.fn()
     const workspace = createPlannerWorkspace({ onMoreAction })
-    for (const action of ['library', 'save', 'share', 'import', 'export', 'admin', 'settings']) {
+    for (const action of ['save', 'share', 'import', 'export', 'admin', 'settings', 'help', 'reset-layout']) {
       expect(workspace.el.querySelector(`[data-more-action="${action}"]`)).not.toBeNull()
     }
     workspace.el.querySelector('[data-more-action="admin"]').click()
@@ -93,24 +94,10 @@ describe('planner workspace chrome', () => {
     expect(onSpineExpand).toHaveBeenCalledTimes(2)
   })
 
-  it('uses the primary action to enter Analyze and to return to Plan', () => {
-    const onPrimary = vi.fn()
-    const workspace = createPlannerWorkspace({ onPrimary })
-    const primary = workspace.el.querySelector('.ui-planner-primary')
-
-    expect(primary.textContent).toBe('开始规划')
-    primary.click()
-    expect(onPrimary).toHaveBeenLastCalledWith({ stage: 'plan', analyzeAvailable: false })
-
-    workspace.setAnalyzeAvailable(true)
-    expect(primary.textContent).toBe('分析地形')
-    expect(workspace.el.querySelector('.ui-planner-primary').classList.contains('has-route')).toBe(true)
-    primary.click()
-    expect(onPrimary).toHaveBeenLastCalledWith({ stage: 'plan', analyzeAvailable: true })
-
-    workspace.setStage('analyze')
-    expect(primary.textContent).toBe('返回规划')
-    primary.click()
-    expect(onPrimary).toHaveBeenLastCalledWith({ stage: 'analyze', analyzeAvailable: true })
+  it('routes layout reset through the shared utility menu', () => {
+    const onMoreAction = vi.fn()
+    const workspace = createPlannerWorkspace({ onMoreAction })
+    workspace.el.querySelector('[data-more-action="reset-layout"]').click()
+    expect(onMoreAction).toHaveBeenCalledWith('reset-layout')
   })
 })

@@ -48,6 +48,11 @@ describe('rail accessibility', () => {
 })
 
 describe('panel collapse accessibility state', () => {
+  const pointer = (target, type, { y, id = 1, time = 0 }) => {
+    const event = new Event(type, { bubbles: true, cancelable: true })
+    for (const [key, value] of Object.entries({ clientY: y, pointerId: id, timeStamp: time })) Object.defineProperty(event, key, { configurable: true, value })
+    target.dispatchEvent(event)
+  }
   it('keeps each inspector single-purpose without nested category tabs', () => {
     const panel = createPanelHost()
     panel.show('weather', '沿途天气', null, document.createElement('div'))
@@ -96,5 +101,18 @@ describe('panel collapse accessibility state', () => {
     expect(panel.el.dataset.sheetState).toBe('peek')
     expect(panel.el.querySelector('.ui-panel-chev').getAttribute('aria-label')).toBe('展开规划面板')
     expect(panel.el.querySelector('.ui-sheet-grabber').getAttribute('aria-label')).toContain('当前摘要')
+  })
+
+  it('keeps the mobile sheet gesture alive after the pointer leaves the grabber', () => {
+    vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: true })))
+    vi.stubGlobal('innerHeight', 800)
+    const panel = createPanelHost()
+    panel.show('planning', '线路规划', null, document.createElement('div'))
+    panel.el.getBoundingClientRect = () => ({ height: Number.parseFloat(panel.el.style.getPropertyValue('--sheet-drag-height')) || 380 })
+    const grabber = panel.el.querySelector('.ui-sheet-grabber')
+    pointer(grabber, 'pointerdown', { y: 500, time: 0 })
+    pointer(document, 'pointermove', { y: 160, time: 40 })
+    pointer(document, 'pointerup', { y: 160, time: 80 })
+    expect(panel.sheetState).toBe('full')
   })
 })

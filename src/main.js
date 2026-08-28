@@ -26,6 +26,7 @@ import { TERRARIUM_SOURCE_ID, loadDem, sampleDem } from './dem.js'
 import { makeGeoContext, worldToLonLat, lonLatToWorld, TERRAIN_SIZE } from './lib/geo.js'
 import { createOverviewMap } from './ui/overviewMap.js'
 import { createPlannerWorkspace } from './ui/plannerWorkspace.js'
+import { createFluidLayout } from './ui/fluidLayout.js'
 import { setDrawerOpen } from './ui/drawer.js'
 import { createAdminLayer } from './ui/adminLayer.js'
 import { provinceAdcode, extractRings, clipRingToBbox, pointInRing } from './lib/adminBoundaries.js'
@@ -1794,8 +1795,22 @@ fLight.close()
 
 // ------------------------------------------------------------------ ui chrome (rail / panels / mode)
 const toast = createToast()
+const fluidLayout = createFluidLayout()
 const panelHost = createPanelHost({
   onSummaryCustomize: () => toggleSettings(),
+})
+fluidLayout.register(panelHost.el, {
+  id: 'inspector',
+  minWidth: 316,
+  maxWidth: 520,
+  minHeight: 240,
+  maxHeight: ({ height }) => Math.max(320, height - 120),
+  defaultState: ({ width, height }) => ({
+    x: width - 416,
+    y: 112,
+    width: 328,
+    height: Math.min(460, height - 136),
+  }),
 })
 let summaryPreferences = loadSummaryPreferences()
 const WEATHER_UI_LS = 'trip3d.weatherPreferences.v1'
@@ -1888,7 +1903,7 @@ function updateRouteUI(route, stats, pts, { fitOverview = true } = {}) {
     saved: route.waypoints.length >= 2 ? lastSavedRouteVersion === `${route.id}:${route.revision}` : null,
   }
   panelHost.setSummary(route.waypoints.length
-    ? formatSummary(summaryPreferences, summaryData, globalThis.matchMedia?.('(max-width: 720px)').matches ? 2 : 4)
+    ? formatSummary(summaryPreferences, summaryData, globalThis.matchMedia?.('(max-width: 1023px)').matches ? 2 : 4)
     : '点击地图添加途经点')
   plannerWorkspace?.setJourneySpine({ route, legs: legs ?? [], weatherDays: wxDays ?? [] })
   plannerWorkspace?.setAnalyzeAvailable(routeCanBeAnalyzed(route))
@@ -2058,7 +2073,7 @@ function showHourlyWeatherDetails(properties = {}) {
     source: result?.source ?? properties.source ?? 'forecast',
   })
   panelHost.setCollapsed(false)
-  if (globalThis.matchMedia?.('(max-width: 720px)')?.matches) panelHost.setSheetState('full')
+  if (globalThis.matchMedia?.('(max-width: 1023px)')?.matches) panelHost.setSheetState('full')
 }
 
 // ------------------------------------------------------------------ place search
@@ -2516,6 +2531,14 @@ const routeActions = {
 }
 const planningPanel = createPlanningPanel(routeActions)
 profileCard = createProfileCard(params.hudAccent)
+fluidLayout.register(profileCard.el, {
+  id: 'profile',
+  minWidth: 520,
+  maxWidth: ({ width }) => Math.min(920, width - 200),
+  minHeight: 150,
+  maxHeight: 360,
+  defaultState: ({ width, height }) => ({ x: 116, y: height - 224, width: Math.min(760, width - 232), height: 190 }),
+})
 planningPanel.setRouteMode(route.mode, snapState.on ? '等待路网吸附' : '仅测距；不估算时长')
 
 let plannerWorkspace
@@ -2619,6 +2642,11 @@ const overviewMap = createOverviewMap({
   onWaypointMoveCancel: cancelWaypointMove,
   onWeatherDetails: showHourlyWeatherDetails,
   onAnalysisCursor: setAnalysisCursor,
+  getFitPadding: () => fluidLayout.getSafeArea(),
+  onDockAction: (action, open) => {
+    if (action === 'more') plannerWorkspace?.setMoreOpen(open)
+    if (action === 'layers') plannerWorkspace?.setLayersOpen(open)
+  },
   onPlanAdd: (lon, lat) => {
     if (!params.planning || !geo || !dem) return
     const { x, z } = lonLatToWorld(geo, lon, lat)
@@ -2637,6 +2665,15 @@ const overviewMap = createOverviewMap({
   },
 })
 document.body.appendChild(overviewMap.el)
+fluidLayout.register(overviewMap.weatherCard, {
+  id: 'weather',
+  minWidth: 228,
+  maxWidth: 360,
+  minHeight: 188,
+  maxHeight: 340,
+  deferUntilVisible: true,
+  defaultState: ({ width }) => ({ x: width - 676, y: 212, width: 248, height: 248 }),
+})
 overviewMap.setWeatherPreferences(weatherPreferences)
 overviewMap.setAdminOverlay({ enabled: adminState.on, rings: filterAdminRings(adminState.rings, adminInteraction.level), selected: adminInteraction.selected })
 overviewMap.setWeatherOverlay({ routeRevision: route.revision, weatherRevision: weatherState.revision, result: weatherState.result })
@@ -2736,33 +2773,12 @@ plannerWorkspace = createPlannerWorkspace({
     panelHost.setCollapsed(false)
     planningPanel.search(query)
   },
-  onPrimary: ({ stage, analyzeAvailable }) => {
-    if (stage === WORKFLOW_STAGES.ANALYZE) {
-      workflowStage?.setStage(WORKFLOW_STAGES.PLAN)
-      return
-    }
-    if (analyzeAvailable) {
-      workflowStage?.setStage(WORKFLOW_STAGES.ANALYZE)
-      return
-    }
-    if (!mode.isPlanning()) {
-      enterPlanForEditing()
-      panelHost.setCollapsed(false)
-      requestAnimationFrame(() => overviewMap.fit())
-      return
-    }
-    const nextCollapsed = !panelHost.collapsed
-    panelHost.setCollapsed(nextCollapsed)
-    requestAnimationFrame(() => overviewMap.fit())
-  },
   onSpineExpand: () => {
     enterPlanForEditing()
     panelHost.setCollapsed(false)
     requestAnimationFrame(() => overviewMap.fit())
   },
-  onWeather: () => showTab('weather'),
   onMoreAction: (action) => {
-    if (action === 'library') showTab('library')
     if (action === 'save') routeActions.onSave()
     if (action === 'share') showTab('share')
     if (action === 'import') routeActions.onImportGpx()
@@ -2772,9 +2788,24 @@ plannerWorkspace = createPlannerWorkspace({
       setAdminPanelOpen(true)
     }
     if (action === 'settings') toggleSettings()
+    if (action === 'help') helpOv.classList.remove('hidden')
+    if (action === 'reset-layout') {
+      fluidLayout.reset()
+      toast.show('面板布局已重置')
+      requestAnimationFrame(() => overviewMap.fit())
+    }
+    overviewMap.setDockExpanded(false)
   },
 })
 document.body.appendChild(plannerWorkspace.el)
+fluidLayout.register(plannerWorkspace.el.querySelector('.ui-trip-spine'), {
+  id: 'summary',
+  minWidth: 420,
+  maxWidth: ({ width }) => Math.min(820, width - 200),
+  minHeight: 78,
+  maxHeight: 220,
+  defaultState: ({ width, height }) => ({ x: 116, y: height - 118, width: Math.min(560, width - 232), height: 94 }),
+})
 
 // 3D terrain world AABB → lon/lat rect for the inset viewport indicator
 function currentViewportRect() {
@@ -2928,17 +2959,16 @@ const rail = createRail({
     { id: 'planning', icon: 'planning', label: '规划', onSelect: () => showTab('planning') },
     { id: 'library', icon: 'library', label: '线路库', onSelect: () => showTab('library') },
     { id: 'weather', icon: 'weather', label: '天气', badge: null, disabled: false, onSelect: () => showTab('weather') },
-    { id: 'share', icon: 'share', label: '分享', badge: null, disabled: false, onSelect: () => showTab('share') },
   ],
-  settingsItem: { id: 'settings', icon: 'settings', label: '设置', onSelect: () => toggleSettings() },
+  settingsItem: {
+    id: 'utility', icon: 'more', label: '更多', onSelect: () => {
+      const open = !plannerWorkspace.moreOpen
+      plannerWorkspace.setMoreOpen(open)
+      overviewMap.setDockExpanded(open)
+    },
+  },
 })
 
-// shortcuts help overlay (rail bottom, above settings)
-const helpBtn = document.createElement('button')
-helpBtn.className = 'ui-rail-btn ui-rail-help'
-helpBtn.setAttribute('aria-label', '快捷键')
-helpBtn.innerHTML = `<span class="ico">${iconSvg('help')}</span><span class="lbl">快捷键</span>`
-rail.el.insertBefore(helpBtn, rail.el.lastElementChild)
 const helpOv = document.createElement('div')
 helpOv.className = 'ui-help-overlay hidden'
 helpOv.innerHTML = `<div class="ui-help-card">
@@ -2952,7 +2982,6 @@ helpOv.innerHTML = `<div class="ui-help-card">
   <button class="close">关闭</button>
 </div>`
 document.body.appendChild(helpOv)
-helpBtn.onclick = () => helpOv.classList.toggle('hidden')
 helpOv.querySelector('.close').onclick = () => helpOv.classList.add('hidden')
 helpOv.onclick = (e) => { if (e.target === helpOv) helpOv.classList.add('hidden') }
 
@@ -3105,6 +3134,7 @@ function setSettingsOpen(open, { restoreFocus = true } = {}) {
     mountSettingsPanel()
     setMapWorkspace({ weather: false, editing: mode.isPlanning() })
     plannerWorkspace.setLayersOpen(false)
+    overviewMap.setLayersOpen(false)
     if (!mode.isPlanning() && panelHost.currentId) {
       panelHost.hide()
       rail.clearActive()

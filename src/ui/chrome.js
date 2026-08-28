@@ -85,7 +85,7 @@ export function createPanelHost({ onSummaryCustomize } = {}) {
   grabber.setAttribute('aria-label', '调整规划面板高度')
   grabber.innerHTML = '<span></span>'
   chev.setAttribute('aria-controls', body.id)
-  const mobileQuery = globalThis.matchMedia?.('(max-width: 720px)')
+  const mobileQuery = globalThis.matchMedia?.('(max-width: 1023px)')
   const isMobileSheet = () => !!currentId && mobileQuery?.matches
   const sheetHeights = () => {
     const full = Math.max(220, window.innerHeight - 114)
@@ -130,7 +130,7 @@ export function createPanelHost({ onSummaryCustomize } = {}) {
     el.classList.add('dragging')
     el.style.setProperty('--sheet-drag-height', `${height}px`)
   })
-  grabber.addEventListener('pointermove', (event) => {
+  const moveDrag = (event) => {
     if (!drag || drag.pointerId !== event.pointerId) return
     const heights = sheetHeights()
     const raw = drag.startHeight - (event.clientY - drag.startY)
@@ -139,7 +139,7 @@ export function createPanelHost({ onSummaryCustomize } = {}) {
     drag.history.push({ y: event.clientY, t: event.timeStamp })
     drag.history = drag.history.filter((sample) => event.timeStamp - sample.t <= 120)
     el.style.setProperty('--sheet-drag-height', `${clamped}px`)
-  })
+  }
   const finishDrag = (event) => {
     if (!drag || drag.pointerId !== event.pointerId) return
     const samples = drag.history
@@ -151,8 +151,9 @@ export function createPanelHost({ onSummaryCustomize } = {}) {
     drag = null
     setSheetState(nearestSheetState(height, velocity))
   }
-  grabber.addEventListener('pointerup', finishDrag)
-  grabber.addEventListener('pointercancel', finishDrag)
+  document.addEventListener('pointermove', moveDrag)
+  document.addEventListener('pointerup', finishDrag)
+  document.addEventListener('pointercancel', finishDrag)
   grabber.onclick = () => {
     if (dragged) { dragged = false; return }
     if (isMobileSheet()) setSheetState(nextSheetState())
@@ -176,7 +177,8 @@ export function createPanelHost({ onSummaryCustomize } = {}) {
         h.insertBefore(s, summary)
       }
       body.replaceChildren(contentEl)
-      el.replaceChildren(grabber, h, body)
+      const fluidAffordances = [...el.querySelectorAll('[data-fluid-drag-handle], [data-fluid-resize-handle]')]
+      el.replaceChildren(grabber, h, body, ...fluidAffordances)
       el.classList.remove('hidden')
       sheetState = 'half'
       apply()
