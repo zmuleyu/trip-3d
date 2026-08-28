@@ -55,9 +55,9 @@ import { createWeatherPanel } from './ui/weatherPanel.js'
 import { createSettingsPanel } from './ui/settingsPanel.js'
 import { formatSummary, loadSummaryPreferences, saveSummaryPreferences } from './ui/summaryPreferences.js'
 import { createOpenMeteoProvider, createOpenMeteoArchiveProvider } from './providers/openmeteo.js'
-import { createGeocodeProvider } from './providers/geocode.js'
+import { createGeocodeProvider, createGeocodeSearchLifecycle } from './providers/geocode.js'
 import { createRoutingProvider } from './providers/routing.js'
-import { joinGeometries, snapCacheKey } from './lib/snap.js'
+import { createSnapRequestGate } from './lib/snap.js'
 import { parseAmapLink, buildAmapLink } from './lib/amapLink.js'
 import qrcode from 'qrcode-generator'
 import { pickRepresentativePoints, aggregateTripDays, archiveWindow } from './lib/weather.js'
@@ -1104,92 +1104,68 @@ const snapState = {
 }
 const snapCache = new Map()
 const snapInflight = new Map()
-let snapTimer = null
+const SNAP_CACHE_LIMIT = 24
+const snapRequestGate = createSnapRequestGate({ dispatch: runSnap, minIntervalMs: 1100 })
 
 const currentDemKey = () => (dem ? `${dem.lat.toFixed(4)},${dem.lon.toFixed(4)},${dem.zoom}x${dem.tilesAcross}` : '')
 const snapRouteKey = (wps) => `osrm:${snapProfile}:` + wps.map((w) => `${w.lon.toFixed(5)},${w.lat.toFixed(5)}`).join('>')
 
 function scheduleSnap() {
   if (!snapState.on) return
+  const wps = route.waypoints.map(({ lon, lat }) => ({ lon, lat }))
+  const job = {
+    key: snapRouteKey(wps),
+    version: snapVersion(),
+    mode: route.mode,
+    wps,
+  }
+  job.identity = `${job.version}:${job.mode}:${job.key}`
+  if (!snapRequestGate.schedule(job)) return
+  job.requestId = ++snapState.requestId
+  job.requestId = snapState.requestId
   // A new request is a new result boundary even before the response arrives;
   // never leave a prior route choice selectable while its replacement is pending.
   if (snapState.alternatives.length) clearSnapResult()
-  clearTimeout(snapTimer)
-  snapTimer = setTimeout(runSnap, 400)
 }
 
-async function runSnap() {
-  const wps = route.waypoints
-  if (!snapState.on) return
-  if (wps.length < 2) {
+async function runSnap(job, { signal } = {}) {
+  if (!snapState.on || job.version !== snapVersion() || job.mode !== route.mode) return
+  if (job.wps.length < 2) {
     clearSnapResult()
     snapState.version = snapVersion()
     refreshRoute()
     return
   }
-  const key = snapRouteKey(wps)
-  const ver = snapVersion()
-  const reqId = ++snapState.requestId
-  const cached = snapCache.get(key)
-  if (cached) { commitSnap(cached, ver, reqId); return }
+  const cached = snapCache.get(job.key)
+  if (cached) { commitSnap(cached, job.version, job.requestId); return }
   planningPanel.setRouteMode(route.mode, routeProviderStatus({ state: 'calculating' }))
   try {
-    const result = await snapFetch(key, wps)
-    if (reqId !== snapState.requestId || ver !== snapVersion()) return
-    commitSnap(result, ver, reqId)
+    const result = await snapFetch(job.key, job.wps, { signal })
+    if (job.requestId !== snapState.requestId || job.version !== snapVersion()) return
+    commitSnap(result, job.version, job.requestId)
   } catch (err) {
+    if (err?.code === 'cancelled' || job.requestId !== snapState.requestId) return
     console.warn('snap failed', err)
-    if (reqId !== snapState.requestId) return
     clearSnapResult()
-    snapState.version = ver
+    snapState.version = job.version
     planningPanel.setRouteMode(route.mode, routeProviderStatus({ state: 'unavailable' }))
-    toast.show('路网暂不可用：当前为直线示意，无时长')
+    toast.show('公共路由暂不可用 · 当前为直线示意 · 无时长')
     refreshRoute()
   }
 }
 
-// whole-route single request (≤32 coords); NoRoute → per-segment sequential
-// fallback where unroutable pairs degrade to straight lines (never cached).
-// Returns { geometry, legs } — legs are real OSRM segments where available,
-// computed straight-line legs for fallback pairs (real:false).
-function snapFetch(key, wps) {
+// One coalesced route intent is exactly one public-service request. Alternatives
+// remain inside that response; NoRoute/timeout/unavailability degrade the whole
+// route to the existing truthful straight-line display without retries/fanout.
+function snapFetch(key, wps, { signal } = {}) {
   if (snapInflight.has(key)) return snapInflight.get(key)
   const p = (async () => {
     try {
-      const r = await getRouter().route(wps.map(({ lon, lat }) => ({ lon, lat })))
-      const out = { geometry: r.geometry, legs: r.legs, alternatives: r.alternatives }
+      const r = await getRouter().route(wps, { signal })
+      const out = { geometry: r.geometry, legs: r.legs, alternatives: r.alternatives, source: r.source, availability: r.availability }
       snapCache.set(key, out)
+      while (snapCache.size > SNAP_CACHE_LIMIT) snapCache.delete(snapCache.keys().next().value)
       return out
-    } catch (err) {
-      // NoRoute / TooBig(413/414/400) → per-segment mode, 4-way parallel
-      if (!/NoRoute|HTTP 4(?:00|13|14)/.test(err.message)) throw err
-      const segs = new Array(wps.length - 1)
-      const legs = new Array(wps.length - 1)
-      const fetchSeg = async (i) => {
-        const a = wps[i - 1], b = wps[i]
-        const segKey = snapCacheKey('osrm', snapProfile, a, b)
-        if (snapCache.has(segKey)) {
-          const c = snapCache.get(segKey)
-          segs[i - 1] = c.geometry
-          legs[i - 1] = c.legs
-          return
-        }
-        try {
-          const r = await getRouter().route([{ lon: a.lon, lat: a.lat }, { lon: b.lon, lat: b.lat }])
-          const out = { geometry: r.geometry, legs: r.legs }
-          snapCache.set(segKey, out)
-          segs[i - 1] = r.geometry
-          legs[i - 1] = r.legs
-        } catch {
-          segs[i - 1] = [[a.lon, a.lat], [b.lon, b.lat]]
-          legs[i - 1] = [waypointElevationOutputReady() ? computeLegs([a, b])[0] : computeHorizontalLegs([a, b])[0]] // never cached
-        }
-      }
-      const BATCH = 4
-      for (let i = 1; i < wps.length; i += BATCH) {
-        await Promise.all(Array.from({ length: Math.min(BATCH, wps.length - i) }, (_, k) => fetchSeg(i + k)))
-      }
-      return { geometry: joinGeometries(segs), legs: legs.flat() }
     } finally {
       snapInflight.delete(key)
     }
@@ -1219,7 +1195,7 @@ function commitSnap(result, ver, reqId) {
   snapState.version = ver
   snapState.resultId++
   const routed = alternatives[0].legs.filter((leg) => leg?.real !== false).length
-  planningPanel.setRouteMode(route.mode, routeProviderStatus({ routed, total: alternatives[0].legs.length }))
+  planningPanel.setRouteMode(route.mode, routeProviderStatus({ routed, total: alternatives[0].legs.length, source: result.source?.label }))
   planningPanel.setRouteAlternatives(alternatives, 0)
   refreshRoute()
 }
@@ -1576,34 +1552,25 @@ function showHourlyWeatherDetails(properties = {}) {
 // autocomplete. 1 req/s client throttle; nominatim primary, photon fallback.
 const geocoder = createGeocodeProvider('nominatim')
 const geocoderBackup = createGeocodeProvider('photon')
+const geocodeSearch = createGeocodeSearchLifecycle({ primary: geocoder, fallback: geocoderBackup })
 const searchSession = createSearchSession()
 const searchRouteRoles = { startId: null, endId: null }
 let searchReqId = 0
-let lastSearchAt = 0
 
 async function runSearch(query) {
   query = query?.trim()
   if (!query) return
-  const now = Date.now()
-  if (now - lastSearchAt < 1100) { toast.show('搜索限流 1 次/秒,稍候'); return }
-  lastSearchAt = now
   const reqId = ++searchReqId
   planningPanel.setSearchSession(searchSession.begin(query))
-  try {
-    let list
-    try {
-      list = await geocoder.search(query)
-    } catch {
-      list = await geocoderBackup.search(query)
-    }
-    if (reqId !== searchReqId) return
-    planningPanel.setSearchSession(searchSession.resolve(list))
-  } catch (err) {
-    if (reqId !== searchReqId) return
-    console.warn('search failed', err)
+  const result = await geocodeSearch.search(query)
+  if (reqId !== searchReqId || ['cancelled', 'stale'].includes(result.state)) return
+  if (result.state === 'unavailable') {
+    console.warn('search failed', result.primaryError, result.fallbackError)
     planningPanel.setSearchSession(searchSession.fail())
-    toast.show('搜索暂不可用，请稍后重试')
+    toast.show('地点搜索暂不可用，请稍后重试')
+    return
   }
+  planningPanel.setSearchSession(searchSession.resolve(result.results, result))
 }
 
 function flyToLonLat(lon, lat, dist = 8) {
@@ -1952,6 +1919,7 @@ function applyRouteModeState(nextMode, { persist = true, refresh = true } = {}) 
     localStorage.setItem(SNAP_PROFILE_LS, snapProfile)
   }
   snapState.version = ''
+  snapRequestGate.cancel()
   clearSnapResult()
   snapState.resultId++
   snapState.requestId++
