@@ -38,6 +38,23 @@ describe('fluid layout math', () => {
     expect(safe.right).toBe(452)
     expect(safe.bottom).toBe(130)
   })
+
+  it('moves inspector padding to the left edge when the inspector is dragged left', () => {
+    const safe = measureLayoutSafeArea({ viewport: { width: 1440, height: 900 }, cards: [
+      { id: 'inspector', rect: { left: 88, right: 416, top: 112, bottom: 620, width: 328, height: 508 } },
+    ] })
+    expect(safe.left).toBe(428)
+    expect(safe.right).toBe(88)
+  })
+
+  it.each([
+    ['summary', { left: 116, right: 616, top: 112, bottom: 206, width: 500, height: 94 }, 218],
+    ['profile', { left: 116, right: 876, top: 150, bottom: 340, width: 760, height: 190 }, 352],
+  ])('moves %s padding to the top edge when the instrument is dragged up', (id, rect, expectedTop) => {
+    const safe = measureLayoutSafeArea({ viewport: { width: 1440, height: 900 }, cards: [{ id, rect }] })
+    expect(safe.top).toBe(expectedTop)
+    expect(safe.bottom).toBe(24)
+  })
 })
 
 describe('fluid layout controller', () => {

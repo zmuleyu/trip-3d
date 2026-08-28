@@ -53,8 +53,16 @@ export function measureLayoutSafeArea({ viewport, cards = [], base = {}, margin 
   for (const card of cards) {
     const rect = card?.rect
     if (!rect || rect.width <= 0 || rect.height <= 0 || card.hidden) continue
-    if (card.id === 'inspector') safe.right = Math.max(safe.right, width - rect.left + margin)
-    else if (card.id === 'summary' || card.id === 'profile') safe.bottom = Math.max(safe.bottom, height - rect.top + margin)
+    if (card.id === 'inspector') {
+      const edge = (rect.left + rect.right) / 2 <= width / 2 ? 'left' : 'right'
+      const occupied = edge === 'left' ? rect.right : width - rect.left
+      safe[edge] = Math.max(safe[edge], occupied + margin)
+    }
+    else if (card.id === 'summary' || card.id === 'profile') {
+      const edge = (rect.top + rect.bottom) / 2 <= height / 2 ? 'top' : 'bottom'
+      const occupied = edge === 'top' ? rect.bottom : height - rect.top
+      safe[edge] = Math.max(safe[edge], occupied + margin)
+    }
     else {
       const distances = {
         left: rect.right,
