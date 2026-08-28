@@ -51,6 +51,28 @@ npm run dev     # http://localhost:5173
 npm run build   # static build in dist/
 ```
 
+### Codex worktree fast path
+
+Codex worktrees use the checked-in local environment at `.codex/environments/environment.toml`.
+On a fresh worktree it runs the checked-in bootstrap once, preferring the shared npm cache and
+skipping installation when the lockfile-backed dependencies are already ready.
+
+Use one preview process for manual iteration:
+
+```bash
+npm run dev:acceptance  # http://127.0.0.1:4173
+```
+
+For a repeatable visual gate, run:
+
+```bash
+npm run acceptance
+```
+
+The gate builds once, starts one temporary preview server and one headless browser session, then
+captures fixed 1440x900 desktop and 390x844 mobile viewports. Evidence is written under
+`.codex/evidence/acceptance/` and is intentionally ignored by Git. It never uses full-page capture.
+
 No API keys or environment variables needed.
 
 ## Deploy
