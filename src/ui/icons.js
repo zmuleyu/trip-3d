@@ -11,7 +11,6 @@ const ICONS = {
   roads: '<path d="M5 21c5-5 2-9 7-13 2-1.7 4-2.6 7-5"/><path d="M10 21c5-5 2-8 7-12 1.2-1 2.2-1.7 3-2"/><path d="m8.5 17 3 1m.2-5 3 1m.5-5 2.7 1"/>',
   admin: '<path d="m4 9 8-5 8 5M5 10h14M6 10v8m4-8v8m4-8v8m4-8v8M4 20h16"/>',
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4m0-14.2-1.4 1.4M6.3 17.7l-1.4 1.4"/>',
-  hud: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3"/>',
   layers: '<path d="m12 3 9 5-9 5-9-5Z"/><path d="m4 12 8 4.5 8-4.5M4 16l8 4.5 8-4.5"/>',
   zoomIn: '<circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4M11 8v6M8 11h6"/>',
   zoomOut: '<circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4M8 11h6"/>',

@@ -1,8 +1,6 @@
-import { iconSvg } from './icons.js'
 import { DEFAULT_SUMMARY_PREFERENCES, SUMMARY_FIELDS, normalizeSummaryPreferences } from './summaryPreferences.js'
 
 const SETTING_LABELS = {
-  source: '地形来源',
   demLocation: '预设地点',
   demLat: '纬度',
   demLon: '经度',
@@ -25,7 +23,6 @@ const LAYER_LABELS = {
   mapov: '路网叠加',
   admin: '行政区划',
   sun: '日照分析',
-  hud: 'HUD 信息',
 }
 
 function createRow(label, control, hint = '') {
@@ -63,7 +60,7 @@ function createSection(title, description = '') {
 }
 
 export function createSettingsPanel({
-  presets = [], advancedEl, onClose, onSetting, onLayer, onLoad,
+  presets = [], onClose, onSetting, onLayer, onLoad,
   summaryPreferences, onSummaryPreferences, weatherPreferences, onWeatherPreferences,
 } = {}) {
   const el = document.createElement('div')
@@ -172,10 +169,7 @@ export function createSettingsPanel({
 
   const terrain = createSection('地形范围', '选择数据范围与地形比例。经纬度修改后由“加载地形”提交。')
   terrain.id = 'settings-section-terrain'
-  terrain.append(
-    createRow(SETTING_LABELS.source, select('source', [['real', '真实地形 DEM'], ['noise', '程序化地形']])),
-    createRow(SETTING_LABELS.demLocation, select('demLocation', presets.map((name) => [name, name]))),
-  )
+  terrain.append(createRow(SETTING_LABELS.demLocation, select('demLocation', presets.map((name) => [name, name]))))
   const coords = document.createElement('div')
   coords.className = 'settings-coordinate-grid'
   coords.append(
@@ -332,14 +326,6 @@ export function createSettingsPanel({
   transparency.onchange = () => { weatherDraft.transparency = transparency.value; emitWeather() }
   weather.appendChild(createRow('天气卡材质', transparency))
   body.appendChild(weather)
-
-  const advanced = document.createElement('details')
-  advanced.className = 'settings-advanced'
-  const summary = document.createElement('summary')
-  summary.innerHTML = `${iconSvg('settings')}<span><b>实验参数</b><small>材质、镜头、运动、Tour 与性能</small></span>`
-  advanced.appendChild(summary)
-  if (advancedEl) advanced.appendChild(advancedEl)
-  body.appendChild(advanced)
 
   const sectionTargets = { display, terrain, route }
   for (const [id, button] of tabButtons) {

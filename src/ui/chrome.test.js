@@ -24,11 +24,11 @@ describe('layer button accessibility state', () => {
   it('can apply a controlled layer value and notify the shared state seam', () => {
     const onToggle = vi.fn()
     const onStateChange = vi.fn()
-    const layers = createLayerButtons({ buttons: [{ id: 'hud', icon: 'hud', tip: 'HUD', initial: true, onToggle }], onStateChange })
-    layers.get('hud').set(false, { notify: true })
-    expect(onToggle).toHaveBeenCalledWith('hud', false)
-    expect(onStateChange).toHaveBeenCalledWith('hud', false)
-    expect(layers.get('hud').btn.getAttribute('aria-pressed')).toBe('false')
+    const layers = createLayerButtons({ buttons: [{ id: 'contour', icon: 'contour', tip: '等高线', initial: true, onToggle }], onStateChange })
+    layers.get('contour').set(false, { notify: true })
+    expect(onToggle).toHaveBeenCalledWith('contour', false)
+    expect(onStateChange).toHaveBeenCalledWith('contour', false)
+    expect(layers.get('contour').btn.getAttribute('aria-pressed')).toBe('false')
   })
 })
 

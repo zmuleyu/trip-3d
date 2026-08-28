@@ -109,31 +109,6 @@ export function fbm(simplex, x, y, octaves, lacunarity = 2, gain = 0.5) {
   return sum / norm
 }
 
-// Ridged multifractal — sharp crests, crater-like basins. Output in [0, 1].
-export function ridged(simplex, x, y, octaves, lacunarity = 2, gain = 0.5) {
-  let amp = 0.5
-  let freq = 1
-  let sum = 0
-  let norm = 0
-  let weight = 1
-  for (let o = 0; o < octaves; o++) {
-    let n = 1 - Math.abs(simplex.noise(x * freq, y * freq))
-    n *= n
-    n *= weight
-    weight = Math.min(1, Math.max(0, n * 2))
-    sum += n * amp
-    norm += amp
-    amp *= gain
-    freq *= lacunarity
-  }
-  return sum / norm
-}
-
-export function smoothstep(a, b, x) {
-  const t = Math.min(1, Math.max(0, (x - a) / (b - a)))
-  return t * t * (3 - 2 * t)
-}
-
 export function lerp(a, b, t) {
   return a + (b - a) * t
 }

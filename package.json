@@ -16,7 +16,6 @@
     "acceptance": "node scripts/acceptance.mjs"
   },
   "dependencies": {
-    "lil-gui": "^0.20.0",
     "lz-string": "^1.5.0",
     "maplibre-gl": "^5.24.0",
     "postprocessing": "^6.36.4",
