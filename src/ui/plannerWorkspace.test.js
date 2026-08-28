@@ -3,6 +3,12 @@ import { describe, expect, it, vi } from 'vitest'
 import { createPlannerWorkspace } from './plannerWorkspace.js'
 
 describe('planner workspace chrome', () => {
+  it('shows the application version beside the product identity', () => {
+    const workspace = createPlannerWorkspace({ version: '0.4.1' })
+    expect(workspace.el.querySelector('.ui-planner-version').textContent).toBe('v0.4.1')
+    expect(workspace.el.querySelector('.ui-planner-version').hidden).toBe(false)
+  })
+
   it('switches between Plan and Analyze only after a route is available', () => {
     const onStage = vi.fn()
     const workspace = createPlannerWorkspace({ onStage })

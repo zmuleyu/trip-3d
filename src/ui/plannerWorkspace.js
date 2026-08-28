@@ -1,12 +1,12 @@
 import { iconSvg } from './icons.js'
 
-export function createPlannerWorkspace({ onStage, onSearch, onMoreAction, onSpineExpand, onMenuChange } = {}) {
+export function createPlannerWorkspace({ version = '', onStage, onSearch, onMoreAction, onSpineExpand, onMenuChange } = {}) {
   const el = document.createElement('div')
   el.className = 'ui-planner-workspace hidden'
   el.innerHTML = `
     <header class="ui-planner-bar">
       <div class="ui-planner-brand-island">
-        <div class="ui-planner-brand"><b>TRIP <em>3D</em></b></div>
+        <div class="ui-planner-brand"><b>TRIP <em>3D</em></b><small class="ui-planner-version" hidden></small></div>
         <form class="ui-command-search" role="search">
           <input type="search" aria-label="搜索地点、线路或营地" placeholder="搜索地点、线路、营地">
           <button type="button" aria-label="搜索">${iconSvg('search')}</button>
@@ -39,6 +39,9 @@ export function createPlannerWorkspace({ onStage, onSearch, onMoreAction, onSpin
       <button type="button" class="ui-trip-spine-expand">展开详情</button>
     </section>
   `
+  const versionLabel = el.querySelector('.ui-planner-version')
+  versionLabel.textContent = version ? `v${version}` : ''
+  versionLabel.hidden = !version
   let stage = 'plan'
   let analyzeAvailable = false
   const buttons = [...el.querySelectorAll('[data-stage]')]

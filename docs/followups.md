@@ -1,4 +1,4 @@
-# trip-3d followups (after v0.4.0)
+# trip-3d followups (after v0.4.1)
 
 Completed delivery baseline: [R1–R5 search and route flow](specs/2026-08-28-search-route-flow-roadmap.md) for v0.4.0.
 
@@ -18,6 +18,12 @@ Goal at a time; do not combine these phases into a broad rewrite.
 - [x] S4: retain poster/flyover and their minimum real-DEM camera/output seam; retire
   procedural terrain, legacy HUD, lil-gui, Tour, and Scan. Automatic Pages Git
   deployments are disabled so source delivery and production release remain separate.
+- [x] G1: make `plan/analyze` the only workspace state. Plan owns editable MapLibre
+  2D; Analyze owns read-only MapLibre terrain. Weather, Library, Share, and the
+  planning Inspector are overlays or destinations and no longer create a second
+  `browse/planning` mode. Route mutation guards now validate the workflow stage
+  directly while storage, share, GPX, and truthful terrain fallback remain separate
+  compatibility and recovery boundaries.
 
 Architecture constraints:
 

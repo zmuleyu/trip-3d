@@ -39,7 +39,7 @@ export function createWorkspaceLifecycleCoordinator({
     onChange: (stage, detail) => onStageChange?.(stage, detail),
   })
 
-  const applyPlannerView = (view, { syncStage = true } = {}) => {
+  const applyPlannerView = (view) => {
     const requested = view === '3d' ? '3d' : '2d'
     const actual = onPlannerViewRequest?.(requested) === false ? '2d' : requested
     setLegacyFrameModeActive(false)
@@ -48,10 +48,15 @@ export function createWorkspaceLifecycleCoordinator({
       actual,
       stage: workflowStage.stage,
       mapWorkspaceActive,
-      syncStage,
     })
     return actual
   }
+
+  const workspaceState = (weather = false) => ({
+    weather: !!weather,
+    editing: workflowStage.stage === WORKFLOW_STAGES.PLAN,
+    view: workflowStage.stage === WORKFLOW_STAGES.ANALYZE ? '3d' : '2d',
+  })
 
   return {
     get stage() { return workflowStage.stage },
@@ -69,14 +74,14 @@ export function createWorkspaceLifecycleCoordinator({
       if (legacyFrameStartPending || legacyFrameModeActive || hasLegacyFrameWork?.()) frameScheduler.start()
       legacyFrameStartPending = false
     },
-    setMapWorkspace({ weather = false, editing = false, view = '2d' } = {}) {
+    setMapWorkspace({ weather = false } = {}) {
       mapWorkspaceActive = true
-      onWorkspaceChange?.({ weather: !!weather, editing: !!editing, mapWorkspaceActive })
-      const actual = applyPlannerView(weather ? '2d' : view, { syncStage: !weather })
-      onWorkspaceSettled?.({ weather: !!weather, editing: !!editing, actual, mapWorkspaceActive })
+      const state = workspaceState(weather)
+      onWorkspaceChange?.({ ...state, mapWorkspaceActive })
+      const actual = applyPlannerView(state.view)
+      onWorkspaceSettled?.({ ...state, actual, mapWorkspaceActive })
       return actual
     },
-    applyPlannerView,
     fit() {
       onFit?.()
     },

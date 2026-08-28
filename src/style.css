@@ -190,15 +190,6 @@ body.planner-operate .ui-settings { top: 58px; width: min(360px, calc(100vw - 24
 
 /* planning panel internals */
 .ui-wp-list { font-size: 12px; }
-.ui-wp-item {
-  display: flex; align-items: center; gap: 8px; padding: 4px 2px;
-  border-bottom: 1px dashed rgba(23,25,27,0.12);
-}
-.ui-wp-item .n {
-  width: 18px; height: 18px; border-radius: 50%; background: #ff4d00; color: #fff;
-  display: grid; place-items: center; font-size: 10px; flex: none;
-}
-.ui-wp-item .coord { opacity: 0.6; font-size: 10px; margin-left: auto; }
 .ui-panel .name-input {
   width: 100%; margin: 4px 0 8px; padding: 5px 8px; font: inherit; font-size: 13px;
   border: 1px solid rgba(23,25,27,0.22); background: rgba(255,255,255,0.7);
@@ -279,10 +270,6 @@ body.planner-operate .ui-settings { top: 58px; width: min(360px, calc(100vw - 24
 
 
 /* ------------------------------------------------------------------ weather panel */
-.wx-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; font-size: 11px; }
-.wx-controls label { display: flex; align-items: center; gap: 4px; }
-.wx-controls input { font: inherit; border: 1px solid rgba(23,25,27,0.22); background: rgba(255,255,255,0.7); padding: 3px 5px; }
-.wx-days { width: 48px; }
 .wx-go {
   font: inherit; font-size: 11px; padding: 4px 12px; cursor: pointer;
   background: #ff4d00; border: 1px solid #ff4d00; color: #fff;
@@ -310,10 +297,6 @@ body.planner-operate .ui-settings { top: 58px; width: min(360px, calc(100vw - 24
 .wx-attr a { color: inherit; }
 
 /* ------------------------------------------------------------------ planning search + snap */
-.pp-search { display: flex; gap: 6px; margin-bottom: 6px; }
-.pp-search input { flex: 1; font: inherit; font-size: 11px; border: 1px solid rgba(23,25,27,0.25); background: rgba(255,255,255,0.7); padding: 4px 6px; }
-.pp-search-btn { font: inherit; font-size: 11px; padding: 4px 10px; cursor: pointer; background: #17191b; color: #fff; border: 1px solid #17191b; }
-.pp-search-btn:disabled { opacity: 0.5; cursor: default; }
 .pp-results { border: 1px solid rgba(23,25,27,0.2); background: rgba(255,255,255,0.92); margin-bottom: 6px; max-height: 260px; overflow-y: auto; }
 .pp-results.hidden { display: none; }
 .pp-result { display: flex; width: 100%; align-items: center; gap: 8px; padding: 8px 9px; color: var(--trip-ink); text-align: left; font: inherit; font-size: 11px; border: 0; border-bottom: 1px solid var(--trip-line); background: transparent; cursor: pointer; }
@@ -331,7 +314,6 @@ body.planner-operate .ui-settings { top: 58px; width: min(360px, calc(100vw - 24
 .pp-place-actions button { min-height: 34px; padding: 5px 7px; border: 1px solid var(--trip-line-strong); border-radius: var(--trip-radius-control); background: var(--trip-paper-strong); color: var(--trip-ink); font: inherit; font-size: 11px; cursor: pointer; }
 .pp-place-actions button.primary { border-color: var(--trip-route); background: var(--trip-route); color: var(--trip-paper-strong); }
 .pp-place-actions button:focus-visible { outline: 2px solid var(--trip-route); outline-offset: 2px; }
-.pp-empty { padding: 6px; font-size: 11px; opacity: 0.6; }
 .pp-attr { font-size: 9px; opacity: 0.5; padding: 3px 6px; }
 .pp-snap-row { display: flex; align-items: center; gap: 5px; font-size: 11px; margin-bottom: 6px; cursor: pointer; }
 .pp-snap-status { font-size: 10px; opacity: 0.65; }
@@ -383,19 +365,11 @@ body.planner-operate .ui-settings { top: 58px; width: min(360px, calc(100vw - 24
 .pp-tl-item:hover .pp-tl-ops { display: inline-flex; }
 .pp-tl-ops button { font: inherit; font-size: 10px; padding: 0 5px; cursor: pointer; background: #fff; border: 1px solid rgba(23,25,27,0.3); line-height: 1.5; }
 .pp-tl-ops button:hover { border-color: #ff4d00; color: #ff4d00; }
-.pp-plan { border: 1px solid rgba(255,77,0,0.5); }
-.pp-plan-big { font-size: 22px; font-weight: bold; line-height: 1.1; }
-.pp-plan-sub { font-size: 10px; opacity: 0.75; margin-top: 2px; }
-.pp-legs { margin-top: 4px; }
 .pp-route-alternatives { display: grid; gap: 6px; margin: 8px 0 10px; }
 .pp-route-alternative { min-height: 40px; padding: 7px 9px; text-align: left; border: 1px solid rgba(23,25,27,.25); background: rgba(23,25,27,.04); color: #17191b; font: inherit; font-size: 12px; cursor: pointer; }
 .pp-route-alternative:hover { border-color: #ff4d00; background: rgba(255,77,0,.06); }
 .pp-route-alternative.selected { border-color: #ff4d00; background: rgba(255,77,0,.1); font-weight: 700; }
 .pp-route-alternative:focus-visible { outline: 2px solid #ff4d00; outline-offset: 2px; }
-.pp-legs-head { font: inherit; font-size: 10px; padding: 1px 6px; cursor: pointer; background: none; border: 1px solid rgba(23,25,27,0.25); }
-.pp-legs-list { margin-top: 3px; border-left: 2px solid rgba(255,77,0,0.4); padding-left: 6px; }
-.pp-legs-list.hidden { display: none; }
-.pp-leg { font-size: 10px; padding: 2px 0; border-bottom: 1px dashed rgba(23,25,27,0.12); overflow-wrap: anywhere; }
 
 /* ------------------------------------------------------------------ timeline insert separators */
 .pp-tl-sep { display: flex; align-items: center; height: 8px; margin-left: 4px; }
@@ -417,7 +391,7 @@ body.planner-operate .ui-settings { top: 58px; width: min(360px, calc(100vw - 24
 .ui-overview .maplibregl-ctrl-attrib, .ui-map-attribution-floating .maplibregl-ctrl-attrib { max-width: calc(100% - 12px); padding: 1px 4px; background: rgba(255,255,255,.9); color: rgba(23,25,27,.68); font: 8px/1.25 "Segoe UI", sans-serif; white-space: normal; }
 .ui-overview .maplibregl-ctrl-attrib a, .ui-map-attribution-floating .maplibregl-ctrl-attrib a { color: inherit; text-underline-offset: 2px; }
 .ui-overview .maplibregl-ctrl-scale { border-color: #17191b; background: rgba(255,255,255,.88); color: #17191b; font: 8px/1.2 "Cascadia Mono", monospace; }
-.ui-map-context, .ui-map-controls, .ui-map-empty, .ui-map-footprint-legend { display: none; }
+.ui-map-context, .ui-map-controls, .ui-map-empty { display: none; }
 .ui-overview.planner .ui-map-context {
   position: absolute; left: 14px; top: 14px; z-index: 3; display: flex; flex-direction: column; gap: 2px; padding: 9px 11px;
   background: rgba(255,255,255,.96); box-shadow: 0 4px 14px rgba(16,20,24,.12); color: #17191b; pointer-events: none;
@@ -436,8 +410,6 @@ body.planner-operate .ui-settings { top: 58px; width: min(360px, calc(100vw - 24
 .ui-map-empty div { display: flex; flex-direction: column; gap: 2px; }
 .ui-map-empty b { font: 700 12px/1.3 "Segoe UI", "Microsoft YaHei", sans-serif; }
 .ui-map-empty span { color: rgba(23,25,27,.68); font: 10px/1.4 "Segoe UI", "Microsoft YaHei", sans-serif; }
-.ui-overview.planner .ui-map-footprint-legend { position: absolute; left: 14px; top: 72px; z-index: 3; display: inline-flex; align-items: center; gap: 7px; min-height: 28px; padding: 0 9px; background: rgba(255,255,255,.93); color: rgba(23,25,27,.74); font: 9px "Segoe UI", "Microsoft YaHei", sans-serif; pointer-events: none; }
-.ui-map-footprint-legend i { width: 24px; height: 10px; border: 1px dashed rgba(23,25,27,.56); background: rgba(23,25,27,.035); }
 .ui-map-error { position: absolute; left: 50%; top: 50%; z-index: 5; transform: translate(-50%,-50%); width: max-content; max-width: calc(100% - 32px); padding: 10px 12px; background: rgba(255,255,255,.96); border: 1px solid rgba(23,25,27,.28); color: #17191b; font: 600 10px/1.4 "Segoe UI", "Microsoft YaHei", sans-serif; text-align: center; }
 .ui-map-error.hidden { display: none; }
 
@@ -494,11 +466,6 @@ body.sun-open .ui-overview { bottom: 196px; }
 /* section headers inside the planning panel */
 .pp-section { font: 9px monospace; color: rgba(23,25,27,0.45); letter-spacing: 1.5px; margin: 9px 0 3px; border-bottom: 1px dashed rgba(23,25,27,0.15); padding-bottom: 2px; }
 .pp-section:first-of-type { margin-top: 4px; }
-/* summary card big-number label */
-.pp-plan-big-label { font: 9px monospace; color: rgba(23,25,27,0.5); letter-spacing: 1px; }
-/* legs details head: button affordance */
-.pp-legs-head { width: 100%; text-align: left; padding: 5px 8px; background: rgba(23,25,27,0.05); border: 1px solid rgba(23,25,27,0.2); color: #17191b; font: 10px monospace; cursor: pointer; }
-.pp-legs-head:hover { border-color: #ff4d00; color: #ff4d00; background: rgba(255,77,0,0.06); }
 /* timeline ⊕ separators: faintly visible by default, full on hover */
 .pp-tl-sep button { opacity: 0.35; transition: opacity 0.15s; }
 .pp-tl-sep:hover button, .pp-tl-sep button:hover { opacity: 1; }
@@ -601,30 +568,11 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
 }
 .ui-planner-brand { display: flex; align-items: baseline; gap: 9px; min-width: 190px; }
 .ui-planner-brand b { font-size: 14px; letter-spacing: .06em; }
-.ui-planner-brand span, .ui-planner-status { color: rgba(23,25,27,.58); font-size: 11px; }
-.ui-planner-layer-toggle {
-  margin-left: auto; min-width: 76px; min-height: 38px; display: inline-flex; align-items: center; justify-content: center; gap: 7px;
-  border: 1px solid rgba(23,25,27,.32); background: #fff; color: #17191b; font: 600 11px "Segoe UI", sans-serif; cursor: pointer;
-}
-.ui-planner-layer-toggle svg { width: 17px; height: 17px; }
-.ui-planner-layer-toggle[aria-expanded="true"] { background: #17191b; color: #fff; }
+.ui-planner-brand span { color: rgba(23,25,27,.58); font-size: 11px; }
 .ui-view-switch { display: flex; overflow: hidden; border: 1px solid rgba(23,25,27,.35); border-radius: 4px; }
 .ui-view-switch button { min-width: 92px; min-height: 38px; border: 0; border-right: 1px solid rgba(23,25,27,.28); background: #fff; font-size: 12px; }
 .ui-view-switch button:last-child { border-right: 0; }
 .ui-view-switch button.active { background: #17191b; color: #fff; }
-.ui-route-coverage {
-  position: fixed; left: 378px; right: 16px; top: 70px; z-index: 48;
-  min-height: 64px; display: flex; align-items: center; gap: 10px; padding: 10px 12px;
-  background: #fff4e8; border: 1px solid #c77842; box-shadow: 0 8px 24px rgba(72,35,12,.16);
-  color: #71350f; pointer-events: auto;
-}
-.ui-route-coverage.hidden { display: none; }
-.ui-route-coverage > div { display: flex; flex-direction: column; min-width: 0; }
-.ui-route-coverage b { font-size: 12px; }
-.ui-route-coverage [data-field="coverage-detail"] { margin-top: 3px; font-size: 10px; color: #76503a; }
-.ui-route-coverage button { margin-left: auto; min-height: 42px; border: 1px solid #8b4314; background: #8b4314; color: #fff; padding: 0 12px; font-size: 11px; font-weight: 700; }
-.ui-coverage-dot { width: 9px; height: 9px; flex: none; border-radius: 50%; background: #a35216; }
-
 body.planner-operate {
   --planner-rail: 52px;
   --planner-panel: 324px;
@@ -637,7 +585,7 @@ body.planner-operate .ui-panel {
 }
 body.planner-operate .ui-panel h2 { font-size: 14px; }
 body.planner-operate .ui-panel:not(.collapsed) .ui-panel-summary { display: none; }
-body.planner-operate .ui-panel .name-input, body.planner-operate .pp-search input { min-height: 38px; font-size: 13px; }
+body.planner-operate .ui-panel .name-input { min-height: 38px; font-size: 13px; }
 .pp-snap-row { display: flex; flex-direction: column; align-items: stretch; gap: 5px; margin-bottom: 10px; cursor: default; }
 .pp-route-mode { display: grid; grid-template-columns: repeat(3,1fr); border: 1px solid rgba(23,25,27,.32); border-radius: 4px; overflow: hidden; }
 .pp-route-mode button { min-height: 40px; border: 0; border-right: 1px solid rgba(23,25,27,.22); background: #fff; font: 12px "Segoe UI", sans-serif; }
@@ -653,8 +601,6 @@ body.planner-operate .ui-overview.planner {
 .ui-overview.planner .ui-overview-map { width: 100%; max-width: 100%; min-width: 0; height: 100%; }
 body.planner-operate .ui-profile { left: calc(var(--planner-left) + 18px); right: 18px; bottom: 16px; width: auto; max-width: none; transform: none; z-index: 31; }
 body.planner-operate .ui-attrib { right: 12px; }
-body.planner-operate .ui-admin-panel { right: 0; }
-body.planner-operate .ui-route-coverage { left: calc(var(--planner-left) + 16px); right: 16px; }
 body.planner-operate .ui-layers { display: none; }
 body.planner-operate.planner-layers-open .ui-layers {
   display: grid; grid-template-columns: repeat(4, 40px); gap: 8px; top: 66px; right: 14px; z-index: 50; padding: 10px;
@@ -667,18 +613,11 @@ body.planner-operate.planner-layers-open .ui-layer-tip { display: none; }
   .ui-planner-brand { display: none; }
   .ui-view-switch { flex: 1; }
   .ui-view-switch button { flex: 1; min-width: 0; min-height: 44px; }
-  .ui-planner-status { display: none; }
-  .ui-planner-layer-toggle { min-width: 44px; width: 44px; min-height: 44px; padding: 0; }
-  .ui-planner-layer-toggle span { display: none; }
-  .ui-route-coverage { left: 8px; right: 8px; top: 64px; min-height: 72px; padding: 8px 9px; }
-  .ui-route-coverage [data-field="coverage-detail"] { max-width: 210px; }
-  .ui-route-coverage button { min-height: 44px; padding: 0 9px; }
-
   .ui-rail {
     left: 0; right: 0; top: auto; bottom: 0; width: auto; height: 58px; padding: 0;
     flex-direction: row; align-items: stretch; border-right: 0; border-top: 1px solid rgba(23,25,27,.22);
   }
-  .ui-rail-logo, .ui-rail-spacer, .ui-rail-help, .ui-rail-gear { display: none; }
+  .ui-rail-logo, .ui-rail-spacer, .ui-rail-gear { display: none; }
   .ui-rail-btn { flex: 1; width: auto; height: 58px; min-height: 58px; margin: 0; border-radius: 0; font-size: 14px; }
   .ui-rail-btn .lbl { font-size: 10px; }
   .ui-rail-btn.active::before { left: 18%; right: 18%; top: auto; bottom: 0; width: auto; height: 3px; }
@@ -708,7 +647,6 @@ body.planner-operate.planner-layers-open .ui-layer-tip { display: none; }
   .ui-map-controls button { min-width: 44px; width: 44px; height: 44px; padding: 0; }
   .ui-map-controls .ui-map-fit { width: 44px; }
   .ui-map-controls .ui-map-fit span { display: none; }
-  .ui-overview.planner .ui-map-footprint-legend { left: 8px; top: 66px; min-height: 25px; padding: 0 7px; font-size: 8px; }
   .ui-overview.planner .ui-map-empty { top: 34%; padding: 11px 13px; }
   .ui-map-empty b { font-size: 11px; }
   .ui-map-empty span { font-size: 9px; }
@@ -727,12 +665,11 @@ body.planner-operate.planner-layers-open .ui-layer-tip { display: none; }
   .pp-mobile-primary button { min-height: 44px; border: 1px solid rgba(23,25,27,.34); background: #fff; color: #17191b; font: 600 12px "Segoe UI", sans-serif; }
   .pp-mobile-primary button.primary { background: #17191b; border-color: #17191b; color: #fff; }
   .pp-mobile-primary button:disabled { opacity: .42; }
-  .pp-route-mode button, .pp-ops-main button, .pp-ops-edit button, .pp-search input,
-  .pp-search-btn, .pp-amap-toggle, .pp-legs-head, .ui-panel-chev, .name-input,
+  .pp-route-mode button, .pp-ops-main button, .pp-ops-edit button,
+  .pp-amap-toggle, .ui-panel-chev, .name-input,
   .pp-result, .pp-place-actions button, .admin-actions button { min-height: 44px; }
   body.planner-operate .ui-panel .name-input { min-height: 44px; }
   .ui-panel-chev { min-width: 44px; }
-  .pp-search-btn { min-width: 46px; }
   .pp-amap-box input, .pp-amap-box button { min-height: 44px; }
   .pp-amap-box button { min-width: 44px; }
   .pp-tl-ops { display: inline-flex; flex-wrap: wrap; }
@@ -847,6 +784,7 @@ body.planner-operate .overlay, body.weather-operate .overlay { display: none; }
 .ui-planner-brand { display: flex; align-items: center; min-width: 112px; }
 .ui-planner-brand b { color: #fff; font: 800 20px/1 var(--trip-font); letter-spacing: -.025em; }
 .ui-planner-brand em { color: var(--trip-route); font-style: normal; }
+.ui-planner-version { color: rgba(255,255,255,.58); font: 600 11px/1 var(--trip-font); font-variant-numeric: tabular-nums; letter-spacing: .02em; }
 .ui-command-search { position: relative; width: 44px; height: 40px; z-index: 3; }
 .ui-command-search input {
   position: absolute; left: 0; top: 0; width: 270px; height: 40px; padding: 0 44px 0 14px;
@@ -866,19 +804,6 @@ body.planner-operate .overlay, body.weather-operate .overlay { display: none; }
 .ui-view-switch button { min-width: 58px; height: 32px; border: 0; border-radius: 16px; background: transparent; color: rgba(255,255,255,.68); font-weight: 600; }
 .ui-view-switch button.active { background: rgba(255,255,255,.16); color: #fff; }
 .ui-view-switch button:disabled { cursor: not-allowed; opacity: .42; }
-.ui-planner-primary, .ui-planner-weather, .ui-planner-layer-toggle, .ui-planner-more {
-  height: 40px; border: 1px solid rgba(255,255,255,.18); border-radius: var(--trip-radius-control);
-  background: rgba(255,255,255,.06); color: #fff; cursor: pointer;
-  transition: background-color 140ms ease-out, border-color 140ms ease-out, transform 100ms ease-out;
-}
-.ui-planner-primary { padding: 0 17px; border-color: var(--trip-route); background: var(--trip-route); font-weight: 650; }
-.ui-planner-weather, .ui-planner-layer-toggle, .ui-planner-more { width: 40px; padding: 0; }
-.ui-planner-weather svg, .ui-planner-layer-toggle svg, .ui-planner-more svg { width: 19px; height: 19px; }
-.ui-planner-weather span, .ui-planner-layer-toggle span, .ui-planner-more span { display: none; }
-.ui-planner-primary:hover, .ui-planner-weather:hover, .ui-planner-layer-toggle:hover, .ui-planner-more:hover { border-color: rgba(255,255,255,.4); background-color: rgba(255,255,255,.13); }
-.ui-planner-primary:hover { border-color: #ff6a42; background: #df3e14; }
-.settings-open .ui-planner-primary { visibility: hidden; }
-.ui-planner-primary:active, .ui-planner-weather:active, .ui-planner-layer-toggle:active, .ui-planner-more:active { transform: scale(.98); }
 .ui-planner-more-menu { position: fixed; right: 14px; top: 66px; z-index: 48; width: 180px; padding: 6px; border: 1px solid var(--trip-line-strong); border-radius: 12px; background: rgba(250,250,247,.98); box-shadow: var(--trip-shadow); color: var(--trip-ink); pointer-events: auto; }
 .ui-planner-more-menu.hidden { display: none; }
 .ui-planner-more-menu button { width: 100%; min-height: 38px; padding: 0 10px; border: 0; border-radius: 9px; background: transparent; color: var(--trip-ink); text-align: left; }
@@ -888,7 +813,7 @@ body.planner-operate .ui-overview.planner, body.weather-operate .ui-overview.pla
   left: 0; right: 0; top: 60px; bottom: 0; width: auto; height: auto; border: 0; border-radius: 0; box-shadow: none;
 }
 body.weather-operate .ui-overview.planner .maplibregl-canvas { cursor: default; }
-body.weather-operate .ui-map-empty, body.weather-operate .ui-map-footprint-legend { display: none; }
+body.weather-operate .ui-map-empty { display: none; }
 .ui-overview.planner .ui-map-context { display: none; }
 .ui-overview.planner .ui-map-context b { font-size: 12px; }
 .ui-overview.planner .ui-map-context span { font-size: 10px; }
@@ -898,7 +823,6 @@ body.weather-operate .ui-map-empty, body.weather-operate .ui-map-footprint-legen
 .ui-overview.planner .ui-map-controls .ui-map-fit { width: 40px; }
 .ui-overview.planner .ui-map-controls .ui-map-fit span { display: none; }
 .ui-overview.planner .ui-map-empty { border: 1px solid var(--trip-line); border-radius: var(--trip-radius-card); background: rgba(247,247,244,.94); backdrop-filter: blur(10px); }
-.ui-overview.planner .ui-map-footprint-legend { left: 78px; top: 72px; border: 1px solid var(--trip-line); border-radius: 9px; background: rgba(247,247,244,.88); backdrop-filter: blur(8px); }
 
 .ui-panel {
   left: auto; right: 16px; top: 76px; bottom: 16px; width: 370px; height: auto; max-height: none;
@@ -927,22 +851,15 @@ body.planner-operate .ui-panel:not(.collapsed) .ui-panel-summary { display: none
 .ui-sheet-grabber { display: none; }
 
 .pp-root { min-width: 0; overflow-x: hidden; color: var(--trip-ink); }
-.pp-root input, .pp-root button, .wx-controls input, .wx-controls button, .settings-native input, .settings-native select, .settings-native button { border-radius: var(--trip-radius-control); }
-.pp-search { gap: 6px; }
-.pp-search input, .ui-panel .name-input { min-height: 42px; padding: 0 12px; border: 1px solid var(--trip-line-strong); background: #fff; }
-.pp-search-btn, .pp-amap-toggle, .pp-legs-head, .pp-ops-edit button, .pp-ops-main button { min-height: 40px; border: 1px solid var(--trip-line-strong); background: #fff; color: var(--trip-ink); }
+.pp-root input, .pp-root button, .settings-native input, .settings-native select, .settings-native button { border-radius: var(--trip-radius-control); }
+.ui-panel .name-input { min-height: 42px; padding: 0 12px; border: 1px solid var(--trip-line-strong); background: #fff; }
+.pp-amap-toggle, .pp-ops-edit button, .pp-ops-main button { min-height: 40px; border: 1px solid var(--trip-line-strong); background: #fff; color: var(--trip-ink); }
 .pp-route-mode { overflow: hidden; border: 1px solid var(--trip-line-strong); border-radius: 18px; }
 .pp-route-mode button { min-height: 36px; border: 0; border-radius: 16px; background: transparent; }
 .pp-route-mode button.active { background: var(--trip-ink); color: #fff; }
 .pp-section { margin-top: 18px; color: var(--trip-ink-soft); font-size: 11px; letter-spacing: 0; text-transform: none; }
 .ui-stat-card, .wx-card { border: 1px solid var(--trip-line); border-radius: 12px; background: #fff; box-shadow: none; }
-.pp-journey-list { display: grid; gap: 0; margin: 10px 0 4px; overflow: hidden; border: 1px solid var(--trip-line); border-radius: 12px; background: #fff; }
-.pp-journey-row { display: grid; grid-template-columns: 48px minmax(0,1fr) auto auto; gap: 8px; align-items: center; min-height: 58px; padding: 8px 10px; border: 0; border-bottom: 1px solid var(--trip-line); border-radius: 0 !important; background: #fff; color: var(--trip-ink); text-align: left; cursor: pointer; }
-.pp-journey-row:last-child { border-bottom: 0; }
-.pp-journey-row.selected { background: rgba(240,74,29,.06); box-shadow: inset 1px 0 var(--trip-route); }
-.pp-journey-route, .pp-journey-route b, .pp-tl-body { min-width: 0; overflow-wrap: anywhere; }
-.pp-plan { margin-top: 10px; padding: 10px 0; border: 0; border-top: 1px solid var(--trip-line); border-bottom: 1px solid var(--trip-line); }
-.pp-plan-summary { display: block; color: var(--trip-ink-soft); font: 12px/1.55 var(--trip-font); overflow-wrap: anywhere; }
+.pp-tl-body { min-width: 0; overflow-wrap: anywhere; }
 .pp-secondary-tools { margin-top: 8px; border: 1px solid var(--trip-line); border-radius: 12px; background: #fff; }
 .pp-secondary-tools > summary { min-height: 40px; display: flex; align-items: center; padding: 0 12px; color: var(--trip-ink-soft); font: 12px var(--trip-font); cursor: pointer; }
 .pp-secondary-tools > summary::marker { color: var(--trip-ink-soft); }
@@ -952,21 +869,10 @@ body.planner-operate .ui-panel:not(.collapsed) .ui-panel-summary { display: none
 .pp-ops-edit { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 6px; }
 .pp-ops-edit button { min-width: 0; }
 .pp-import-gpx { width: calc(100% - 20px); min-height: 40px; margin-top: 8px; border: 1px solid var(--trip-line-strong); background: #fff; color: var(--trip-ink); }
-.pp-journey-day b, .pp-journey-day small { display: block; }
-.pp-journey-day b { color: var(--trip-route); font-size: 12px; }
-.pp-journey-day small { margin-top: 2px; color: var(--trip-ink-soft); font-size: 10px; }
-.pp-journey-route { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.pp-journey-route b { font-size: 11px; font-weight: 600; }
-.pp-journey-route i { margin: 0 5px; color: var(--trip-ink-soft); font-style: normal; }
-.pp-journey-metric { font-size: 10px; font-variant-numeric: tabular-nums; }
-.pp-journey-weather { grid-column: 2 / -1; color: var(--trip-ink-soft); font-size: 10px; }
 .pp-root .ui-profile { position: relative; inset: auto; width: 100%; max-height: none; margin: 14px 0 0; overflow: hidden; border: 1px solid var(--trip-line); border-radius: 12px; background: #fff; box-shadow: none; }
 .pp-root .ui-profile canvas { display: block; width: 100%; height: 110px; }
 .pp-root .ui-profile.folded canvas { display: none; }
 
-.wx-controls { gap: 9px; }
-.wx-controls label { width: 100%; justify-content: space-between; min-height: 42px; }
-.wx-controls input { min-height: 38px; border-color: var(--trip-line-strong); background: #fff; }
 .wx-go { width: 100%; min-height: 42px; border: 0; background: var(--trip-route); color: #fff; font-weight: 650; }
 .wx-cards { display: grid; gap: 0; overflow: hidden; border: 1px solid var(--trip-line); border-radius: 12px; background: #fff; }
 .wx-points { display: flex; gap: 6px; margin: 8px 0; overflow-x: auto; padding-bottom: 2px; }
@@ -1079,12 +985,6 @@ body.planner-operate .ui-panel:not(.collapsed) .ui-panel-summary { display: none
 
 button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--trip-route); outline-offset: 2px; }
 
-@media (max-width: 1080px) {
-  .ui-planner-bar { grid-template-columns: auto 44px minmax(130px,1fr) auto auto auto; }
-  .ui-planner-weather, .ui-planner-layer-toggle { display: none; }
-  .ui-planner-primary { padding-inline: 12px; }
-}
-
 @media (max-width: 1023px) {
   .ui-planner-bar { left: 0; height: 56px; padding: 0 8px; gap: 6px; grid-template-columns: auto 1fr auto auto; }
   .ui-planner-brand { min-width: 72px; }
@@ -1093,13 +993,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
   .ui-trip-identity { text-align: left; }
   .ui-trip-identity b { font-size: 13px; }
   .ui-trip-identity span { font-size: 9px; }
-  .ui-planner-primary { height: 40px; padding: 0 10px; font-size: 12px; }
-  .ui-planner-more { display: block; min-width: 40px; }
   .ui-planner-more-menu { right: 8px; top: 60px; width: 176px; }
   body.planner-operate .ui-overview.planner, body.weather-operate .ui-overview.planner { top: 56px; bottom: 58px; }
   .ui-overview.planner .ui-map-context { left: 8px; top: 8px; }
   .ui-overview.planner .ui-map-controls { right: 8px; top: 8px; }
-  .ui-overview.planner .ui-map-footprint-legend { left: 8px; top: 66px; }
   .ui-rail { left: 0; right: 0; top: auto; bottom: 0; width: 100%; height: 58px; padding: 0; gap: 0; border: 0; border-top: 1px solid var(--trip-line); border-radius: 0; background: rgba(250,250,247,.98); color: var(--trip-ink); backdrop-filter: blur(12px); }
   .ui-rail-btn { color: var(--trip-ink-soft); }
   .ui-rail-btn.active { color: var(--trip-route); background: rgba(240,74,29,.06); }
@@ -1117,8 +1014,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
   .ui-panel-summary span { display: none; }
   .ui-panel-summary span:nth-child(-n+2) { display: block; }
   .ui-panel-body { min-height: 0; height: auto; flex: 1; }
-  .pp-journey-row { grid-template-columns: 42px minmax(0,1fr) auto; }
-  .pp-journey-row .pp-journey-metric:nth-of-type(4) { display: none; }
   .ui-weather-card { position: fixed; left: 12px !important; right: 12px; top: auto !important; bottom: 76px; width: auto; transform: none; }
   .ui-settings, body.planner-operate .ui-settings, body.weather-operate .ui-settings { inset: 56px 0 58px; width: 100%; border-width: 1px 0 0; border-radius: 18px 18px 0 0; }
   .ui-settings:not(.open), body.planner-operate .ui-settings:not(.open), body.weather-operate .ui-settings:not(.open) { transform: translateX(calc(100% + 2px)); }
@@ -1131,7 +1026,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .ui-command-search input, .ui-rail-btn, .ui-planner-primary, .ui-planner-weather, .ui-planner-layer-toggle, .ui-planner-more, .ui-weather-card { transition: none !important; }
+  .ui-command-search input, .ui-rail-btn, .ui-weather-card { transition: none !important; }
 }
 
 /* ------------------------------------------------------------ Corner-island refinement */
@@ -1148,30 +1043,12 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
 .settings-tabs button.active { color: var(--trip-ink); font-weight: 650; box-shadow: inset 0 -2px var(--trip-route); }
 .settings-section { scroll-margin-top: 52px; }
 
-.ui-map-onboarding {
-  position: absolute; left: 18px; bottom: 86px; z-index: 7; display: flex; align-items: center; gap: 14px;
-  min-height: 46px; padding: 5px 8px 5px 12px; border: 1px solid var(--trip-line);
-  border-radius: 13px; background: rgba(247,247,244,.94); color: var(--trip-ink);
-  box-shadow: 0 7px 22px rgba(18,24,28,.13); backdrop-filter: blur(10px) saturate(108%);
-  pointer-events: auto;
-}
-.ui-map-onboarding.hidden { display: none; }
-.ui-map-onboarding ol { display: flex; align-items: center; gap: 14px; margin: 0; padding: 0; list-style: none; }
-.ui-map-onboarding li { display: flex; align-items: center; gap: 6px; color: var(--trip-ink-soft); font-size: 11px; white-space: nowrap; }
-.ui-map-onboarding li + li { padding-left: 14px; border-left: 1px solid var(--trip-line); }
-.ui-map-onboarding li span { display: grid; place-items: center; width: 20px; height: 20px; border: 1px solid var(--trip-line-strong); border-radius: 50%; font-size: 10px; }
-.ui-map-onboarding li.active { color: var(--trip-ink); font-weight: 650; }
-.ui-map-onboarding li.active span { border-color: var(--trip-route); background: var(--trip-route); color: #fff; }
-.ui-map-onboarding li.done span { border-color: var(--trip-success); color: var(--trip-success); }
-.ui-map-onboarding button { min-height: 34px; padding: 0 10px; border: 0; border-radius: 9px; background: transparent; color: var(--trip-ink-soft); font-size: 11px; cursor: pointer; }
-.ui-map-onboarding button:hover { background: rgba(31,36,40,.07); color: var(--trip-ink); }
-
 @media (min-width: 721px) {
   .ui-planner-bar {
     left: 0; right: 0; top: 0; height: 0; padding: 0; display: block;
     border: 0; background: transparent; box-shadow: none; backdrop-filter: none; pointer-events: none;
   }
-  .ui-planner-brand-island, .ui-trip-identity, .ui-planner-action-island, .ui-planner-context-tools {
+  .ui-planner-brand-island, .ui-trip-identity {
     position: absolute; pointer-events: auto;
   }
   .ui-planner-brand-island {
@@ -1199,32 +1076,12 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
   .ui-trip-identity[data-saved="false"] span::before { content: '●'; margin-right: 6px; font-size: 8px; }
   .ui-trip-identity[data-saved="true"] span::before { color: var(--trip-success); }
   .ui-trip-identity[data-saved="false"] span::before { color: var(--trip-warning); }
-  .ui-planner-action-island {
-    right: 18px; top: 16px; display: flex; align-items: center; gap: 6px; height: 56px; padding: 0 6px;
-    border: 1px solid rgba(255,255,255,.16); border-radius: 17px; background: rgba(21,28,32,.94);
-    box-shadow: 0 8px 24px rgba(8,12,14,.2); backdrop-filter: blur(14px) saturate(110%);
-  }
   .ui-view-switch { border: 0; border-radius: 12px; background: rgba(255,255,255,.07); }
   .ui-view-switch button { min-width: 68px; border-radius: 10px; }
-  .ui-planner-primary { height: 44px; border-radius: 11px; }
-  .ui-planner-more { height: 44px; width: 44px; }
-  .ui-planner-context-tools {
-    right: 18px; top: 84px; display: grid; width: 126px; padding: 5px;
-    border: 1px solid rgba(255,255,255,.16); border-radius: 15px; background: rgba(24,30,34,.82);
-    box-shadow: 0 8px 24px rgba(8,12,14,.2); backdrop-filter: blur(12px) saturate(110%);
-    transition: right 180ms ease-out;
-  }
-  .ui-planner-weather, .ui-planner-layer-toggle {
-    width: 100%; height: 40px; display: flex; align-items: center; gap: 9px; padding: 0 10px;
-    border-color: transparent; background: transparent; text-align: left;
-  }
-  .ui-planner-weather span, .ui-planner-layer-toggle span { display: inline; font-size: 12px; }
   .ui-planner-more-menu { right: 18px; top: 80px; }
-  .ui-route-coverage { top: 84px; }
 
   body.planner-operate .ui-overview.planner, body.weather-operate .ui-overview.planner { top: 0; bottom: 0; }
   .ui-overview.planner .ui-map-context { left: 18px; top: 88px; }
-  .ui-overview.planner .ui-map-footprint-legend { left: auto; right: 18px; top: auto; bottom: 86px; }
   .ui-overview.planner .ui-map-controls { right: 158px; top: 84px; transition: right 180ms ease-out; }
   .ui-overview.planner .ui-map-empty {
     left: var(--guide-x, 52%); top: var(--guide-y, 42%); gap: 9px; max-width: 236px; padding: 9px 11px;
@@ -1256,10 +1113,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
   body.planner-operate .ui-panel.collapsed .ui-panel-chev { width: 52px; font-size: 11px; }
   body.planner-operate .ui-panel:not(.collapsed) .ui-panel-customize { display: none; }
 
-  .settings-open .ui-planner-primary { visibility: visible; }
-  .settings-open .ui-planner-context-tools { opacity: 0; pointer-events: none; }
   .settings-open .ui-overview.planner .ui-map-controls { right: 420px; }
-  .settings-open .ui-overview.planner .ui-map-footprint-legend { right: 420px; }
   .ui-settings { top: 84px; right: 12px; bottom: 84px; width: min(380px, calc(100vw - 24px)); border-radius: 16px; }
 
   body.planner-3d .ui-settings { border-color: rgba(255,255,255,.15); background: rgba(26,32,36,.95) !important; color: #fff; }
@@ -1291,7 +1145,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
   .ui-command-search:focus-within { width: 220px; }
   .ui-command-search:focus-within input { opacity: 1; pointer-events: auto; transform: none; }
   .ui-trip-identity { min-width: 200px; padding-inline: 24px; }
-  .ui-planner-context-tools { display: none; }
   .ui-overview.planner .ui-map-controls { right: 18px; top: 84px; }
   .settings-open .ui-overview.planner .ui-map-controls { display: none; }
 }
@@ -1302,34 +1155,17 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
     padding: 0 8px; background: rgba(21,28,32,.96); pointer-events: auto;
   }
   .ui-planner-brand-island { display: contents; }
-  .ui-planner-action-island { position: static; display: flex; align-items: center; gap: 4px; }
   .ui-planner-brand { min-width: 76px; }
-  .ui-command-search, .ui-view-switch, .ui-planner-context-tools { display: none; }
+  .ui-command-search, .ui-view-switch { display: none; }
   .ui-trip-identity { position: static; text-align: center; color: #fff; }
   .ui-trip-identity span { color: rgba(255,255,255,.62); }
-  .ui-planner-action-island .ui-planner-more { display: block; width: 40px; min-width: 40px; }
   body.planner-operate .ui-overview.planner, body.weather-operate .ui-overview.planner { top: 56px; bottom: 58px; }
-  .ui-map-onboarding { left: 8px; right: 8px; bottom: 104px; justify-content: space-between; }
-  .ui-map-onboarding ol { gap: 7px; }
-  .ui-map-onboarding li { font-size: 0; gap: 0; }
-  .ui-map-onboarding li + li { padding-left: 7px; }
-  .ui-map-onboarding button { font-size: 10px; }
   .ui-overview.planner .ui-map-empty { left: 50%; top: 38%; transform: translate(-50%,-50%); }
   .settings-tabs { top: 0; }
   .ui-panel-customize { display: none !important; }
 }
 
 /* ------------------------------------------------------- Layered trip-record refinement */
-.ui-panel-tabs {
-  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); min-height: 44px;
-  padding: 0 14px; border-bottom: 1px solid var(--trip-line); background: var(--trip-paper);
-}
-.ui-panel-tabs.hidden { display: none; }
-.ui-panel-tabs button {
-  border: 0; background: transparent; color: var(--trip-ink-soft); font-size: 12px; cursor: pointer;
-}
-.ui-panel-tabs button.active { color: var(--trip-ink); font-weight: 650; box-shadow: inset 0 -2px var(--trip-route); }
-
 /* Final single-responsibility inspector pass. The map stays continuous while
    each rail destination owns its own focused panel instead of nested tabs. */
 body.planner-operate .ui-panel {
@@ -1350,7 +1186,7 @@ body.planner-operate .ui-panel h2 {
 body.planner-operate .ui-panel-hint { color: rgba(255,255,255,.58); font-size: 12px; font-weight: 400; letter-spacing: 0; }
 body.planner-operate .ui-panel-chev { border: 0; background: transparent; color: #fff; }
 body.planner-operate .ui-panel-body { height: calc(100% - 58px); padding: 18px 16px 22px; }
-.pp-mobile-primary, .pp-journey-list, .pp-plan, .pp-legs, .pp-root .ui-profile { display: none !important; }
+.pp-mobile-primary, .pp-root .ui-profile { display: none !important; }
 .pp-root .pp-section { margin: 0 0 8px; padding: 0; border: 0; color: var(--text-dark-primary); font-size: 13px; font-weight: 650; }
 .pp-root .pp-section + .name-input { margin: 0 0 18px; }
 .pp-root .name-input { min-height: 42px; border-radius: var(--radius-sm); font-size: 14px; }
@@ -1428,15 +1264,6 @@ body.planner-operate .ui-panel-body { height: calc(100% - 58px); padding: 18px 1
 @media (min-width: 721px) {
   .ui-planner-brand-island { left: 28px; top: 24px; height: 56px; border-radius: 16px; }
   .ui-trip-identity { top: 30px; min-width: 268px; min-height: 60px; padding: 10px 34px 9px; border-radius: 16px; }
-  .ui-planner-action-island { right: 28px; top: 32px; height: 52px; border-radius: 15px; }
-  .ui-planner-primary {
-    height: 40px; padding-inline: 13px; border-color: rgba(255,255,255,.18);
-    background: rgba(255,255,255,.07); font-weight: 600;
-  }
-  .ui-planner-primary:hover { border-color: rgba(255,255,255,.34); background: rgba(255,255,255,.13); }
-  .ui-planner-context-tools { right: 28px; top: 96px; width: 112px; grid-template-columns: repeat(2, 1fr); }
-  .ui-planner-weather, .ui-planner-layer-toggle { justify-content: center; width: 100%; padding: 0; }
-  .ui-planner-weather span, .ui-planner-layer-toggle span { display: none; }
   .ui-planner-more-menu { right: 28px; top: 94px; width: 188px; padding: 7px; }
   .ui-planner-more-label { display: block; padding: 7px 10px 4px; color: var(--trip-ink-soft); font-size: 9px; font-weight: 650; letter-spacing: .06em; }
   .ui-planner-more-label + button { border-top: 0; }
@@ -1456,15 +1283,10 @@ body.planner-operate .ui-panel-body { height: calc(100% - 58px); padding: 18px 1
     font: 11px/1 var(--trip-font);
   }
   .ui-rail-btn.active .lbl { display: block; }
-  .ui-rail-help { margin-top: 10px; padding-top: 7px; border-top: 1px solid rgba(255,255,255,.13); }
-
   .ui-overview.planner .ui-map-context { left: 94px; top: 112px; }
-  .ui-overview.planner .ui-map-footprint-legend { right: 28px; bottom: 108px; }
   .ui-overview.planner .ui-map-controls { right: 28px; top: 238px; flex-direction: column; }
-  body:has(.ui-panel:not(.hidden):not(.collapsed)) .ui-planner-context-tools { opacity: 0; pointer-events: none; }
   body:has(.ui-panel:not(.hidden):not(.collapsed)) .ui-overview.planner .ui-map-controls,
   .settings-open .ui-overview.planner .ui-map-controls { right: 384px; }
-  body:has(.ui-panel:not(.hidden):not(.collapsed)) .ui-overview.planner .ui-map-footprint-legend { right: 384px; }
 
   body.planner-operate .ui-panel.collapsed { display: none; }
   body.planner-operate .ui-panel:not(.collapsed),
@@ -1483,8 +1305,7 @@ body.planner-operate .ui-panel-body { height: calc(100% - 58px); padding: 18px 1
   .ui-panel-chev:hover { background: rgba(255,255,255,.1); color: #fff; }
   .ui-panel-chev svg { width: 19px; height: 19px; }
   .ui-panel-summary, .ui-panel-customize { display: none !important; }
-  .ui-panel-body { height: calc(100% - 102px); padding: 12px 14px 18px; background: var(--trip-paper); }
-  .ui-panel:has(.ui-panel-tabs.hidden) .ui-panel-body { height: calc(100% - 58px); }
+  .ui-panel-body { height: calc(100% - 58px); padding: 12px 14px 18px; background: var(--trip-paper); }
   body.weather-operate .ui-panel:not(.collapsed):has(.wx-panel),
   .ui-panel:not(.collapsed):has(.wx-panel) { bottom: auto; height: min(520px, calc(100vh - 176px)); }
   .ui-panel:not(.collapsed):has(.route-library-panel) { bottom: auto; height: min(330px, calc(100vh - 176px)); }
@@ -1493,8 +1314,7 @@ body.planner-operate .ui-panel-body { height: calc(100% - 58px); padding: 18px 1
 
   .pp-root { padding-bottom: 0; }
   .pp-section { margin-top: 15px; }
-  .pp-journey-list, .pp-secondary-tools, .ui-stat-card, .wx-cards, .wx-hourly { border-radius: 10px; }
-  .pp-plan { padding: 9px 0; border-inline: 0; border-radius: 0; background: transparent; }
+  .pp-secondary-tools, .ui-stat-card, .wx-cards, .wx-hourly { border-radius: 10px; }
   .pp-ops-main {
     position: sticky; bottom: -18px; z-index: 3; margin: 16px -14px -18px; padding: 12px 14px 14px;
     border-top: 1px solid var(--trip-line); background: rgba(247,247,244,.98);
@@ -1532,12 +1352,9 @@ body.planner-operate .ui-panel-body { height: calc(100% - 58px); padding: 18px 1
 
 @media (max-width: 1023px) {
   .ui-trip-spine { display: none; }
-  .ui-panel-tabs { min-height: 42px; padding-inline: 12px; }
   .ui-panel h2 { grid-template-columns: minmax(0,1fr) auto; }
   .ui-panel-chev svg { width: 18px; height: 18px; }
   .ui-planner-more-label { display: block; padding: 6px 10px 3px; color: var(--trip-ink-soft); font-size: 9px; }
-  .ui-planner-primary.has-route { border-color: rgba(255,255,255,.2); background: rgba(255,255,255,.08); }
-  .ui-planner-primary.has-route:hover { background: rgba(255,255,255,.14); }
 }
 
 @media (prefers-reduced-transparency: reduce) {
@@ -1579,9 +1396,7 @@ body.planner-operate {
 }
 
 .ui-planner-mode-island,
-.ui-planner-action-island,
 .ui-planner-brand-island,
-.ui-planner-context-tools,
 .ui-rail,
 .ui-overview.planner .ui-map-controls {
   border: 0;
@@ -1590,61 +1405,6 @@ body.planner-operate {
   color: var(--instrument-text);
 }
 
-.ui-planner-save,
-.ui-planner-share,
-.ui-planner-more,
-.ui-planner-weather,
-.ui-planner-layer-toggle {
-  display: grid;
-  place-items: center;
-  width: var(--control-h-md);
-  height: var(--control-h-md);
-  padding: 0;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--instrument-text);
-  cursor: pointer;
-  transition: background-color 140ms ease-out, color 140ms ease-out, transform 100ms ease-out;
-}
-
-.ui-planner-save:hover,
-.ui-planner-share:hover,
-.ui-planner-more:hover,
-.ui-planner-weather:hover,
-.ui-planner-layer-toggle:hover {
-  background: var(--instrument-surface-hover);
-}
-
-.ui-planner-save:disabled {
-  color: var(--text-light-muted);
-  cursor: not-allowed;
-}
-.ui-planner-save:disabled:hover { background: transparent; }
-
-.ui-planner-save:active,
-.ui-planner-share:active,
-.ui-planner-more:active,
-.ui-planner-weather:active,
-.ui-planner-layer-toggle:active { transform: scale(.97); }
-
-.ui-planner-save svg,
-.ui-planner-share svg,
-.ui-planner-more svg,
-.ui-planner-weather svg,
-.ui-planner-layer-toggle svg { width: 19px; height: 19px; }
-
-.ui-planner-save span,
-.ui-planner-share span,
-.ui-planner-more span,
-.ui-planner-weather span,
-.ui-planner-layer-toggle span { display: none; }
-
-.ui-planner-save:focus-visible,
-.ui-planner-share:focus-visible,
-.ui-planner-more:focus-visible,
-.ui-planner-weather:focus-visible,
-.ui-planner-layer-toggle:focus-visible,
 .ui-view-switch button:focus-visible,
 .ui-trip-spine button:focus-visible,
 .ui-rail-btn:focus-visible,
@@ -1694,29 +1454,6 @@ body.planner-operate {
 .ui-overview.planner .ui-map-empty > svg { width: 17px; height: 17px; color: var(--trip-route); }
 .ui-overview.planner .ui-map-empty b { font-size: 12px; font-weight: 650; }
 .ui-overview.planner .ui-map-empty span { display: none; }
-
-.ui-map-onboarding {
-  min-height: 42px;
-  padding: 3px 6px 3px 12px;
-  border: 0;
-  border-radius: var(--radius-lg);
-  background: rgba(247, 245, 239, .9);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, .11);
-  backdrop-filter: blur(10px) saturate(106%);
-}
-
-.ui-map-onboarding ol { gap: 12px; }
-.ui-map-onboarding li { gap: 6px; color: rgba(31, 36, 40, .52); font-size: 11px; }
-.ui-map-onboarding li + li::before { display: none; }
-.ui-map-onboarding li span {
-  width: 19px;
-  height: 19px;
-  border-color: rgba(31, 36, 40, .18);
-  border-radius: 50%;
-  font-size: 9px;
-}
-.ui-map-onboarding li.active { color: var(--trip-ink); font-weight: 650; }
-.ui-map-onboarding button { min-height: 34px; padding-inline: 9px; font-size: 10px; }
 
 .ui-trip-spine {
   border-color: var(--instrument-line);
@@ -1821,45 +1558,6 @@ body.weather-operate .ui-panel-body { padding: 18px 16px 22px; }
     pointer-events: auto;
   }
 
-  .ui-planner-action-island {
-    right: 24px;
-    top: 24px;
-    height: var(--toolbar-h);
-    gap: 2px;
-    padding: 0 5px;
-    border-radius: 12px;
-  }
-  .ui-planner-action-island > button + button { border-left: 1px solid rgba(255,255,255,.1); border-radius: 0 8px 8px 0; }
-
-  .ui-planner-primary {
-    position: absolute;
-    left: 50%;
-    top: 90px;
-    height: 36px;
-    padding: 0 13px;
-    transform: translateX(-50%);
-    border: 1px solid var(--instrument-line);
-    border-radius: 8px;
-    background: var(--instrument-surface);
-    color: var(--instrument-text);
-    box-shadow: var(--instrument-shadow);
-    font-size: 12px;
-    pointer-events: auto;
-  }
-  .ui-planner-primary.has-route { opacity: 0; pointer-events: none; transform: translate(-50%, -5px); }
-  body:has(.ui-panel:not(.hidden)) .ui-planner-primary { opacity: 0; pointer-events: none; transform: translate(-50%, -5px); }
-
-  .ui-planner-context-tools {
-    right: 30px;
-    top: 94px;
-    width: auto;
-    grid-template-columns: repeat(2, 40px);
-    padding: 4px;
-    border-radius: 10px;
-  }
-  .ui-planner-weather,
-  .ui-planner-layer-toggle { width: 40px; padding: 0; }
-
   .ui-planner-more-menu { right: 30px; top: 88px; }
   .ui-rail { left: 24px; top: 160px; width: 48px; padding: 4px; border-radius: var(--radius-lg); }
   .ui-rail-btn,
@@ -1914,7 +1612,6 @@ body.weather-operate .ui-panel-body { padding: 18px 16px 22px; }
   }
   body:has(.ui-panel:not(.hidden):not(.collapsed)) .ui-overview.planner .ui-map-controls,
   .settings-open .ui-overview.planner .ui-map-controls { right: 376px; }
-  body:has(.ui-panel:not(.hidden):not(.collapsed)) .ui-overview.planner .ui-map-footprint-legend { right: 376px; }
 }
 
 @media (max-width: 1023px) {
@@ -1925,6 +1622,7 @@ body.weather-operate .ui-panel-body { padding: 18px 16px 22px; }
     background: #171d20;
   }
   .ui-planner-brand b { font-size: 14px; }
+  .ui-planner-brand { flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; }
   .ui-command-search { display: block; width: 40px; height: 40px; }
   .ui-command-search input { width: 40px; }
   .ui-command-search:focus-within { width: min(220px, calc(100vw - 24px)); }
@@ -1933,18 +1631,8 @@ body.weather-operate .ui-panel-body { padding: 18px 16px 22px; }
   .ui-planner-mode-island { display: flex; justify-self: center; justify-content: center; width: max-content; min-width: 0; padding: 2px; border-radius: 10px; }
   .ui-view-switch { display: flex; flex: none; width: auto; background: transparent; }
   .ui-view-switch button { flex: 0 0 auto; min-width: 62px; height: 44px; font-size: 12px; }
-  .ui-planner-action-island { justify-self: end; }
-  .ui-planner-save,
-  .ui-planner-share { display: none; }
-  .ui-planner-primary,
-  .ui-planner-context-tools { display: none; }
   .ui-overview.planner .ui-map-context { top: 10px; }
   .ui-overview.planner .ui-map-controls { right: 10px; top: 72px; flex-direction: column; }
-  .ui-map-onboarding { left: 10px; right: 10px; bottom: 132px; }
-  .ui-map-onboarding ol { gap: 8px; }
-  .ui-map-onboarding li { font-size: 10px; }
-  .ui-map-onboarding button { font-size: 0; }
-  .ui-map-onboarding button::after { content: '跳过'; font-size: 10px; }
 
   .ui-trip-spine {
     left: 10px;
@@ -1976,13 +1664,10 @@ body.weather-operate .ui-panel-body { padding: 18px 16px 22px; }
 
 @media (prefers-reduced-transparency: reduce) {
   .ui-planner-mode-island,
-  .ui-planner-action-island,
   .ui-planner-brand-island,
-  .ui-planner-context-tools,
   .ui-rail,
   .ui-overview.planner .ui-map-controls,
   .ui-trip-spine { background: #161b1e; backdrop-filter: none; }
-  .ui-map-onboarding,
   .ui-overview.planner .ui-map-empty { background: #f7f5ef; backdrop-filter: none; }
 }
 
@@ -2130,8 +1815,7 @@ body.planner-operate.analyze-operate .profile-recovery { border-color: var(--ins
   body.planner-operate .ui-panel-body::-webkit-scrollbar-thumb,
   body.weather-operate .ui-panel-body::-webkit-scrollbar-thumb { border-radius: 8px; background: rgba(31, 36, 40, .24); }
   .pp-root .ui-wp-list,
-  .pp-root .pp-secondary-tools,
-  .pp-root .pp-journey-list {
+  .pp-root .pp-secondary-tools {
     border-color: transparent;
     border-radius: 0;
     background: transparent;
@@ -2170,10 +1854,6 @@ body.planner-operate.analyze-operate .profile-recovery { border-color: var(--ins
     box-shadow: 0 12px 32px rgba(6, 10, 12, .22);
   }
   .ui-weather-card[data-fluid-enabled="true"] .ui-fluid-grip { color: var(--trip-ink); }
-
-  .ui-planner-action-island,
-  .ui-planner-context-tools,
-  .ui-planner-primary { display: none !important; }
 
   .ui-overview.planner .ui-map-controls.ui-map-dock {
     right: 24px !important;

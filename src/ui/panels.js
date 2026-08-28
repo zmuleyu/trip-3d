@@ -1,5 +1,5 @@
 // Context panel contents + profile floating card. DOM only; fed by main.js.
-import { durationContract, normalizeRouteMode } from '../lib/routePlanning.js'
+import { normalizeRouteMode } from '../lib/routePlanning.js'
 import { analysisPointsReady, nearestAnalysisIndex, sampleAnalysisAtDistance } from '../lib/analysisCursor.js'
 import { sampleRouteGradeAtDistance } from '../lib/routeAnalysis.js'
 
@@ -106,28 +106,9 @@ export function createPlanningPanel(actions) {
   name.onchange = () => actions.onNameChange(name.value)
   const routeSection = secOf('加点')
 
-  const journeyList = document.createElement('div')
-  journeyList.className = 'pp-journey-list'
-  journeyList.setAttribute('aria-label', '按天行程列表')
-  let selectedDay = 1
-
   const wpList = document.createElement('div')
   wpList.className = 'ui-wp-list pp-tl'
   el.appendChild(wpList)
-
-  const stat = document.createElement('div')
-  stat.className = 'ui-stat-card pp-plan'
-
-  // collapsible per-leg details
-  const legsBox = document.createElement('div')
-  legsBox.className = 'pp-legs hidden'
-  const legsHead = document.createElement('button')
-  legsHead.className = 'pp-legs-head'
-  legsHead.textContent = '逐段详情 ▾'
-  const legsList = document.createElement('div')
-  legsList.className = 'pp-legs-list'
-  legsHead.onclick = () => legsList.classList.toggle('hidden')
-  legsBox.append(legsHead, legsList)
 
   // Keep one persistent save action. Editing and import tools stay available in
   // one disclosed group instead of competing with the route itself.
@@ -191,76 +172,14 @@ export function createPlanningPanel(actions) {
         alternatives.appendChild(button)
       })
     },
-    // update(route, stats, legs, weatherIndex, profile) — timeline list + summary card + legs
+    // Keep the established positional update contract; the inspector only renders
+    // editable route controls while summaries remain on the map surface.
     update(route, stats, legs = null, weatherIndex = null, profile = 'foot', weatherDays = null, waypointElevation = {}) {
       if (document.activeElement !== name) name.value = route.name
       wpList.replaceChildren()
       const n = route.waypoints.length
       mobileSave.disabled = n < 2
       save.disabled = n < 2
-      journeyList.replaceChildren()
-      if (n >= 2) {
-        const endIndexes = (route.dayEnds ?? [])
-          .map((id) => route.waypoints.findIndex((point) => point.id === id))
-          .filter((index) => index > 0 && index < n - 1)
-          .sort((a, b) => a - b)
-        const boundaries = [...endIndexes, n - 1]
-        journeyList.classList.toggle('hidden', boundaries.length <= 1)
-        let startIndex = 0
-        boundaries.forEach((endIndex, dayIndex) => {
-          const day = dayIndex + 1
-          const dayLegs = (legs ?? []).slice(startIndex, endIndex)
-          const distanceM = dayLegs.length
-            ? dayLegs.reduce((sum, leg) => sum + (Number(leg.distanceM) || 0), 0)
-            : null
-          const durationS = dayLegs.length && dayLegs.every((leg) => leg.real && Number.isFinite(leg.durationS))
-            ? dayLegs.reduce((sum, leg) => sum + leg.durationS, 0)
-            : null
-          const weather = weatherDays?.[dayIndex]
-          const row = document.createElement('button')
-          row.type = 'button'
-          row.className = 'pp-journey-row'
-          row.classList.toggle('selected', selectedDay === day)
-          row.setAttribute('aria-pressed', String(selectedDay === day))
-          const dayCell = document.createElement('span')
-          dayCell.className = 'pp-journey-day'
-          const dayName = document.createElement('b')
-          dayName.textContent = `D${day}`
-          const dayDate = document.createElement('small')
-          dayDate.textContent = weather?.date?.slice?.(5) ?? ''
-          dayCell.append(dayName, dayDate)
-          const routeCell = document.createElement('span')
-          routeCell.className = 'pp-journey-route'
-          const from = document.createElement('b')
-          from.textContent = route.waypoints[startIndex].name
-          const arrow = document.createElement('i')
-          arrow.textContent = '→'
-          const to = document.createElement('b')
-          to.textContent = route.waypoints[endIndex].name
-          routeCell.append(from, arrow, to)
-          const distanceCell = document.createElement('span')
-          distanceCell.className = 'pp-journey-metric'
-          distanceCell.textContent = distanceM == null ? '—' : `${(distanceM / 1000).toFixed(1)} km`
-          const durationCell = document.createElement('span')
-          durationCell.className = 'pp-journey-metric'
-          durationCell.textContent = durationS == null ? '—' : fmtDur(durationS / 60)
-          const weatherCell = document.createElement('span')
-          weatherCell.className = 'pp-journey-weather'
-          weatherCell.textContent = weather ? `${Math.round(weather.tempMin)}–${Math.round(weather.tempMax)}°C · ${weather.precipMm.toFixed(1)}mm` : '天气未加载'
-          row.append(dayCell, routeCell, distanceCell, durationCell, weatherCell)
-          row.onclick = () => {
-            selectedDay = day
-            actions.onDaySelect?.({ day, startIndex, endIndex })
-            for (const button of journeyList.querySelectorAll('.pp-journey-row')) {
-              const active = button === row
-              button.classList.toggle('selected', active)
-              button.setAttribute('aria-pressed', String(active))
-            }
-          }
-          journeyList.appendChild(row)
-          startIndex = endIndex
-        })
-      } else journeyList.classList.add('hidden')
       // loop route: last point within ~25m of the first → merged start/end marker
       const wpsArr = route.waypoints
       const isLoop = n > 1 && Math.hypot(wpsArr[0].lon - wpsArr[n - 1].lon, wpsArr[0].lat - wpsArr[n - 1].lat) < 0.0003
@@ -368,39 +287,6 @@ export function createPlanningPanel(actions) {
       addPoint.onclick = () => actions.onInsertAt?.(n)
       wpList.appendChild(addPoint)
 
-      stat.replaceChildren()
-      if (!n) {
-        stat.innerHTML = '<span class="disclaimer">点击地形落第一个途经点</span>'
-        legsBox.classList.add('hidden')
-        return
-      }
-      const km = stats && stats.distanceM ? (stats.distanceM / 1000).toFixed(1) : '0.0'
-      const duration = durationContract({ mode: route.mode, legs: legs ?? [], stats })
-      const summary = document.createElement('span')
-      summary.className = 'pp-plan-summary'
-      summary.textContent = `${km} km · ${n} 点 · ${duration.label} ${duration.minutes == null ? '—' : fmtDur(duration.minutes)}`
-      if (stats && [stats.ascentM, stats.descentM, stats.maxEle].every(Number.isFinite)) {
-        summary.textContent += ` · ↑${stats.ascentM}m ↓${stats.descentM}m · 最高 ${stats.maxEle}m`
-      }
-      if (weatherIndex != null) summary.textContent += ` · 天气指数 ${weatherIndex}`
-      stat.appendChild(summary)
-
-      // per-leg details
-      if (legs?.length) {
-        legsBox.classList.remove('hidden')
-        legsList.replaceChildren()
-        legs.forEach((l, i) => {
-          const r = document.createElement('div')
-          r.className = 'pp-leg'
-          const dur = l.real ? ` ${fmtDur(l.durationS / 60)}` : ' 直线回退'
-          const ele = l.ascentM != null ? ` ↑${l.ascentM}m ↓${l.descentM}m` : ''
-          const shade = l.shade != null ? ` · 遮阴${Math.round(l.shade * 100)}%` : ''
-          r.textContent = `${i + 1}. ${l.from} → ${l.to} · ${(l.distanceM / 1000).toFixed(1)}km${ele}${dur}${l.real ? ' (路网)' : ''}${shade}`
-          legsList.appendChild(r)
-        })
-      } else {
-        legsBox.classList.add('hidden')
-      }
     },
 
     // ---- shared search session: command bar owns input; this surface owns its one result/selection view.
