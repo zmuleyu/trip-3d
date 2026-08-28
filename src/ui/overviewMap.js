@@ -925,7 +925,7 @@ export function createOverviewMap({
     if (!started) return
     if (moved && accepted) onWaypointMoveEnd?.(waypointId)
     else onWaypointMoveCancel?.(waypointId)
-    if (moved && accepted) {
+    if (moved) {
       // Consume only the release click at its source; a later blank-map tap
       // remains an editing gesture rather than being swallowed by a timer.
       suppressNextMapClick = { point: latestPoint ?? null, until: Date.now() + 500 }

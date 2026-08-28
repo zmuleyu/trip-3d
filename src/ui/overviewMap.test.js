@@ -614,6 +614,24 @@ describe('overview MapLibre planner map', () => {
     expect(onPlanAdd).toHaveBeenCalledWith(113.3, 41.5)
   })
 
+  it('suppresses a rejected drag release click without blocking the next blank-map tap', () => {
+    const onPlanAdd = vi.fn()
+    const onWaypointMoveCancel = vi.fn()
+    const { overview, instance } = setup({ onPlanAdd, onWaypointMove: vi.fn(() => false), onWaypointMoveCancel })
+    overview.setPlannerMode(true)
+    overview.update({ waypoints: [{ id: 'a', lon: 113, lat: 41.2 }, { id: 'b', lon: 113.2, lat: 41.4 }] }, null, VIEWPORT)
+    const marker = { layer: { id: 'trip-waypoint-circles', source: 'trip-route-waypoints' }, properties: { waypointId: 'a' } }
+    instance.emit('mousedown', { features: [marker], point: { x: 10, y: 10 }, lngLat: { lng: 113, lat: 41.2 } })
+    instance.emit('mousemove', { point: { x: 24, y: 10 }, lngLat: { lng: 113.04, lat: 41.24 } })
+    instance.emit('mouseup')
+    instance.emit('click', { point: { x: 24, y: 10 }, lngLat: { lng: 113.04, lat: 41.24 } })
+    expect(onPlanAdd).not.toHaveBeenCalled()
+    expect(onWaypointMoveCancel).toHaveBeenCalledWith('a')
+    expect(instance.dragPan.enable).toHaveBeenCalledOnce()
+    instance.emit('click', { point: { x: 80, y: 40 }, lngLat: { lng: 113.3, lat: 41.5 } })
+    expect(onPlanAdd).toHaveBeenCalledWith(113.3, 41.5)
+  })
+
   it('cancels an active preview on Escape, blur, and stage changes', () => {
     const onWaypointMoveCancel = vi.fn()
     const { overview, instance } = setup({ onWaypointMove: vi.fn(() => true), onWaypointMoveCancel })
