@@ -168,6 +168,27 @@ describe('overview MapLibre planner map', () => {
     expect(instance.terrain).toBeNull()
   })
 
+  it('merges global actions, layers, zoom, and fit into one right map dock', () => {
+    const onDockAction = vi.fn()
+    const { overview } = setup({ onDockAction })
+    overview.setPlannerMode(true)
+    const dock = overview.el.querySelector('.ui-map-dock')
+    expect(dock.querySelectorAll('button')).toHaveLength(5)
+    dock.querySelector('.ui-map-global-actions').click()
+    dock.querySelector('.ui-map-layers-toggle').click()
+    expect(onDockAction).toHaveBeenNthCalledWith(1, 'more', true)
+    expect(onDockAction).toHaveBeenNthCalledWith(2, 'layers', true)
+  })
+
+  it('uses measured shared safe areas for route fit', () => {
+    const getFitPadding = vi.fn(() => ({ top: 108, right: 430, bottom: 142, left: 96 }))
+    const { overview, instance } = setup({ getFitPadding })
+    overview.setPlannerMode(true)
+    overview.update({ waypoints: [{ id: 'a', lon: 113, lat: 41.2 }, { id: 'b', lon: 113.2, lat: 41.4 }] }, null, VIEWPORT)
+    overview.fit()
+    expect(instance.fitCalls.at(-1).options.padding).toEqual({ top: 108, right: 430, bottom: 142, left: 96 })
+  })
+
   it('keeps one transient Analyze cursor source and routes map hover/tap back without editing or jumping', () => {
     const onAnalysisCursor = vi.fn()
     const onJump = vi.fn()
@@ -332,7 +353,7 @@ describe('overview MapLibre planner map', () => {
   })
 
   it('retargets rapid toggles to the latest view and uses the mobile transition duration', () => {
-    vi.stubGlobal('matchMedia', (query) => ({ matches: query === '(max-width: 720px)' }))
+    vi.stubGlobal('matchMedia', (query) => ({ matches: query === '(max-width: 1023px)' }))
     const { overview, instance } = setup()
     overview.setPlannerMode(true)
     overview.update({ waypoints: [{ id: 'a', lon: 179.8, lat: 12 }, { id: 'b', lon: -179.8, lat: 12 }] }, null, VIEWPORT)
@@ -350,7 +371,7 @@ describe('overview MapLibre planner map', () => {
   })
 
   it('fits mobile Analyze without reserving space for the Plan bottom sheet', () => {
-    vi.stubGlobal('matchMedia', (query) => ({ matches: query === '(max-width: 720px)' }))
+    vi.stubGlobal('matchMedia', (query) => ({ matches: query === '(max-width: 1023px)' }))
     const { overview, instance } = setup()
     overview.setPlannerMode(true, { editing: false })
     overview.update({ waypoints: [{ id: 'a', lon: 113, lat: 41.2 }, { id: 'b', lon: 113.2, lat: 41.4 }] }, null, VIEWPORT)
@@ -362,7 +383,7 @@ describe('overview MapLibre planner map', () => {
   })
 
   it('keeps mobile Plan route endpoints clear of the right-side zoom instrument', () => {
-    vi.stubGlobal('matchMedia', (query) => ({ matches: query === '(max-width: 720px)' }))
+    vi.stubGlobal('matchMedia', (query) => ({ matches: query === '(max-width: 1023px)' }))
     const { overview, instance } = setup()
     overview.setPlannerMode(true)
     overview.update({ waypoints: [{ id: 'a', lon: 113, lat: 41.2 }, { id: 'b', lon: 113.2, lat: 41.4 }] }, null, VIEWPORT)
