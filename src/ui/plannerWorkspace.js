@@ -9,7 +9,7 @@ export function createPlannerWorkspace({ onStage, onSearch, onMoreAction, onSpin
         <div class="ui-planner-brand"><b>TRIP <em>3D</em></b></div>
         <form class="ui-command-search" role="search">
           <input type="search" aria-label="搜索地点、线路或营地" placeholder="搜索地点、线路、营地">
-          <button type="submit" aria-label="搜索">${iconSvg('search')}</button>
+          <button type="button" aria-label="搜索">${iconSvg('search')}</button>
         </form>
       </div>
       <div class="ui-planner-mode-island">
@@ -44,9 +44,18 @@ export function createPlannerWorkspace({ onStage, onSearch, onMoreAction, onSpin
   const buttons = [...el.querySelectorAll('[data-stage]')]
   const search = el.querySelector('.ui-command-search')
   const searchInput = search.querySelector('input')
+  const searchButton = search.querySelector('button')
   const spine = el.querySelector('.ui-trip-spine')
   const spineDays = spine.querySelector('.ui-trip-spine-days')
-  search.addEventListener('submit', (event) => { event.preventDefault(); onSearch?.(searchInput.value) })
+  const submitSearch = () => {
+    const query = searchInput.value.trim()
+    if (query) onSearch?.(query)
+  }
+  search.addEventListener('submit', (event) => { event.preventDefault(); submitSearch() })
+  searchButton.addEventListener('click', () => {
+    if (!searchInput.value.trim()) { searchInput.focus(); return }
+    submitSearch()
+  })
   spine.querySelector('.ui-trip-spine-title').addEventListener('click', () => onSpineExpand?.())
   spine.querySelector('.ui-trip-spine-expand').addEventListener('click', () => onSpineExpand?.())
   const moreMenu = el.querySelector('.ui-planner-more-menu')
@@ -81,6 +90,17 @@ export function createPlannerWorkspace({ onStage, onSearch, onMoreAction, onSpin
     return true
   }
   buttons.forEach((button) => button.addEventListener('click', () => applyStage(button.dataset.stage, true)))
+  el.querySelector('.ui-view-switch').addEventListener('keydown', (event) => {
+    if (!['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(event.key)) return
+    event.preventDefault()
+    const current = buttons.indexOf(document.activeElement)
+    const nextIndex = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1
+      : (current + (event.key === 'ArrowRight' ? 1 : buttons.length - 1)) % buttons.length
+    const next = buttons[nextIndex]
+    if (next.disabled) return
+    next.focus()
+    applyStage(next.dataset.stage, true)
+  })
   applyStage('plan')
   return {
     el,

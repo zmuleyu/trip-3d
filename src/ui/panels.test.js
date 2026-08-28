@@ -21,6 +21,25 @@ describe('planning panel route contract', () => {
     expect(names.every(Boolean)).toBe(true)
   })
 
+  it('shows place context and category before role assignment, with no direct add action', () => {
+    const onSearchSelect = vi.fn()
+    const onSearchRole = vi.fn()
+    const panel = createPlanningPanel({ onSearchSelect, onSearchRole })
+    const place = { name: '人民公园', context: '成都市 · 青羊区 · 四川省', category: '公园' }
+
+    panel.setSearchSession({ state: 'results', results: [place], message: '找到 1 个地点，请先确认城市或区县' })
+    expect(panel.el.textContent).toContain('成都市 · 青羊区 · 四川省')
+    expect(panel.el.textContent).toContain('公园')
+    expect(panel.el.textContent).not.toContain('⊕加点')
+    panel.el.querySelector('.pp-result').click()
+    expect(onSearchSelect).toHaveBeenCalledWith(place)
+
+    panel.setSearchSession({ state: 'place-selection', selected: place, message: '人民公园 · 成都市 · 青羊区 · 四川省 · 公园' })
+    expect([...panel.el.querySelectorAll('.pp-place-actions button')].map((button) => button.textContent)).toEqual(['设为起点', '设为终点', '添加途经点', '仅查看地点'])
+    panel.el.querySelector('.pp-place-actions button').click()
+    expect(onSearchRole).toHaveBeenCalledWith('start')
+  })
+
   it('orders naming, point sequence, disclosed editing, and one save action', () => {
     const panel = createPlanningPanel({})
     const text = panel.el.textContent

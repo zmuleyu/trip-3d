@@ -126,6 +126,14 @@ export class TripRouteController {
     return true
   }
 
+  replaceWaypoint(id, lon, lat, ele, name) {
+    const waypoint = this.#route.waypoints.find((candidate) => candidate.id === id)
+    if (!waypoint) return null
+    Object.assign(waypoint, { lon, lat, ele, name: name || waypoint.name })
+    this.bumpRevision({ geometry: true })
+    return waypoint
+  }
+
   clear() {
     this.#route.waypoints = []
     this.#route.dayEnds = []

@@ -21,6 +21,19 @@ describe('planner workspace chrome', () => {
     expect(workspace.el.querySelector('canvas')).toBeNull()
   })
 
+  it('supports standard arrow-key navigation for the Plan and Analyze tabs', () => {
+    const onStage = vi.fn()
+    const workspace = createPlannerWorkspace({ onStage })
+    document.body.appendChild(workspace.el)
+    workspace.setAnalyzeAvailable(true)
+    const plan = workspace.el.querySelector('[data-stage="plan"]')
+    plan.focus()
+    plan.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
+    expect(document.activeElement).toBe(workspace.el.querySelector('[data-stage="analyze"]'))
+    expect(workspace.stage).toBe('analyze')
+    expect(onStage).toHaveBeenCalledWith('analyze')
+  })
+
   it('keeps route-coverage internals out of the workspace chrome', () => {
     const workspace = createPlannerWorkspace()
     workspace.setCoverage({ covered: false, outsideCount: 18, total: 240 })
@@ -48,6 +61,10 @@ describe('planner workspace chrome', () => {
     search.querySelector('input').value = '四姑娘山'
     search.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
     expect(onSearch).toHaveBeenCalledWith('四姑娘山')
+
+    search.querySelector('input').value = ''
+    search.querySelector('button').click()
+    expect(document.activeElement).toBe(search.querySelector('input'))
 
     workspace.toggleMore()
     expect(workspace.el.querySelector('.ui-planner-more-menu').classList.contains('hidden')).toBe(false)

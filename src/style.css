@@ -314,12 +314,23 @@ body.planner-operate .ui-settings { top: 58px; width: min(360px, calc(100vw - 24
 .pp-search input { flex: 1; font: inherit; font-size: 11px; border: 1px solid rgba(23,25,27,0.25); background: rgba(255,255,255,0.7); padding: 4px 6px; }
 .pp-search-btn { font: inherit; font-size: 11px; padding: 4px 10px; cursor: pointer; background: #17191b; color: #fff; border: 1px solid #17191b; }
 .pp-search-btn:disabled { opacity: 0.5; cursor: default; }
-.pp-results { border: 1px solid rgba(23,25,27,0.2); background: rgba(255,255,255,0.92); margin-bottom: 6px; max-height: 200px; overflow-y: auto; }
+.pp-results { border: 1px solid rgba(23,25,27,0.2); background: rgba(255,255,255,0.92); margin-bottom: 6px; max-height: 260px; overflow-y: auto; }
 .pp-results.hidden { display: none; }
-.pp-result { display: flex; align-items: center; gap: 6px; padding: 4px 6px; font-size: 11px; border-bottom: 1px solid rgba(23,25,27,0.08); }
-.pp-result-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: default; }
-.pp-result button { font: inherit; font-size: 10px; padding: 2px 6px; cursor: pointer; background: #fff; border: 1px solid rgba(23,25,27,0.3); }
-.pp-result button.primary { background: #ff4d00; border-color: #ff4d00; color: #fff; }
+.pp-result { display: flex; width: 100%; align-items: center; gap: 8px; padding: 8px 9px; color: var(--trip-ink); text-align: left; font: inherit; font-size: 11px; border: 0; border-bottom: 1px solid var(--trip-line); background: transparent; cursor: pointer; }
+.pp-result:hover, .pp-result:focus-visible { background: rgba(240,74,29,.08); outline: 2px solid var(--trip-route); outline-offset: -2px; }
+.pp-result-copy { flex: 1; min-width: 0; }
+.pp-result-copy b, .pp-result-copy span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pp-result-copy span { margin-top: 2px; color: var(--trip-ink-soft); }
+.pp-result small { flex: 0 0 auto; color: var(--trip-ink-soft); }
+.pp-search-status { margin: 0; padding: 8px 9px; color: var(--trip-ink-soft); font-size: 11px; }
+.pp-search-status.is-error { color: var(--trip-warning); }
+.pp-place-selection { padding: 4px 9px 10px; }
+.pp-place-selection > b, .pp-place-selection > span { display: block; }
+.pp-place-selection > span { margin-top: 2px; color: var(--trip-ink-soft); font-size: 11px; }
+.pp-place-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 10px; }
+.pp-place-actions button { min-height: 34px; padding: 5px 7px; border: 1px solid var(--trip-line-strong); border-radius: var(--trip-radius-control); background: var(--trip-paper-strong); color: var(--trip-ink); font: inherit; font-size: 11px; cursor: pointer; }
+.pp-place-actions button.primary { border-color: var(--trip-route); background: var(--trip-route); color: var(--trip-paper-strong); }
+.pp-place-actions button:focus-visible { outline: 2px solid var(--trip-route); outline-offset: 2px; }
 .pp-empty { padding: 6px; font-size: 11px; opacity: 0.6; }
 .pp-attr { font-size: 9px; opacity: 0.5; padding: 3px 6px; }
 .pp-snap-row { display: flex; align-items: center; gap: 5px; font-size: 11px; margin-bottom: 6px; cursor: pointer; }
@@ -713,7 +724,7 @@ body.planner-operate.planner-layers-open .ui-layer-tip { display: none; }
   .pp-mobile-primary button:disabled { opacity: .42; }
   .pp-route-mode button, .pp-ops-main button, .pp-ops-edit button, .pp-search input,
   .pp-search-btn, .pp-amap-toggle, .pp-legs-head, .ui-panel-chev, .name-input,
-  .pp-result button, .admin-actions button { min-height: 44px; }
+  .pp-result, .pp-place-actions button, .admin-actions button { min-height: 44px; }
   body.planner-operate .ui-panel .name-input { min-height: 44px; }
   .ui-panel-chev { min-width: 44px; }
   .pp-search-btn { min-width: 46px; }
@@ -1904,11 +1915,16 @@ body.weather-operate .ui-panel-body { padding: 18px 16px 22px; }
 @media (max-width: 1023px) {
   .ui-planner-bar {
     height: 58px;
-    grid-template-columns: 74px minmax(0, 1fr) 44px;
+    grid-template-columns: 68px 40px minmax(0, 1fr) 44px;
     padding: 0 8px;
     background: #171d20;
   }
   .ui-planner-brand b { font-size: 14px; }
+  .ui-command-search { display: block; width: 40px; height: 40px; }
+  .ui-command-search input { width: 40px; }
+  .ui-command-search:focus-within { width: min(220px, calc(100vw - 24px)); }
+  .ui-command-search:focus-within input { width: 100%; opacity: 1; pointer-events: auto; transform: none; background: rgba(18,24,28,.98); }
+  .ui-command-search:focus-within button { right: 0; left: auto; }
   .ui-planner-mode-island { display: flex; justify-self: center; justify-content: center; width: max-content; min-width: 0; padding: 2px; border-radius: 10px; }
   .ui-view-switch { display: flex; flex: none; width: auto; background: transparent; }
   .ui-view-switch button { flex: 0 0 auto; min-width: 62px; height: 44px; font-size: 12px; }

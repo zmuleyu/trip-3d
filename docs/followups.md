@@ -1,5 +1,7 @@
 # trip-3d followups (v1.1+)
 
+Current active delivery: [R1 search and route intent flow](specs/2026-08-28-search-route-flow-roadmap.md).
+
 ## Architecture evolution
 
 The current production baseline keeps one shared trip across MapLibre Plan/Analyze,
