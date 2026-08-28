@@ -6,7 +6,7 @@ The current production baseline keeps one shared trip across MapLibre Plan/Analy
 local storage, weather, save, and share. Continue architecture work one reviewed
 Goal at a time; do not combine these phases into a broad rewrite.
 
-- [ ] S1: extract a renderer-neutral `TripRouteController` that owns route mutation,
+- [x] S1: extract a renderer-neutral `TripRouteController` that owns route mutation,
   selection, history, revision, day boundaries, and derived route stats. Preserve
   stored-route, share-link, GPX, provider, MapLibre, Three, and UI behavior.
 - [ ] S2: after S1 review, extract a workspace lifecycle coordinator for Plan/Analyze,

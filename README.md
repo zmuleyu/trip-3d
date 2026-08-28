@@ -34,13 +34,13 @@ The project grew from the upstream terrain experiment, but its current product s
 
 ## Current architecture
 
-- **Trip state:** `src/main.js` currently coordinates the shared route, history, analysis, providers, storage, share, and renderer adapters. The next architecture phase is to extract these responsibilities incrementally without creating a second state model.
+- **Trip state:** `src/lib/tripRouteController.js` owns the single shared route, waypoint selection, mutation/history, revisions, day boundaries, and derived route analysis. `src/main.js` coordinates providers, storage/share codecs, and renderer adapters through that controller without a second state model.
 - **Plan / Analyze map:** MapLibre owns the map workspace, 2D planning, native terrain, route/waypoint overlays, weather markers, fit padding, and truthful terrain fallback.
 - **Legacy Three tools:** Three terrain and its frame scheduler still support procedural terrain, poster/flyover output, advanced settings, and legacy instruments. Plan stops its continuous legacy RAF; Analyze and short camera work wake it when required.
 - **UI:** one Planner workspace, destination rail, shared Inspector host, fluid desktop information instruments, and a mobile peek/half/full sheet.
 - **Providers and persistence:** routing, geocoding, weather, DEM, administrative overlays, IndexedDB route storage, GPX, and compressed URL sharing remain separate seams around the shared trip.
 
-See [PRODUCT.md](PRODUCT.md) for product behavior, [DESIGN.md](DESIGN.md) for visual authority, and [docs/followups.md](docs/followups.md) for the staged architecture path and deferred capabilities.
+See [PRODUCT.md](PRODUCT.md) for product behavior, [DESIGN.md](DESIGN.md) for visual authority, and [docs/followups.md](docs/followups.md) for the remaining staged architecture path and deferred capabilities.
 
 ## Run locally
 
