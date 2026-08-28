@@ -19,7 +19,8 @@
 ## Validation
 
 - Run focused tests for changed UI modules; use the full suite only when shared behavior makes it necessary.
-- Run `npm run build` once on the final candidate before release.
+- Review the exact diff before the final runtime gate. Run `npm run test:changed`, then use `npm run acceptance` for the final build plus desktop/390px evidence when runtime or UI behavior changed.
+- Do not run a separate build when acceptance already covers it unless exact bundle measurement is part of the task. A post-acceptance edit reruns only evidence it can invalidate.
 - Run the Impeccable detector only on changed UI paths and act on newly introduced warnings. Do not turn inherited stylesheet advisories into a broad cleanup task.
 - Browser acceptance is one desktop pass and one 390px pass covering the primary route flow, changed inspector states, and console errors.
 - GitHub Actions are not part of the release gate unless the user explicitly requests them or branch protection requires them.
@@ -29,4 +30,6 @@
 - Use a `codex/` branch and stage only task-owned paths.
 - Bump patch for compatible UI fixes, minor for new user-facing capabilities, and major only for breaking stored-route or shared-link changes.
 - Commit, push, PR, merge, and Cloudflare Pages deployment remain separate authority gates.
-- For an authorized Pages release, deploy the exact final `dist` candidate with the real full commit SHA and verify the immutable deployment URL plus `https://trip-3d.pages.dev` once.
+- Before merging, verify the exact PR base/head and confirm Pages branch controls still have automatic production deployments disabled and preview deployment set to `none`. If that state cannot be verified, treat the merge as production-impacting and stop.
+- After merging, refreeze clean `main` and confirm no Pages deployment was created. Only an explicitly authorized release may bump/tag, build from the merge SHA, and deploy manually.
+- For an authorized Pages release, use the real full merge SHA in `wrangler pages deploy`, then verify the immutable deployment URL and `https://trip-3d.pages.dev` once. Confirm automatic deployments remain disabled afterward.

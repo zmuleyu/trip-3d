@@ -92,8 +92,11 @@ Automatic Git deployments are disabled for production and preview branches. A de
 
 ```bash
 npm run build
-npx wrangler pages deploy dist --project-name trip-3d
+npx wrangler pages deploy dist --project-name trip-3d --branch main \
+  --commit-hash <full-main-sha> --commit-dirty=false
 ```
+
+Before source merge and again after release, verify Pages branch controls still keep automatic production deployments disabled and preview deployment set to `none`.
 
 ## Tech
 
