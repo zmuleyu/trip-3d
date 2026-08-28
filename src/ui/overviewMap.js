@@ -20,6 +20,7 @@ const TERRAIN_PITCH = 55
 const MOBILE_TERRAIN_PITCH = 46
 const DESKTOP_TRANSITION_MS = 650
 const MOBILE_TRANSITION_MS = 380
+const WAYPOINT_DRAG_HYSTERESIS_PX = 10
 const BASE_LABELS_TO_HIDE = /poi|housenumber|airport|aeroway|transit|neighbourhood|suburb/i
 const SOURCE_IDS = {
   terrain: 'trip-native-terrain',
@@ -419,7 +420,7 @@ export function createOverviewMap({
   let weatherOpenTimer = null
   let weatherCloseTimer = null
   let waypointDrag = null
-  let suppressNextMapClick = false
+  let suppressNextMapClick = null
   let suppressMapClickTimer = null
   let mapErrorKind = null
   const baseLabelVisibility = new Map()
@@ -865,30 +866,43 @@ export function createOverviewMap({
 
   function startWaypointDrag(event) {
     if (!plannerMode || !editingMode || event.originalEvent?.button > 0) return
+    if ((event.originalEvent?.touches?.length ?? event.points?.length ?? 0) > 1) {
+      cancelWaypointDrag()
+      return
+    }
     const feature = waypointFeature(event)
     const waypointId = feature?.properties?.waypointId
     if (!waypointId) return
-    event.preventDefault?.()
     onWaypointSelect?.(waypointId)
-    onWaypointMoveStart?.(waypointId)
     waypointDrag = {
       waypointId,
       startPoint: event.point,
+      latestPoint: event.point,
       startLngLat: event.lngLat,
       moved: false,
       accepted: false,
+      started: false,
     }
-    map.dragPan.disable()
-    map.getCanvas().style.cursor = 'grabbing'
   }
 
   function moveWaypointDrag(event) {
     if (!waypointDrag || !event.lngLat) return
+    if ((event.originalEvent?.touches?.length ?? event.points?.length ?? 0) > 1) {
+      cancelWaypointDrag()
+      return
+    }
     const movedPx = event.point && waypointDrag.startPoint
       ? Math.hypot(event.point.x - waypointDrag.startPoint.x, event.point.y - waypointDrag.startPoint.y)
       : Math.hypot(event.lngLat.lng - waypointDrag.startLngLat.lng, event.lngLat.lat - waypointDrag.startLngLat.lat) * 1e6
-    if (!waypointDrag.moved && movedPx < 5) return
+    if (!waypointDrag.moved && movedPx < WAYPOINT_DRAG_HYSTERESIS_PX) return
+    if (!waypointDrag.started) {
+      waypointDrag.started = true
+      onWaypointMoveStart?.(waypointDrag.waypointId)
+      map.dragPan.disable()
+      map.getCanvas().style.cursor = 'grabbing'
+    }
     waypointDrag.moved = true
+    waypointDrag.latestPoint = event.point ?? waypointDrag.latestPoint
     const accepted = onWaypointMove?.(waypointDrag.waypointId, event.lngLat.lng, event.lngLat.lat) === true
     waypointDrag.accepted ||= accepted
   }
@@ -904,35 +918,51 @@ export function createOverviewMap({
 
   function endWaypointDrag() {
     if (!waypointDrag) return
-    const { waypointId, moved, accepted } = waypointDrag
+    const { waypointId, moved, accepted, started, latestPoint } = waypointDrag
     waypointDrag = null
-    map.dragPan.enable()
+    if (started) restoreMapGestures()
     map.getCanvas().style.cursor = ''
+    if (!started) return
     if (moved && accepted) onWaypointMoveEnd?.(waypointId)
     else onWaypointMoveCancel?.(waypointId)
     if (moved) {
-      // A MapLibre click synthesized by this pointer release belongs to this drag
-      // only. The next task clears the guard when no such click is dispatched.
-      suppressNextMapClick = true
+      // Consume only the release click at its source; a later blank-map tap
+      // remains an editing gesture rather than being swallowed by a timer.
+      suppressNextMapClick = { point: latestPoint ?? null, until: Date.now() + 500 }
       clearTimeout(suppressMapClickTimer)
       suppressMapClickTimer = setTimeout(() => {
-        suppressNextMapClick = false
+        suppressNextMapClick = null
         suppressMapClickTimer = null
-      }, 0)
+      }, 500)
     }
+  }
+
+  function restoreMapGestures() {
+    map.dragPan.enable()
+    map.touchZoomRotate?.enable?.()
   }
 
   function cancelWaypointDrag() {
     if (!waypointDrag) return
-    const { waypointId, moved, accepted, startLngLat } = waypointDrag
+    const { waypointId, started, startLngLat } = waypointDrag
     waypointDrag = null
-    map.dragPan.enable()
+    if (started) restoreMapGestures()
     map.getCanvas().style.cursor = ''
-    onWaypointMoveCancel?.(waypointId, startLngLat?.lng, startLngLat?.lat)
+    if (started) onWaypointMoveCancel?.(waypointId, startLngLat?.lng, startLngLat?.lat)
+  }
+
+  function isReleaseSyntheticClick(event) {
+    if (!suppressNextMapClick || Date.now() > suppressNextMapClick.until) return false
+    const point = event?.point
+    const source = suppressNextMapClick.point
+    return !!point && !!source && Math.hypot(point.x - source.x, point.y - source.y) <= WAYPOINT_DRAG_HYSTERESIS_PX
   }
 
   map.on('mousedown', 'trip-waypoint-circles', startWaypointDrag)
   map.on('touchstart', 'trip-waypoint-circles', startWaypointDrag)
+  map.on('touchstart', (event) => {
+    if ((event.originalEvent?.touches?.length ?? event.points?.length ?? 0) > 1) cancelWaypointDrag()
+  })
   map.on('mousemove', moveWaypointDrag)
   map.on('mousemove', movePlanningGuide)
   map.on('mousemove', requestAnalysisCursor)
@@ -958,6 +988,11 @@ export function createOverviewMap({
   weatherCard.querySelector('header button').onclick = () => closeWeatherCard({ force: true })
   weatherCard.querySelector('[data-weather-action]').onclick = () => onWeatherDetails?.(weatherFeatureCurrent?.properties ?? null)
   map.getCanvas().addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && waypointDrag) {
+      event.stopPropagation()
+      cancelWaypointDrag()
+      return
+    }
     if (event.key === 'Escape' && !weatherCard.classList.contains('hidden')) {
       event.stopPropagation()
       closeWeatherCard({ force: true })
@@ -978,10 +1013,11 @@ export function createOverviewMap({
       return
     }
     if (suppressNextMapClick) {
-      suppressNextMapClick = false
+      const releaseClick = isReleaseSyntheticClick(event)
+      suppressNextMapClick = null
       clearTimeout(suppressMapClickTimer)
       suppressMapClickTimer = null
-      return
+      if (releaseClick) return
     }
     if (requestAnalysisCursor(event)) return
     if (plannerMode && plannerView === '3d' && !editingMode) return
@@ -992,6 +1028,7 @@ export function createOverviewMap({
   map.getCanvas().addEventListener('pointerleave', (event) => {
     if (event.pointerType !== 'touch' && plannerView === '3d') onAnalysisCursor?.(null)
   })
+  globalThis.addEventListener?.('blur', cancelWaypointDrag)
 
   zoomIn.onclick = () => map.zoomIn({ duration: 160 })
   zoomOut.onclick = () => map.zoomOut({ duration: 160 })
@@ -1045,6 +1082,7 @@ export function createOverviewMap({
     },
     setPlannerView(next) {
       const requested = next === '3d' ? '3d' : '2d'
+      if (requested !== plannerView) cancelWaypointDrag()
       if (requested === '3d' && !enableNativeTerrain()) {
         degradeTo2d(nativeTerrainFailure)
         return false

@@ -1,6 +1,6 @@
 ---
 title: Search and route intent flow roadmap
-status: R3 active and frozen
+status: R4 active and frozen
 updated: 2026-08-28
 scope: R3 bounded route-result alternatives
 ---
@@ -35,7 +35,7 @@ unavailable. Analyze reports elevation loading or unavailable truthfully and can
 recover when current-run enrichment succeeds. Stored routes, share links, GPX,
 weather, Admin, poster, flyover, and provider fallback contracts remain compatible.
 
-## R3 — active and frozen
+## R3 — completed
 
 One existing OSRM request may yield up to two structurally valid route results.
 The active result is transiently bound to `route.id`, `geometryRevision`, mode,
@@ -49,7 +49,15 @@ Malformed candidates fail closed. One result or a routing failure retains the
 existing single-route or truthful straight-line fallback state with no empty
 selector. A route or mode change invalidates all prior candidates.
 
-## Later dependencies (not part of R3)
+## R4 — active and frozen
 
-- R4: mobile gesture and accessibility work depends on the settled R3 choice and stale-result seam.
-- R5: provider productionization, response-size policy, caching, and rate controls remain a separate cost, policy, and production-authority phase.
+Mobile gesture ownership and accessibility work uses the settled R3 choice and
+stale-result seam. Plan accepts a deliberate blank-map tap, preserves MapLibre
+pan and multi-touch gestures, and permits waypoint preview only after the drag
+hysteresis threshold. Analyze remains read-only. The mobile sheet, global menu,
+and attribution preserve the map working area without overlap.
+
+## R5 dependency (not part of R4)
+
+Provider productionization, response-size policy, caching, and rate controls
+remain a separate cost, policy, and production-authority phase.

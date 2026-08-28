@@ -82,6 +82,17 @@ describe('planner workspace chrome', () => {
     expect(onMoreAction).toHaveBeenCalledWith('admin')
   })
 
+  it('keeps global actions and layers mutually exclusive', () => {
+    const onMenuChange = vi.fn()
+    const workspace = createPlannerWorkspace({ onMenuChange })
+    workspace.setLayersOpen(true)
+    expect(document.body.classList.contains('planner-layers-open')).toBe(true)
+    workspace.setMoreOpen(true)
+    expect(document.body.classList.contains('planner-layers-open')).toBe(false)
+    expect(workspace.moreOpen).toBe(true)
+    expect(onMenuChange).toHaveBeenLastCalledWith('more', true)
+  })
+
   it('renders a compact multi-day trip spine and opens details from either edge', () => {
     const onSpineExpand = vi.fn()
     const workspace = createPlannerWorkspace({ onSpineExpand })
