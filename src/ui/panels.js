@@ -50,6 +50,13 @@ export function createPlanningPanel(actions) {
   snapRow.append(modeGroup, snapStatus)
   el.appendChild(snapRow)
 
+  // Candidates are derived from one provider result only. Their controls are
+  // native buttons, so a route choice remains discoverable and keyboard usable.
+  const alternatives = document.createElement('div')
+  alternatives.className = 'pp-route-alternatives hidden'
+  alternatives.setAttribute('role', 'group')
+  alternatives.setAttribute('aria-label', '路线方案')
+
   const mobilePrimary = document.createElement('div')
   mobilePrimary.className = 'pp-mobile-primary'
   const mapFocus = document.createElement('button')
@@ -161,11 +168,29 @@ export function createPlanningPanel(actions) {
   secondary.appendChild(importGpx)
   // The inspector has one task: name the route, add/reorder points, then save.
   // Route summaries, day cards, and elevation details stay on the map surface.
-  el.replaceChildren(results, nameSection, name, routeSection, snapRow, wpList, secondary, opsMain, mobilePrimary)
+  el.replaceChildren(results, nameSection, name, routeSection, snapRow, alternatives, wpList, secondary, opsMain, mobilePrimary)
 
   return {
     el,
     get nameEl() { return name },
+    setRouteAlternatives(candidates = [], selectedIndex = 0) {
+      alternatives.replaceChildren()
+      const valid = candidates.length > 1 ? candidates.slice(0, 2) : []
+      alternatives.classList.toggle('hidden', valid.length < 2)
+      valid.forEach((candidate, index) => {
+        const button = document.createElement('button')
+        button.type = 'button'
+        button.className = 'pp-route-alternative'
+        const selected = index === selectedIndex
+        button.classList.toggle('selected', selected)
+        button.setAttribute('aria-pressed', String(selected))
+        const distance = Number.isFinite(candidate.distanceM) ? `${(candidate.distanceM / 1000).toFixed(1)} km` : '距离未知'
+        const duration = Number.isFinite(candidate.durationS) ? fmtDur(candidate.durationS / 60) : '时长未知'
+        button.textContent = `方案 ${index + 1}${selected ? '（当前）' : ''} · ${distance} · ${duration}`
+        button.onclick = () => actions.onRouteAlternative?.(index)
+        alternatives.appendChild(button)
+      })
+    },
     // update(route, stats, legs, weatherIndex, profile) — timeline list + summary card + legs
     update(route, stats, legs = null, weatherIndex = null, profile = 'foot', weatherDays = null, waypointElevation = {}) {
       if (document.activeElement !== name) name.value = route.name

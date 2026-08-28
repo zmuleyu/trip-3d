@@ -145,6 +145,20 @@ function setup(options) {
 }
 
 describe('overview MapLibre planner map', () => {
+  it('keeps only unselected route alternatives in a subdued MapLibre source', () => {
+    const { overview, instance } = setup()
+    overview.setPlannerMode(true)
+    overview.update({ waypoints: [{ id: 'a', lon: 113, lat: 41.2 }, { id: 'b', lon: 113.2, lat: 41.4 }] }, null, VIEWPORT, {
+      alternatives: [
+        { id: 'primary', geometry: [[113, 41.2], [113.2, 41.4]] },
+        { id: 'alternate', geometry: [[113, 41.2], [113.1, 41.35], [113.2, 41.4]] },
+      ],
+      selectedAlternative: 0,
+    })
+    expect(instance.getSource('trip-route-alternatives').data.features).toEqual([
+      expect.objectContaining({ properties: expect.objectContaining({ alternativeId: 'alternate', label: '方案 2' }) }),
+    ])
+  })
   it('creates exactly one MapLibre map with the OpenFreeMap style and required attribution', () => {
     const { overview, instance } = setup()
     overview.setPlannerMode(true)

@@ -34,6 +34,7 @@ import { createSharePanel, renderPoster } from './ui/sharePanel.js'
 import { buildPosterData } from './lib/poster.js'
 import { sampleRouteAnalysisPath, syncRouteAnalysisConsumer } from './lib/routeAnalysis.js'
 import { createRouteDemAnalysisController, createRouteDemCoverage, createRouteDemRunIdentity } from './lib/routeDemCoverage.js'
+import { createRouteCandidateId, isCurrentRouteCandidate, routeCandidatePathKey, weatherResultMatchesPath } from './lib/routeCandidates.js'
 import { initialAnalysisCursorDistance } from './lib/analysisCursor.js'
 import { sunPosition, shadeFraction } from './lib/sun.js'
 import { resamplePath, flyoverDuration, cameraFrame } from './lib/flyover.js'
@@ -798,20 +799,35 @@ function routeMutationElevation(lon, lat, fallback = 0) {
 let lastRouteCoverage = { covered: true, outsideCount: 0, total: 0, bounds: null }
 
 function activeRouteCoordinates() {
-  if (!route.waypointPreviewing && snapState.on && snapState.geometry && snapState.version === snapVersion()) return snapState.geometry
+  const candidate = activeSnapCandidate()
+  if (candidate) return candidate.geometry
   return route.waypoints
 }
 
 function activeRouteAnalysisGeometry() {
-  return !route.waypointPreviewing && snapState.on && snapState.geometry && snapState.version === snapVersion()
-    ? snapState.geometry
-    : null
+  return activeSnapCandidate()?.geometry ?? null
+}
+
+function activeSnapCandidate() {
+  if (route.waypointPreviewing || !snapState.on || snapState.version !== snapVersion() || snapState.mode !== route.mode) return null
+  const candidate = snapState.alternatives?.[snapState.selectedAlternative]
+  return isCurrentRouteCandidate(candidate, { routeId: route.id, geometryRevision: route.geometryRevision, mode: route.mode }) ? candidate : null
+}
+
+function clearSnapResult() {
+  snapState.geometry = null
+  snapState.legs = null
+  snapState.alternatives = []
+  snapState.selectedAlternative = 0
+  snapState.mode = route.mode
+  planningPanel?.setRouteAlternatives?.([])
 }
 
 function currentRouteAnalysisGeometryKey() {
   const snappedGeometry = activeRouteAnalysisGeometry()
   if (route.waypointPreviewing) return 'preview'
-  return snappedGeometry ? `snapped:${snapState.version}:result:${snapState.resultId}` : 'raw'
+  const candidate = activeSnapCandidate()
+  return snappedGeometry ? routeCandidatePathKey({ version: snapState.version, resultId: snapState.resultId, candidate }) : 'raw'
 }
 
 function currentRouteCorridorRun() {
@@ -957,7 +973,7 @@ function refreshUnavailableRouteAnalysis(coordinates, { recordHistory, fitOvervi
     minEle: null,
     driveMinutes: null,
   }, [], { fitOverview })
-  if (weatherState.result && weatherState.revision !== route.revision) weatherState.requestId++
+  if (weatherState.result && !weatherMatchesCurrentPath()) invalidateWeatherForDerivedPath()
   if (adminInteraction.selected) scheduleAdminRouteStat()
 }
 
@@ -1053,8 +1069,9 @@ function applyReadyRouteAnalysis({ recordHistory = false, fitOverview = false } 
   route.normalizeDayBoundaries() // id-based markers: drop refs to deleted waypoints
   if (recordHistory) route.recordHistory() // safe: dedup no-ops on non-route refreshes
   updateRouteUI(route, lastRouteAnalysis.stats, pts, { fitOverview })
-  // route edited → any in-flight weather query for the old revision is void
-  if (weatherState.result && weatherState.revision !== route.revision) weatherState.requestId++
+  // Route geometry or the selected provider path changed: no weather result
+  // may remain attached to a different derived path.
+  if (weatherState.result && !weatherMatchesCurrentPath()) invalidateWeatherForDerivedPath()
   if (adminInteraction.selected) scheduleAdminRouteStat() // route change → recompute L4 stat
   return true
 }
@@ -1078,6 +1095,9 @@ const snapState = {
   on: route.mode !== 'straight',
   geometry: null,
   legs: null,
+  alternatives: [],
+  selectedAlternative: 0,
+  mode: route.mode,
   version: '',
   resultId: 0,
   requestId: 0,
@@ -1091,6 +1111,9 @@ const snapRouteKey = (wps) => `osrm:${snapProfile}:` + wps.map((w) => `${w.lon.t
 
 function scheduleSnap() {
   if (!snapState.on) return
+  // A new request is a new result boundary even before the response arrives;
+  // never leave a prior route choice selectable while its replacement is pending.
+  if (snapState.alternatives.length) clearSnapResult()
   clearTimeout(snapTimer)
   snapTimer = setTimeout(runSnap, 400)
 }
@@ -1099,8 +1122,7 @@ async function runSnap() {
   const wps = route.waypoints
   if (!snapState.on) return
   if (wps.length < 2) {
-    snapState.geometry = null
-    snapState.legs = null
+    clearSnapResult()
     snapState.version = snapVersion()
     refreshRoute()
     return
@@ -1109,17 +1131,16 @@ async function runSnap() {
   const ver = snapVersion()
   const reqId = ++snapState.requestId
   const cached = snapCache.get(key)
-  if (cached) { commitSnap(cached.geometry, cached.legs, ver, reqId); return }
+  if (cached) { commitSnap(cached, ver, reqId); return }
   planningPanel.setRouteMode(route.mode, routeProviderStatus({ state: 'calculating' }))
   try {
-    const { geometry, legs } = await snapFetch(key, wps)
+    const result = await snapFetch(key, wps)
     if (reqId !== snapState.requestId || ver !== snapVersion()) return
-    commitSnap(geometry, legs, ver, reqId)
+    commitSnap(result, ver, reqId)
   } catch (err) {
     console.warn('snap failed', err)
     if (reqId !== snapState.requestId) return
-    snapState.geometry = null
-    snapState.legs = null
+    clearSnapResult()
     snapState.version = ver
     planningPanel.setRouteMode(route.mode, routeProviderStatus({ state: 'unavailable' }))
     toast.show('路网暂不可用：当前为直线示意，无时长')
@@ -1136,7 +1157,7 @@ function snapFetch(key, wps) {
   const p = (async () => {
     try {
       const r = await getRouter().route(wps.map(({ lon, lat }) => ({ lon, lat })))
-      const out = { geometry: r.geometry, legs: r.legs }
+      const out = { geometry: r.geometry, legs: r.legs, alternatives: r.alternatives }
       snapCache.set(key, out)
       return out
     } catch (err) {
@@ -1177,15 +1198,41 @@ function snapFetch(key, wps) {
   return p
 }
 
-function commitSnap(geometry, legs, ver, reqId) {
+function commitSnap(result, ver, reqId) {
   if (reqId !== snapState.requestId || ver !== snapVersion()) return
-  snapState.geometry = geometry
-  snapState.legs = legs
+  const alternatives = (result.alternatives?.length ? result.alternatives : [result]).slice(0, 2)
+    .filter((candidate) => candidate?.geometry?.length >= 2 && Array.isArray(candidate.legs))
+    .map((candidate, index) => ({
+      ...candidate,
+      id: createRouteCandidateId({ routeId: route.id, geometryRevision: route.geometryRevision, mode: route.mode, requestId: reqId, index }),
+      routeId: route.id,
+      geometryRevision: route.geometryRevision,
+      mode: route.mode,
+      requestId: reqId,
+    }))
+  if (!alternatives.length) return
+  snapState.alternatives = alternatives
+  snapState.selectedAlternative = 0
+  snapState.geometry = alternatives[0].geometry
+  snapState.legs = alternatives[0].legs
+  snapState.mode = route.mode
   snapState.version = ver
   snapState.resultId++
-  const routed = legs.filter((leg) => leg?.real !== false).length
-  planningPanel.setRouteMode(route.mode, routeProviderStatus({ routed, total: legs.length }))
+  const routed = alternatives[0].legs.filter((leg) => leg?.real !== false).length
+  planningPanel.setRouteMode(route.mode, routeProviderStatus({ routed, total: alternatives[0].legs.length }))
+  planningPanel.setRouteAlternatives(alternatives, 0)
   refreshRoute()
+}
+
+function selectRouteAlternative(index) {
+  const candidate = snapState.alternatives?.[index]
+  if (!candidate || !activeSnapCandidate() || candidate.routeId !== route.id || candidate.geometryRevision !== route.geometryRevision || candidate.mode !== route.mode) return
+  snapState.selectedAlternative = index
+  snapState.geometry = candidate.geometry
+  snapState.legs = candidate.legs
+  invalidateWeatherForDerivedPath('路线方案已切换，请重新查询沿途天气')
+  planningPanel.setRouteAlternatives(snapState.alternatives, index)
+  refreshRoute({ recordHistory: false, fitOverview: false })
 }
 
 function ensureRouteLayer() {
@@ -1260,8 +1307,9 @@ let lastSavedRouteVersion = null
 let lastSyncedTripDays = 0 // itinerary→weather days sync guard
 
 function currentLegs(pts) {
-  const osrmLegs = snapState.on && snapState.legs && snapState.version === snapVersion()
-    ? normalizeOsrmLegs(snapState.legs, route.waypoints)
+  const activeCandidate = activeSnapCandidate()
+  const osrmLegs = activeCandidate
+    ? normalizeOsrmLegs(activeCandidate.legs, route.waypoints)
     : null
   if (osrmLegs) return osrmLegs
   if (!waypointElevationOutputReady()) return computeHorizontalLegs(route.waypoints)
@@ -1289,14 +1337,15 @@ function updateRouteUI(route, stats, pts, { fitOverview = true } = {}) {
       l.shade = shadeFraction(sample, sunState.last, (p) => sunBlockedAt(p.lon, p.lat, sunState.last))
     })
   }
-  const wxIndex = weatherState.result && weatherState.revision === route.revision ? weatherState.result.index?.overall : null
-  const wxDays = weatherState.result && weatherState.revision === route.revision ? weatherState.result.agg : null
+  const currentWeather = weatherMatchesCurrentPath() ? weatherState.result : null
+  const wxIndex = currentWeather?.index?.overall ?? null
+  const wxDays = currentWeather?.agg ?? null
   planningPanel.update(route, stats, legs, wxIndex, snapProfile, wxDays, waypointElevationState)
   weatherPanel?.setRouteContext?.({ route, distanceM: stats?.distanceM })
   // share tab summary mirrors the same data block
   const pd = buildPosterData({
     route, stats, legs,
-    weather: weatherState.result && weatherState.revision === route.revision ? weatherState.result : null,
+    weather: currentWeather,
     profile: snapProfile,
   })
   sharePanel.update(`${pd.durationText}(${pd.profileLabel}) · ${pd.distanceText} · ${pd.eleText} · ${pd.waypointText}${pd.weatherIndexText != null ? ` · 天气 ${pd.weatherIndexText}` : ''}`)
@@ -1337,8 +1386,12 @@ function updateRouteUI(route, stats, pts, { fitOverview = true } = {}) {
     dateText: wxDays?.length ? `${wxDays[0].date} — ${wxDays.at(-1).date}` : null,
     saved: summaryData.saved,
   })
-  overviewMap?.setWeatherOverlay({ routeRevision: route.revision, weatherRevision: weatherState.revision, result: weatherState.result })
-  overviewMap.update(route, pts, currentViewportRect(), { fit: fitOverview })
+  overviewMap?.setWeatherOverlay({ routeRevision: route.revision, weatherRevision: currentWeather ? route.revision : -1, result: currentWeather })
+  overviewMap.update(route, pts, currentViewportRect(), {
+    fit: fitOverview,
+    alternatives: snapState.alternatives,
+    selectedAlternative: snapState.selectedAlternative,
+  })
   overviewMap.setSelectedWaypoint(route.selectedWaypointId)
 }
 
@@ -1416,7 +1469,19 @@ sunTimeEl.addEventListener('input', () => { sunState.minutes = +sunTimeEl.value;
 // route edits invalidate the band; slow responses can never overwrite newer state.
 const weatherProvider = createOpenMeteoProvider()
 const weatherArchiveProvider = createOpenMeteoArchiveProvider()
-const weatherState = { revision: -1, requestId: 0, result: null }
+const weatherState = { revision: -1, pathKey: null, requestId: 0, result: null }
+
+function weatherMatchesCurrentPath() {
+  return weatherResultMatchesPath(weatherState, { revision: route.revision, pathKey: currentRouteAnalysisGeometryKey() })
+}
+
+function invalidateWeatherForDerivedPath(message = null) {
+  weatherState.requestId++
+  weatherState.revision = -1
+  weatherState.pathKey = null
+  weatherState.result = null
+  if (message) weatherPanel?.setError(message)
+}
 
 async function runWeatherQuery({ dates }) {
   if (!route.waypoints.length) { weatherPanel.setEmptyRoute(); return }
@@ -1426,9 +1491,11 @@ async function runWeatherQuery({ dates }) {
   }
   const rep = pickRepresentativePoints(route.waypoints)
   const rev = route.revision
+  const pathKey = currentRouteAnalysisGeometryKey()
   const reqId = ++weatherState.requestId
   weatherPanel.setLoading(rep)
   weatherState.revision = -1
+  weatherState.pathKey = null
   weatherState.result = null
   refreshRoute()
   try {
@@ -1442,7 +1509,7 @@ async function runWeatherQuery({ dates }) {
     const qFrom = aw?.from ?? from
     const qTo = aw?.to ?? to
     // same-day cache: fingerprint+dates+source → skip the network entirely
-    const cacheKey = `trip3d.wx.h1.${routeFingerprint(route)}.${from}.${to}.rep.${source}`
+    const cacheKey = `trip3d.wx.h1.${routeFingerprint(route)}.${encodeURIComponent(pathKey)}.${from}.${to}.rep.${source}`
     let all = null
     try {
       const hit = localStorage.getItem(cacheKey)
@@ -1468,9 +1535,10 @@ async function runWeatherQuery({ dates }) {
         if (keys.length > 20) for (const k of keys.slice(0, keys.length - 20)) localStorage.removeItem(k)
       } catch { /* storage full etc. — cache optional */ }
     }
-    if (reqId !== weatherState.requestId) return // a newer query superseded this one
+    if (reqId !== weatherState.requestId || rev !== route.revision || pathKey !== currentRouteAnalysisGeometryKey()) return
     const agg = aggregateTripDays(all)
     weatherState.revision = rev
+    weatherState.pathKey = pathKey
     weatherState.result = { agg, rep, index: tripIndex(all), source }
     weatherPanel.setResult({ agg, rep, index: tripIndex(all), source })
     refreshRoute() // re-render profile card with the band bound to this fingerprint
@@ -1488,7 +1556,7 @@ const weatherPanel = createWeatherPanel({
 
 function showHourlyWeatherDetails(properties = {}) {
   if (panelHost.currentId !== 'weather') showTab('weather')
-  const result = weatherState.result && weatherState.revision === route.revision ? weatherState.result : null
+  const result = weatherMatchesCurrentPath() ? weatherState.result : null
   const point = result?.rep?.find((candidate) => (candidate.role ?? candidate.name ?? '') === properties.role)
     ?? { role: properties.role ?? '路线天气点' }
   const day = result?.agg?.flatMap((entry) => entry.points ?? []).find((entry) =>
@@ -1786,7 +1854,7 @@ legacyTerrainTools = createLegacyTerrainToolsAdapter({
     route: route.route,
     stats: lastRoutePts.length ? route.deriveStats(lastRoutePts) : null,
     legs: currentLegs(lastRoutePts),
-    weather: weatherState.result && weatherState.revision === route.revision ? weatherState.result : null,
+    weather: weatherMatchesCurrentPath() ? weatherState.result : null,
     profile: snapProfile,
   }),
   getFlyoverSnapshot: () => ({ points: lastRoutePts, name: route.name }),
@@ -1884,8 +1952,7 @@ function applyRouteModeState(nextMode, { persist = true, refresh = true } = {}) 
     localStorage.setItem(SNAP_PROFILE_LS, snapProfile)
   }
   snapState.version = ''
-  snapState.geometry = null
-  snapState.legs = null
+  clearSnapResult()
   snapState.resultId++
   snapState.requestId++
   planningPanel.setRouteMode(route.mode, snapState.on ? '等待路网吸附' : '仅测距；不估算时长')
@@ -1895,6 +1962,7 @@ function applyRouteModeState(nextMode, { persist = true, refresh = true } = {}) 
 }
 
 const routeActions = {
+  onRouteAlternative: selectRouteAlternative,
   onMapFocus: () => { panelHost.setSheetState('peek'); overviewMap.focusPlanner?.() },
   onNameChange: (v) => {
     route.setName(v)
@@ -2148,7 +2216,7 @@ fluidLayout.register(overviewMap.weatherCard, {
 })
 overviewMap.setWeatherPreferences(weatherPreferences)
 overviewMap.setAdminOverlay({ enabled: adminState.on, rings: filterAdminRings(adminState.rings, adminInteraction.level), selected: adminInteraction.selected })
-overviewMap.setWeatherOverlay({ routeRevision: route.revision, weatherRevision: weatherState.revision, result: weatherState.result })
+overviewMap.setWeatherOverlay({ routeRevision: route.revision, weatherRevision: weatherMatchesCurrentPath() ? route.revision : -1, result: weatherMatchesCurrentPath() ? weatherState.result : null })
 
 function expandTerrainToRoute() {
   const fit = fitDemToCoordinates(activeRouteCoordinates(), { currentZoom: params.demZoom })
