@@ -34,6 +34,7 @@ import { createSharePanel, renderPoster } from './ui/sharePanel.js'
 import { buildPosterData } from './lib/poster.js'
 import { sampleRouteAnalysisPath, syncRouteAnalysisConsumer } from './lib/routeAnalysis.js'
 import { createRouteDemAnalysisController, createRouteDemCoverage, createRouteDemRunIdentity } from './lib/routeDemCoverage.js'
+import { createRouteCandidateId, isCurrentRouteCandidate, routeCandidatePathKey, weatherResultMatchesPath } from './lib/routeCandidates.js'
 import { initialAnalysisCursorDistance } from './lib/analysisCursor.js'
 import { sunPosition, shadeFraction } from './lib/sun.js'
 import { resamplePath, flyoverDuration, cameraFrame } from './lib/flyover.js'
@@ -810,8 +811,7 @@ function activeRouteAnalysisGeometry() {
 function activeSnapCandidate() {
   if (route.waypointPreviewing || !snapState.on || snapState.version !== snapVersion() || snapState.mode !== route.mode) return null
   const candidate = snapState.alternatives?.[snapState.selectedAlternative]
-  if (!candidate || candidate.routeId !== route.id || candidate.geometryRevision !== route.geometryRevision || candidate.mode !== route.mode) return null
-  return candidate
+  return isCurrentRouteCandidate(candidate, { routeId: route.id, geometryRevision: route.geometryRevision, mode: route.mode }) ? candidate : null
 }
 
 function clearSnapResult() {
@@ -827,7 +827,7 @@ function currentRouteAnalysisGeometryKey() {
   const snappedGeometry = activeRouteAnalysisGeometry()
   if (route.waypointPreviewing) return 'preview'
   const candidate = activeSnapCandidate()
-  return snappedGeometry ? `snapped:${snapState.version}:result:${snapState.resultId}:candidate:${candidate.id}` : 'raw'
+  return snappedGeometry ? routeCandidatePathKey({ version: snapState.version, resultId: snapState.resultId, candidate }) : 'raw'
 }
 
 function currentRouteCorridorRun() {
@@ -973,7 +973,7 @@ function refreshUnavailableRouteAnalysis(coordinates, { recordHistory, fitOvervi
     minEle: null,
     driveMinutes: null,
   }, [], { fitOverview })
-  if (weatherState.result && weatherState.revision !== route.revision) weatherState.requestId++
+  if (weatherState.result && !weatherMatchesCurrentPath()) invalidateWeatherForDerivedPath()
   if (adminInteraction.selected) scheduleAdminRouteStat()
 }
 
@@ -1069,8 +1069,9 @@ function applyReadyRouteAnalysis({ recordHistory = false, fitOverview = false } 
   route.normalizeDayBoundaries() // id-based markers: drop refs to deleted waypoints
   if (recordHistory) route.recordHistory() // safe: dedup no-ops on non-route refreshes
   updateRouteUI(route, lastRouteAnalysis.stats, pts, { fitOverview })
-  // route edited → any in-flight weather query for the old revision is void
-  if (weatherState.result && weatherState.revision !== route.revision) weatherState.requestId++
+  // Route geometry or the selected provider path changed: no weather result
+  // may remain attached to a different derived path.
+  if (weatherState.result && !weatherMatchesCurrentPath()) invalidateWeatherForDerivedPath()
   if (adminInteraction.selected) scheduleAdminRouteStat() // route change → recompute L4 stat
   return true
 }
@@ -1203,7 +1204,7 @@ function commitSnap(result, ver, reqId) {
     .filter((candidate) => candidate?.geometry?.length >= 2 && Array.isArray(candidate.legs))
     .map((candidate, index) => ({
       ...candidate,
-      id: `${route.id}:${route.geometryRevision}:${route.mode}:${reqId}:${index}`,
+      id: createRouteCandidateId({ routeId: route.id, geometryRevision: route.geometryRevision, mode: route.mode, requestId: reqId, index }),
       routeId: route.id,
       geometryRevision: route.geometryRevision,
       mode: route.mode,
@@ -1229,6 +1230,7 @@ function selectRouteAlternative(index) {
   snapState.selectedAlternative = index
   snapState.geometry = candidate.geometry
   snapState.legs = candidate.legs
+  invalidateWeatherForDerivedPath('路线方案已切换，请重新查询沿途天气')
   planningPanel.setRouteAlternatives(snapState.alternatives, index)
   refreshRoute({ recordHistory: false, fitOverview: false })
 }
@@ -1335,14 +1337,15 @@ function updateRouteUI(route, stats, pts, { fitOverview = true } = {}) {
       l.shade = shadeFraction(sample, sunState.last, (p) => sunBlockedAt(p.lon, p.lat, sunState.last))
     })
   }
-  const wxIndex = weatherState.result && weatherState.revision === route.revision ? weatherState.result.index?.overall : null
-  const wxDays = weatherState.result && weatherState.revision === route.revision ? weatherState.result.agg : null
+  const currentWeather = weatherMatchesCurrentPath() ? weatherState.result : null
+  const wxIndex = currentWeather?.index?.overall ?? null
+  const wxDays = currentWeather?.agg ?? null
   planningPanel.update(route, stats, legs, wxIndex, snapProfile, wxDays, waypointElevationState)
   weatherPanel?.setRouteContext?.({ route, distanceM: stats?.distanceM })
   // share tab summary mirrors the same data block
   const pd = buildPosterData({
     route, stats, legs,
-    weather: weatherState.result && weatherState.revision === route.revision ? weatherState.result : null,
+    weather: currentWeather,
     profile: snapProfile,
   })
   sharePanel.update(`${pd.durationText}(${pd.profileLabel}) · ${pd.distanceText} · ${pd.eleText} · ${pd.waypointText}${pd.weatherIndexText != null ? ` · 天气 ${pd.weatherIndexText}` : ''}`)
@@ -1383,7 +1386,7 @@ function updateRouteUI(route, stats, pts, { fitOverview = true } = {}) {
     dateText: wxDays?.length ? `${wxDays[0].date} — ${wxDays.at(-1).date}` : null,
     saved: summaryData.saved,
   })
-  overviewMap?.setWeatherOverlay({ routeRevision: route.revision, weatherRevision: weatherState.revision, result: weatherState.result })
+  overviewMap?.setWeatherOverlay({ routeRevision: route.revision, weatherRevision: currentWeather ? route.revision : -1, result: currentWeather })
   overviewMap.update(route, pts, currentViewportRect(), {
     fit: fitOverview,
     alternatives: snapState.alternatives,
@@ -1466,7 +1469,19 @@ sunTimeEl.addEventListener('input', () => { sunState.minutes = +sunTimeEl.value;
 // route edits invalidate the band; slow responses can never overwrite newer state.
 const weatherProvider = createOpenMeteoProvider()
 const weatherArchiveProvider = createOpenMeteoArchiveProvider()
-const weatherState = { revision: -1, requestId: 0, result: null }
+const weatherState = { revision: -1, pathKey: null, requestId: 0, result: null }
+
+function weatherMatchesCurrentPath() {
+  return weatherResultMatchesPath(weatherState, { revision: route.revision, pathKey: currentRouteAnalysisGeometryKey() })
+}
+
+function invalidateWeatherForDerivedPath(message = null) {
+  weatherState.requestId++
+  weatherState.revision = -1
+  weatherState.pathKey = null
+  weatherState.result = null
+  if (message) weatherPanel?.setError(message)
+}
 
 async function runWeatherQuery({ dates }) {
   if (!route.waypoints.length) { weatherPanel.setEmptyRoute(); return }
@@ -1476,9 +1491,11 @@ async function runWeatherQuery({ dates }) {
   }
   const rep = pickRepresentativePoints(route.waypoints)
   const rev = route.revision
+  const pathKey = currentRouteAnalysisGeometryKey()
   const reqId = ++weatherState.requestId
   weatherPanel.setLoading(rep)
   weatherState.revision = -1
+  weatherState.pathKey = null
   weatherState.result = null
   refreshRoute()
   try {
@@ -1492,7 +1509,7 @@ async function runWeatherQuery({ dates }) {
     const qFrom = aw?.from ?? from
     const qTo = aw?.to ?? to
     // same-day cache: fingerprint+dates+source → skip the network entirely
-    const cacheKey = `trip3d.wx.h1.${routeFingerprint(route)}.${from}.${to}.rep.${source}`
+    const cacheKey = `trip3d.wx.h1.${routeFingerprint(route)}.${encodeURIComponent(pathKey)}.${from}.${to}.rep.${source}`
     let all = null
     try {
       const hit = localStorage.getItem(cacheKey)
@@ -1518,9 +1535,10 @@ async function runWeatherQuery({ dates }) {
         if (keys.length > 20) for (const k of keys.slice(0, keys.length - 20)) localStorage.removeItem(k)
       } catch { /* storage full etc. — cache optional */ }
     }
-    if (reqId !== weatherState.requestId) return // a newer query superseded this one
+    if (reqId !== weatherState.requestId || rev !== route.revision || pathKey !== currentRouteAnalysisGeometryKey()) return
     const agg = aggregateTripDays(all)
     weatherState.revision = rev
+    weatherState.pathKey = pathKey
     weatherState.result = { agg, rep, index: tripIndex(all), source }
     weatherPanel.setResult({ agg, rep, index: tripIndex(all), source })
     refreshRoute() // re-render profile card with the band bound to this fingerprint
@@ -1538,7 +1556,7 @@ const weatherPanel = createWeatherPanel({
 
 function showHourlyWeatherDetails(properties = {}) {
   if (panelHost.currentId !== 'weather') showTab('weather')
-  const result = weatherState.result && weatherState.revision === route.revision ? weatherState.result : null
+  const result = weatherMatchesCurrentPath() ? weatherState.result : null
   const point = result?.rep?.find((candidate) => (candidate.role ?? candidate.name ?? '') === properties.role)
     ?? { role: properties.role ?? '路线天气点' }
   const day = result?.agg?.flatMap((entry) => entry.points ?? []).find((entry) =>
@@ -1836,7 +1854,7 @@ legacyTerrainTools = createLegacyTerrainToolsAdapter({
     route: route.route,
     stats: lastRoutePts.length ? route.deriveStats(lastRoutePts) : null,
     legs: currentLegs(lastRoutePts),
-    weather: weatherState.result && weatherState.revision === route.revision ? weatherState.result : null,
+    weather: weatherMatchesCurrentPath() ? weatherState.result : null,
     profile: snapProfile,
   }),
   getFlyoverSnapshot: () => ({ points: lastRoutePts, name: route.name }),
@@ -2198,7 +2216,7 @@ fluidLayout.register(overviewMap.weatherCard, {
 })
 overviewMap.setWeatherPreferences(weatherPreferences)
 overviewMap.setAdminOverlay({ enabled: adminState.on, rings: filterAdminRings(adminState.rings, adminInteraction.level), selected: adminInteraction.selected })
-overviewMap.setWeatherOverlay({ routeRevision: route.revision, weatherRevision: weatherState.revision, result: weatherState.result })
+overviewMap.setWeatherOverlay({ routeRevision: route.revision, weatherRevision: weatherMatchesCurrentPath() ? route.revision : -1, result: weatherMatchesCurrentPath() ? weatherState.result : null })
 
 function expandTerrainToRoute() {
   const fit = fitDemToCoordinates(activeRouteCoordinates(), { currentZoom: params.demZoom })

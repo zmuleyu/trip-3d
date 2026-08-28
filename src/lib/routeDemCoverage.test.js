@@ -249,6 +249,25 @@ describe('route corridor Terrarium coverage', () => {
     expect(onState.mock.calls.find(([state]) => state.status === 'ready')?.[0]).toMatchObject({ routeId: 'route-a', geometryRevision: 2 })
   })
 
+  it('rejects candidate 0 enrichment after candidate 1 becomes the active derived path', async () => {
+    const deferred = new Map()
+    const loadCoverage = vi.fn(({ points }) => new Promise((resolve) => deferred.set(points[0].id, resolve)))
+    const onState = vi.fn()
+    const controller = createRouteDemAnalysisController({ loadCoverage, onState })
+    const base = { routeId: 'route-a', geometryRevision: 4, zoom: 12, sourceIdentity: TERRARIUM_SOURCE_ID }
+    const candidate0 = createRouteDemRunIdentity({ ...base, geometryKey: 'snapped:route-a:4:result:8:candidate:route-a:4:car:9:0' })
+    const candidate1 = createRouteDemRunIdentity({ ...base, geometryKey: 'snapped:route-a:4:result:8:candidate:route-a:4:car:9:1' })
+    expect(candidate1).not.toBe(candidate0)
+
+    const first = controller.start({ key: candidate0, routeId: base.routeId, geometryRevision: base.geometryRevision, points: [{ id: 'candidate-0' }], zoom: base.zoom, sourceIdentity: base.sourceIdentity, analyze: () => ({ status: 'ready', id: 'candidate-0' }) })
+    const second = controller.start({ key: candidate1, routeId: base.routeId, geometryRevision: base.geometryRevision, points: [{ id: 'candidate-1' }], zoom: base.zoom, sourceIdentity: base.sourceIdentity, analyze: () => ({ status: 'ready', id: 'candidate-1' }) })
+    deferred.get('candidate-1')({})
+    await expect(second).resolves.toMatchObject({ status: 'ready', key: candidate1, analysis: { id: 'candidate-1' } })
+    deferred.get('candidate-0')({})
+    await expect(first).resolves.toMatchObject({ status: 'stale', key: candidate0 })
+    expect(onState.mock.calls.filter(([state]) => state.status === 'ready').map(([state]) => state.key)).toEqual([candidate1])
+  })
+
   it('rejects old success and failure after a frozen zoom/source run changes, then retries with the new run', async () => {
     const deferred = new Map()
     const loadCoverage = vi.fn(({ zoom, sourceIdentity }) => new Promise((resolve, reject) => deferred.set(zoom, { resolve, reject, sourceIdentity })))
