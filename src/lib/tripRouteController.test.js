@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { routeToGpx } from './gpx.js'
 import { createRoute } from './route.js'
-import { encodeShare } from './share.js'
+import { decodeShare, encodeShare } from './share.js'
 import { serializeRoute } from './store.js'
 import { TripRouteController } from './tripRouteController.js'
 
@@ -91,6 +91,50 @@ describe('TripRouteController', () => {
     expect(controller.recordHistory()).toBe(true)
     expect(controller.undo()).toBe(true)
     expect(controller.waypoints[0]).toMatchObject({ lon: 100, lat: 30, ele: 1200 })
+  })
+
+  it('accepts only current complete waypoint elevation authority and writes it back without geometry or history mutation', () => {
+    const controller = new TripRouteController()
+    const first = controller.addWaypoint(100, 30, 0, 'A')
+    const second = controller.addWaypoint(101, 31, 900, 'B')
+    controller.resetHistory()
+    const geometryRevision = controller.geometryRevision
+    const revision = controller.revision
+    const ready = {
+      routeId: controller.id,
+      geometryRevision,
+      status: 'ready',
+      values: { [first.id]: 1180, [second.id]: 1360 },
+    }
+
+    expect(controller.waypointElevationsReady({ ...ready, status: 'loading' })).toBe(false)
+    expect(controller.waypointElevationsReady({ ...ready, geometryRevision: geometryRevision - 1 })).toBe(false)
+    expect(controller.waypointElevationsReady({ ...ready, values: { [first.id]: 1180 } })).toBe(false)
+    expect(controller.waypointElevationsReady(ready)).toBe(true)
+    expect(controller.applyWaypointElevations(ready)).toBe(true)
+    expect(controller.waypoints.map(({ ele }) => ele)).toEqual([1180, 1360])
+    expect(controller.geometryRevision).toBe(geometryRevision)
+    expect(controller.revision).toBe(revision + 1)
+    expect(controller.canUndo()).toBe(false)
+    expect(serializeRoute(controller).waypoints.map(({ ele }) => ele)).toEqual([1180, 1360])
+    expect(decodeShare(encodeShare(controller, { dem: { lat: 30.5, lon: 100.5, zoom: 12, size: 768 } })).waypoints.map(({ ele }) => ele)).toEqual([1180, 1360])
+    expect(routeToGpx(controller)).toContain('<ele>1180</ele>')
+    expect(routeToGpx(controller)).toContain('<ele>1360</ele>')
+  })
+
+  it('rejects stale elevation writeback without changing canonical waypoint values', () => {
+    const controller = new TripRouteController()
+    const waypoint = controller.addWaypoint(100, 30, 777, 'A')
+    const revision = controller.revision
+
+    expect(controller.applyWaypointElevations({
+      routeId: controller.id,
+      geometryRevision: controller.geometryRevision - 1,
+      status: 'ready',
+      values: { [waypoint.id]: 1500 },
+    })).toBe(false)
+    expect(controller.waypoints[0].ele).toBe(777)
+    expect(controller.revision).toBe(revision)
   })
 
   it('replaces the owned route without changing its storage/share shape', () => {

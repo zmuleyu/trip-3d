@@ -40,7 +40,7 @@ import { resamplePath, flyoverDuration, cameraFrame } from './lib/flyover.js'
 import { TripRouteController } from './lib/tripRouteController.js'
 import { assignSearchRouteRole } from './lib/searchRouteIntent.js'
 import { routeProviderStatus } from './lib/routeStatus.js'
-import { computeLegs, computeLegsFromPts, normalizeOsrmLegs } from './lib/legs.js'
+import { computeHorizontalLegs, computeLegs, computeLegsFromPts, normalizeOsrmLegs } from './lib/legs.js'
 import { RouteLayer } from './route/RouteLayer.js'
 import { openRouteStore } from './lib/store.js'
 import { routeToGpx, gpxToRoute } from './lib/gpx.js'
@@ -830,6 +830,50 @@ function currentRouteCorridorRun() {
   }
 }
 
+function createWaypointElevationState(status, values = {}, identity = {}) {
+  return {
+    key: identity.key ?? currentRouteCorridorRun().key,
+    routeId: identity.routeId ?? route.id,
+    geometryRevision: identity.geometryRevision ?? route.geometryRevision,
+    status,
+    values,
+  }
+}
+
+function publishReadyWaypointElevations(values, identity = {}) {
+  const authority = createWaypointElevationState('ready', values, identity)
+  if (!route.waypointElevationsReady(authority)) return false
+  route.applyWaypointElevations(authority)
+  waypointElevationState = authority
+  return true
+}
+
+function waypointElevationOutputReady() {
+  return route.waypointElevationsReady(waypointElevationState)
+}
+
+function elevationRecoveryMessage(action) {
+  return waypointElevationState.status === 'loading'
+    ? `高程仍在补齐，重试后再${action}`
+    : `高程暂不可用，重试后再${action}`
+}
+
+function requireWaypointElevations(action) {
+  if (!route.waypoints.length || waypointElevationOutputReady()) return true
+  toast.show(elevationRecoveryMessage(action))
+  return false
+}
+
+function requireReadyRouteAnalysis(action) {
+  if (!requireWaypointElevations(action)) return false
+  if (lastRouteAnalysis?.status === 'ready') return true
+  const message = lastRouteAnalysis?.status === 'route-terrain-loading'
+    ? `路线高程仍在补齐，重试后再${action}`
+    : `路线高程暂不可用，重试后再${action}`
+  toast.show(message)
+  return false
+}
+
 function corridorUnavailableStatus(state = routeCorridorState) {
   if (state.status === 'loading') return 'route-terrain-loading'
   if (state.status === 'cancelled') return 'route-terrain-cancelled'
@@ -852,6 +896,8 @@ function invalidateRouteCorridorAnalysis(nextKey) {
   }
   waypointElevationState = {
     key: nextKey,
+    routeId: route.id,
+    geometryRevision: route.geometryRevision,
     status: route.waypoints.length ? 'loading' : 'idle',
     values: {},
   }
@@ -925,7 +971,7 @@ function refreshRoute({ recordHistory = true, fitOverview = true } = {}) {
     const status = route.waypoints.length < 2
       ? 'incomplete'
       : (demBusy || waypointElevationState.status === 'loading' ? 'route-terrain-loading' : 'dem-unavailable')
-    waypointElevationState = { key: analysisKey, status: status === 'route-terrain-loading' ? 'loading' : 'unavailable', values: {} }
+    waypointElevationState = createWaypointElevationState(status === 'route-terrain-loading' ? 'loading' : 'unavailable', {}, { key: analysisKey })
     lastRouteAnalysis = { status, points: [], profile: null, stats: null, grade: null }
     refreshUnavailableRouteAnalysis(activeRouteCoordinates(), { recordHistory, fitOverview })
     return
@@ -942,7 +988,7 @@ function refreshRoute({ recordHistory = true, fitOverview = true } = {}) {
     terrainContains(waypoint.lon, waypoint.lat) ? routeMutationElevation(waypoint.lon, waypoint.lat, waypoint.ele) : null,
   ])
   if (localWaypointElevations.every(([, elevation]) => Number.isFinite(elevation))) {
-    waypointElevationState = { key: analysisKey, status: 'ready', values: Object.fromEntries(localWaypointElevations) }
+    publishReadyWaypointElevations(Object.fromEntries(localWaypointElevations), { key: analysisKey })
   }
   if (lastRouteCoverage.covered && routeCorridorState.key === analysisKey) {
     routeDemAnalysisController?.cancel()
@@ -975,14 +1021,10 @@ function refreshRoute({ recordHistory = true, fitOverview = true } = {}) {
     coverage: lastRouteCoverage,
   })
   if (lastRouteAnalysis.status === 'ready') {
-    waypointElevationState = {
-      key: analysisKey,
-      status: 'ready',
-      values: Object.fromEntries(route.waypoints.map((waypoint) => [
-        waypoint.id,
-        routeMutationElevation(waypoint.lon, waypoint.lat, waypoint.ele),
-      ])),
-    }
+    publishReadyWaypointElevations(Object.fromEntries(route.waypoints.map((waypoint) => [
+      waypoint.id,
+      routeMutationElevation(waypoint.lon, waypoint.lat, waypoint.ele),
+    ])), { key: analysisKey })
   }
   if (!applyReadyRouteAnalysis({ recordHistory, fitOverview })) {
     refreshUnavailableRouteAnalysis(coordinates, { recordHistory, fitOverview })
@@ -1119,7 +1161,7 @@ function snapFetch(key, wps) {
           legs[i - 1] = r.legs
         } catch {
           segs[i - 1] = [[a.lon, a.lat], [b.lon, b.lat]]
-          legs[i - 1] = [computeLegs([a, b])[0]] // straight fallback, real:false, never cached
+          legs[i - 1] = [waypointElevationOutputReady() ? computeLegs([a, b])[0] : computeHorizontalLegs([a, b])[0]] // never cached
         }
       }
       const BATCH = 4
@@ -1221,7 +1263,9 @@ function currentLegs(pts) {
   const osrmLegs = snapState.on && snapState.legs && snapState.version === snapVersion()
     ? normalizeOsrmLegs(snapState.legs, route.waypoints)
     : null
-  return osrmLegs ?? computeLegsFromPts(pts, route.waypoints) ?? (route.waypoints.length >= 2 ? computeLegs(route.waypoints) : null)
+  if (osrmLegs) return osrmLegs
+  if (!waypointElevationOutputReady()) return computeHorizontalLegs(route.waypoints)
+  return computeLegsFromPts(pts, route.waypoints) ?? (route.waypoints.length >= 2 ? computeLegs(route.waypoints) : null)
 }
 
 function updateRouteUI(route, stats, pts, { fitOverview = true } = {}) {
@@ -1376,6 +1420,10 @@ const weatherState = { revision: -1, requestId: 0, result: null }
 
 async function runWeatherQuery({ dates }) {
   if (!route.waypoints.length) { weatherPanel.setEmptyRoute(); return }
+  if (!requireWaypointElevations('查询天气')) {
+    weatherPanel.setError(elevationRecoveryMessage('查询天气'))
+    return
+  }
   const rep = pickRepresentativePoints(route.waypoints)
   const rev = route.revision
   const reqId = ++weatherState.requestId
@@ -1717,12 +1765,13 @@ const sharePanel = createSharePanel({
   onCopyLink: () => routeActions.onShare(),
   onQr: () => {
     if (route.waypoints.length < 2) { toast.show('先规划线路'); return }
+    if (!requireWaypointElevations('保存或分享')) return
     showQrOverlay(buildShareUrl(), '扫码打开此行程', '分享链接已复制')
   },
   onExportGpx: () => routeActions.onExportGpx(),
   onExportAmap: exportAmapLink,
-  onDownloadPoster: () => legacyTerrainTools.exportPoster(),
-  onFlyover: () => legacyTerrainTools.startFlyover(),
+  onDownloadPoster: () => { if (requireReadyRouteAnalysis('生成海报')) void legacyTerrainTools.exportPoster() },
+  onFlyover: () => { if (requireReadyRouteAnalysis('生成飞越')) legacyTerrainTools.startFlyover() },
 })
 sharePanel.update('规划线路后,这里聚合全部分享出口')
 
@@ -1806,7 +1855,7 @@ legacyTerrainTools = createLegacyTerrainToolsAdapter({
     showLoading: () => loadingEl.classList.remove('hidden'),
     schedule: (work) => requestAnimationFrame(() => setTimeout(work, 30)),
     rebuild: () => { terrain.rebuild(params); terrain.ensureRoughness(params); regenerateLabels() },
-    refreshRoute: () => refreshRoute(),
+    refreshRoute: () => refreshRoute({ recordHistory: false }),
     reloadAdminIfNeeded: () => {
       if (adminNeedsReload({ enabled: adminState.on, loadedKey: adminState.demKey, currentKey: currentDemKey() })) loadAdminBoundaries()
     },
@@ -1884,6 +1933,7 @@ const routeActions = {
     else refreshRoute()
   },
   onSave: async () => {
+    if (!requireWaypointElevations('保存或分享')) return
     const s = await routeStoreReady
     if (!s) { toast.show('本地存储不可用,保存失败'); return }
     await s.save(route)
@@ -1894,6 +1944,7 @@ const routeActions = {
     showTab('library')
   },
   onShare: async () => {
+    if (!requireWaypointElevations('保存或分享')) return
     const hash = encodeShare(route, { dem: shareDemContext() })
     const url = `${location.origin}${location.pathname}#r=${hash}`
     try { await navigator.clipboard.writeText(url) } catch { /* clipboard may be unavailable */ }
@@ -1901,6 +1952,7 @@ const routeActions = {
     toast.show('分享链接已复制')
   },
   onExportGpx: () => {
+    if (!requireWaypointElevations('导出 GPX')) return
     const blob = new Blob([routeToGpx(route)], { type: 'application/gpx+xml' })
     const a = document.createElement('a')
     a.href = URL.createObjectURL(blob)
@@ -1922,7 +1974,7 @@ const routeActions = {
           params.routeName = route.name
           ensureRouteLayer()
           route.resetHistory()
-          refreshRoute()
+          refreshRoute({ recordHistory: false })
           scheduleSnap()
           toast.show(route.downsampled ? `GPX 已导入(抽稀 ${route.originalPointCount}→${route.waypoints.length} 点)` : 'GPX 已导入')
         })
@@ -1967,8 +2019,14 @@ function publishRouteCorridorState(state) {
   if (state.key !== currentRun.key || state.routeId !== route.id || state.geometryRevision !== route.geometryRevision) return
   if (state.status === 'loading') {
     routeCorridorState = { key: state.key, status: 'loading', analysis: null, error: null, performance: null }
-    waypointElevationState = { key: state.key, status: 'loading', values: {} }
+    waypointElevationState = createWaypointElevationState('loading', {}, state)
   } else if (state.status === 'ready') {
+    if (!publishReadyWaypointElevations(state.analysis.waypointElevations ?? {}, state)) {
+      routeCorridorState = { key: state.key, status: 'error', analysis: null, error: new Error('路线高程不完整'), performance: null }
+      waypointElevationState = createWaypointElevationState('unavailable', {}, state)
+      refreshRoute({ recordHistory: false, fitOverview: false })
+      return
+    }
     routeCorridorState = {
       key: state.key,
       status: 'ready',
@@ -1982,14 +2040,9 @@ function publishRouteCorridorState(state) {
         maxChunkMs: state.coverage.maxChunkMs,
       },
     }
-    waypointElevationState = {
-      key: state.key,
-      status: 'ready',
-      values: state.analysis.waypointElevations ?? {},
-    }
   } else {
     routeCorridorState = { key: state.key, status: 'error', analysis: null, error: state.error, performance: null }
-    waypointElevationState = { key: state.key, status: 'unavailable', values: {} }
+    waypointElevationState = createWaypointElevationState('unavailable', {}, state)
   }
   refreshRoute({ recordHistory: false, fitOverview: false })
 }
@@ -2193,7 +2246,7 @@ const libraryPanel = createLibraryPanel({
       params.routeName = r.name
       ensureRouteLayer()
       route.resetHistory()
-      refreshRoute()
+      refreshRoute({ recordHistory: false })
       scheduleSnap()
       toast.show(`已加载「${r.name}」`)
     })

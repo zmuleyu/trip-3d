@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeLegs, computeLegsFromPts, normalizeOsrmLegs } from './legs.js'
+import { computeHorizontalLegs, computeLegs, computeLegsFromPts, normalizeOsrmLegs } from './legs.js'
 
 const WPS = [
   { name: 'A', lon: 116.0, lat: 39.0, ele: 100 },
@@ -33,6 +33,18 @@ describe('computeLegs', () => {
     expect(legs).toHaveLength(1)
     expect(legs[0].distanceM).toBe(0)
     expect(legs[0].driveMinutes).toBe(0)
+  })
+})
+
+describe('computeHorizontalLegs', () => {
+  it('keeps straight fallback distance while withholding elevation and duration fields', () => {
+    const legs = computeHorizontalLegs(WPS)
+    expect(legs).toHaveLength(2)
+    expect(legs[0]).toMatchObject({ from: 'A', to: 'B', real: false, elevationStatus: 'unavailable' })
+    expect(legs[0].distanceM).toBeGreaterThan(8000)
+    expect(legs[0]).not.toHaveProperty('ascentM')
+    expect(legs[0]).not.toHaveProperty('descentM')
+    expect(legs[0]).not.toHaveProperty('driveMinutes')
   })
 })
 
