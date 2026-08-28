@@ -65,8 +65,9 @@ import { pickRepresentativePoints, aggregateTripDays, archiveWindow } from './li
 import { tripIndex } from './lib/tripIndex.js'
 import { fitDemToCoordinates, normalizeRouteMode, routeCoverage } from './lib/routePlanning.js'
 import { createFrameScheduler } from './lib/frameScheduler.js'
-import { createWorkflowStage, routeCanBeAnalyzed, WORKFLOW_STAGES } from './ui/workflowStage.js'
+import { routeCanBeAnalyzed, WORKFLOW_STAGES } from './ui/workflowStage.js'
 import { runRouteMutationInPlan } from './ui/routeMutationGuard.js'
+import { createWorkspaceLifecycleCoordinator } from './lib/workspaceLifecycleCoordinator.js'
 
 // ------------------------------------------------------------------ params
 
@@ -324,19 +325,10 @@ const tween = {
 let selectedPoi = -1
 let fps = 60
 let scanStart = -1
-let legacyFrameLoop = null
-let legacyFrameModeActive = false
-let legacyFrameStartPending = false
+let workspaceLifecycle = null
 
 function requestLegacyFrames() {
-  if (legacyFrameLoop) legacyFrameLoop.start()
-  else legacyFrameStartPending = true
-}
-
-function setLegacyFrameModeActive(on) {
-  legacyFrameModeActive = !!on
-  if (legacyFrameModeActive) requestLegacyFrames()
-  else if (!hasLegacyFrameWork()) legacyFrameLoop?.stop()
+  workspaceLifecycle?.wakeLegacyFrames()
 }
 
 const poiFeet = (h) => terrain.heightToFeet(h)
@@ -792,7 +784,6 @@ let demBusy = false
 let demRequestId = 0
 let settingsPanel = null
 let profileCard = null
-let mapWorkspaceActive = false
 let layerBtns = null
 let settingsTerrainReadyText = ''
 // terrain-ready contract: the latest successful load bumps terrainGen; when the
@@ -1170,7 +1161,7 @@ function invalidateRouteCorridorAnalysis(nextKey) {
 
 function invalidateRouteCorridorForTerrainRunChange() {
   invalidateRouteCorridorAnalysis(currentRouteCorridorRun().key)
-  if (workflowStage?.stage === WORKFLOW_STAGES.ANALYZE) refreshRoute({ recordHistory: false, fitOverview: false })
+  if (workspaceLifecycle?.stage === WORKFLOW_STAGES.ANALYZE) refreshRoute({ recordHistory: false, fitOverview: false })
 }
 
 function reconcileWaypointSelection() {
@@ -1244,7 +1235,7 @@ function refreshRoute({ recordHistory = true, fitOverview = true } = {}) {
     lastRoutePts = []
     profileCard?.update(lastRouteAnalysis)
     plannerWorkspace?.setAnalyzeAvailable(routeCanBeAnalyzed(route))
-    workflowStage?.reconcile()
+    workspaceLifecycle?.reconcile()
     return
   }
   if (!routeLayer) ensureRouteLayer()
@@ -1883,7 +1874,7 @@ function updateRouteUI(route, stats, pts, { fitOverview = true } = {}) {
     : '点击地图添加途经点')
   plannerWorkspace?.setJourneySpine({ route, legs: legs ?? [], weatherDays: wxDays ?? [] })
   plannerWorkspace?.setAnalyzeAvailable(routeCanBeAnalyzed(route))
-  workflowStage?.reconcile()
+  workspaceLifecycle?.reconcile()
   plannerWorkspace?.updateTrip({
     name: route.name,
     dateText: wxDays?.length ? `${wxDays[0].date} — ${wxDays.at(-1).date}` : null,
@@ -2515,7 +2506,6 @@ fluidLayout.register(profileCard.el, {
 planningPanel.setRouteMode(route.mode, snapState.on ? '等待路网吸附' : '仅测距；不估算时长')
 
 let plannerWorkspace
-let workflowStage
 let analysisCursorDistanceM = null
 let analysisCursorPathKey = ''
 function setAnalysisCursor(distanceM) {
@@ -2564,7 +2554,7 @@ routeDemAnalysisController = createRouteDemAnalysisController({
 })
 
 function requestRouteCorridorAnalysis() {
-  if (workflowStage?.stage !== WORKFLOW_STAGES.ANALYZE || lastRouteCoverage.covered || !geo || !dem) return null
+  if (workspaceLifecycle?.stage !== WORKFLOW_STAGES.ANALYZE || lastRouteCoverage.covered || !geo || !dem) return null
   const run = currentRouteCorridorRun()
   if (params.source !== 'real' || run.sourceIdentity !== TERRARIUM_SOURCE_ID) {
     routeCorridorState = { key: run.key, status: 'error', analysis: null, error: { code: 'source-unavailable' }, performance: null }
@@ -2593,15 +2583,15 @@ function requestRouteCorridorAnalysis() {
 profileCard.setCallbacks({
   onCursorDistance: setAnalysisCursor,
   onRetry: () => { void requestRouteCorridorAnalysis() },
-  onReturnPlan: () => workflowStage?.setStage(WORKFLOW_STAGES.PLAN),
+  onReturnPlan: () => workspaceLifecycle?.setStage(WORKFLOW_STAGES.PLAN),
 })
 const overviewMap = createOverviewMap({
   terrainExaggeration: params.demExaggeration,
   onTerrainUnavailable: (error) => {
     plannerWorkspace?.setStage(WORKFLOW_STAGES.PLAN)
-    setLegacyFrameModeActive(false)
-    workflowStage?.fallback('terrain-unavailable')
-    if (!workflowStage && params.planning) applyPlannerView('2d')
+    workspaceLifecycle?.setLegacyFrameModeActive(false)
+    workspaceLifecycle?.fallback('terrain-unavailable')
+    if (!workspaceLifecycle && params.planning) overviewMap.setPlannerView('2d')
     toast.show(error?.message === 'WebGL context lost'
       ? '地形显示已中断；已返回路线规划'
       : '地形分析暂时不可用；已返回路线规划')
@@ -2666,79 +2656,22 @@ function expandTerrainToRoute() {
   loadRealTerrain()
 }
 
-function applyPlannerView(view) {
-  const requested = view === '3d' ? '3d' : '2d'
-  const accepted = overviewMap.setPlannerView(requested)
-  const actual = accepted ? requested : '2d'
-  plannerWorkspace?.setStage(actual === '3d' ? WORKFLOW_STAGES.ANALYZE : WORKFLOW_STAGES.PLAN)
-  // Native MapLibre terrain owns its own render lifecycle. The legacy Three
-  // scheduler remains idle unless a real legacy animation explicitly needs it.
-  setLegacyFrameModeActive(false)
-  document.body.classList.toggle('planner-2d', workflowStage?.stage !== WORKFLOW_STAGES.ANALYZE && actual === '2d')
-  document.body.classList.toggle('planner-3d', actual === '3d')
-  overviewMap.update(route, lastRoutePts, currentViewportRect(), { fit: false })
-  if (mapWorkspaceActive) overviewMap.resize({ fit: false })
-  return actual
-}
-
 function enterPlanForEditing() {
-  if (workflowStage?.stage === WORKFLOW_STAGES.ANALYZE) workflowStage.setStage(WORKFLOW_STAGES.PLAN)
+  if (workspaceLifecycle?.stage === WORKFLOW_STAGES.ANALYZE) workspaceLifecycle.setStage(WORKFLOW_STAGES.PLAN)
   else if (!mode?.isPlanning()) mode?.enterPlanning()
 }
 
 function runPlanRouteMutation(mutate) {
   return runRouteMutationInPlan({
     enterPlanForEditing,
-    isPlanEditing: () => workflowStage?.stage === WORKFLOW_STAGES.PLAN && mode?.isPlanning() === true,
+    isPlanEditing: () => workspaceLifecycle?.stage === WORKFLOW_STAGES.PLAN && mode?.isPlanning() === true,
     mutate,
   })
 }
 
-function fitWorkflowStage() {
-  requestAnimationFrame(() => overviewMap.resize({ fit: false }))
-}
-
-function applyWorkflowStage(stage) {
-  const analyze = stage === WORKFLOW_STAGES.ANALYZE
-  profileCard?.setStage(stage)
-  if (!analyze) {
-    if (routeCorridorState.status === 'loading') {
-      routeDemAnalysisController?.cancel()
-      routeCorridorState = { ...routeCorridorState, status: 'cancelled', analysis: null, error: null }
-    }
-    clearAnalysisCursor()
-  }
-  else initializeAnalysisCursor()
-  document.body.classList.toggle('analyze-operate', analyze)
-  if (analyze) {
-    if (mode?.isPlanning()) mode.exitPlanning()
-    else setMapWorkspace({ weather: false, editing: false })
-    plannerWorkspace?.setStage(stage)
-    panelHost.hide()
-    rail.clearActive()
-    overviewMap.setPlannerMode(true, { editing: false })
-    if (applyPlannerView('3d') !== '3d') workflowStage?.fallback('terrain-unavailable')
-    else {
-      fitWorkflowStage()
-      void requestRouteCorridorAnalysis()
-    }
-    return
-  }
-  plannerWorkspace?.setStage(stage)
-  if (mode && !mode.isPlanning()) {
-    mode.enterPlanning()
-    fitWorkflowStage()
-  }
-  else {
-    setMapWorkspace({ weather: false, editing: true })
-    applyPlannerView('2d')
-    fitWorkflowStage()
-  }
-}
-
 plannerWorkspace = createPlannerWorkspace({
   onStage: (stage) => {
-    if (!workflowStage?.setStage(stage)) plannerWorkspace.setStage(workflowStage?.stage ?? WORKFLOW_STAGES.PLAN)
+    if (!workspaceLifecycle?.setStage(stage)) plannerWorkspace.setStage(workspaceLifecycle?.stage ?? WORKFLOW_STAGES.PLAN)
   },
   onSearch: (query) => {
     enterPlanForEditing()
@@ -2817,22 +2750,85 @@ const libraryPanel = createLibraryPanel({
   },
 })
 
+// The coordinator owns stage, workspace activation, and frame lifecycle. These
+// ports retain the incumbent MapLibre, layout, and UI implementations.
+let mode
+workspaceLifecycle = createWorkspaceLifecycleCoordinator({
+  getRoute: () => route,
+  hasLegacyFrameWork,
+  onBlocked: (message) => toast.show(message),
+  onStageChange: (stage) => {
+    const analyze = stage === WORKFLOW_STAGES.ANALYZE
+    profileCard?.setStage(stage)
+    if (!analyze) {
+      if (routeCorridorState.status === 'loading') {
+        routeDemAnalysisController?.cancel()
+        routeCorridorState = { ...routeCorridorState, status: 'cancelled', analysis: null, error: null }
+      }
+      clearAnalysisCursor()
+    } else initializeAnalysisCursor()
+    document.body.classList.toggle('analyze-operate', analyze)
+    if (analyze) {
+      if (mode?.isPlanning()) mode.exitPlanning()
+      else workspaceLifecycle.setMapWorkspace({ weather: false, editing: false, view: plannerWorkspace.view })
+      plannerWorkspace?.setStage(stage)
+      panelHost.hide()
+      rail.clearActive()
+      overviewMap.setPlannerMode(true, { editing: false })
+      if (workspaceLifecycle.applyPlannerView('3d') !== '3d') workspaceLifecycle.fallback('terrain-unavailable')
+      else {
+        workspaceLifecycle.fit()
+        void requestRouteCorridorAnalysis()
+      }
+      return
+    }
+    plannerWorkspace?.setStage(stage)
+    if (mode && !mode.isPlanning()) {
+      mode.enterPlanning()
+      workspaceLifecycle.fit()
+    } else {
+      workspaceLifecycle.setMapWorkspace({ weather: false, editing: true, view: '2d' })
+      workspaceLifecycle.fit()
+    }
+  },
+  onWorkspaceChange: ({ weather, editing }) => {
+    document.body.classList.add('planner-operate')
+    document.body.classList.toggle('weather-operate', weather)
+    plannerWorkspace.setVisible(true)
+    overviewMap.setPlannerMode(true, { editing })
+    overviewMap.setWeatherMode(weather, weatherPreferences)
+  },
+  onPlannerViewRequest: (view) => overviewMap.setPlannerView(view),
+  onPlannerViewChange: ({ actual, stage, mapWorkspaceActive, syncStage }) => {
+    if (syncStage) {
+      plannerWorkspace?.setStage(actual === '3d' ? WORKFLOW_STAGES.ANALYZE : WORKFLOW_STAGES.PLAN)
+      document.body.classList.toggle('planner-2d', stage !== WORKFLOW_STAGES.ANALYZE && actual === '2d')
+      document.body.classList.toggle('planner-3d', actual === '3d')
+    }
+    overviewMap.update(route, lastRoutePts, currentViewportRect(), { fit: false })
+    if (mapWorkspaceActive) overviewMap.resize({ fit: false })
+  },
+  onWorkspaceSettled: () => requestAnimationFrame(() => {
+    overviewMap.resize({ fit: false })
+    overviewMap.update(route, lastRoutePts, currentViewportRect(), { fit: false })
+  }),
+  onFit: () => requestAnimationFrame(() => overviewMap.resize({ fit: false })),
+})
+
 // mode machine drives planning mode + panel visibility
-const mode = createModeMachine({
+mode = createModeMachine({
   onChange: (m) => {
     const planning = m === MODES.PLANNING
     params.planning = planning
-    setMapWorkspace({ weather: false, editing: planning })
+    workspaceLifecycle.setMapWorkspace({ weather: false, editing: planning, view: plannerWorkspace.view })
     hud2.setTelemetryVisible(false) // telemetry is developer-only; never compete with planning
     if (planning) {
-      applyPlannerView(plannerWorkspace.view)
       if (!dem) loadRealTerrain()
       ensureRouteLayer()
       refreshRoute({ fitOverview: false })
       rail.setActive('planning')
       panelHost.show('planning', '规划行程', 'ESC 退出', planningPanel.el)
       panelHost.setCollapsed(true)
-      requestAnimationFrame(() => { overviewMap.resize({ fit: false }); overviewMap.update(route, lastRoutePts, currentViewportRect(), { fit: false }) })
     } else {
       document.body.classList.remove('planner-2d', 'planner-3d')
       rail.clearActive()
@@ -2840,11 +2836,6 @@ const mode = createModeMachine({
       overviewMap.update(route, lastRoutePts, currentViewportRect(), { fit: false })
     }
   },
-})
-workflowStage = createWorkflowStage({
-  getRoute: () => route,
-  onChange: applyWorkflowStage,
-  onBlocked: (message) => toast.show(message),
 })
 plannerWorkspace.setAnalyzeAvailable(routeCanBeAnalyzed(route))
 window.addEventListener('keydown', (e) => {
@@ -2892,7 +2883,7 @@ function showTab(id) {
   }
   if (panelHost.currentId === id) {
     if (id === 'weather') setWeatherWorkspace(false)
-    panelHost.hide(); rail.clearActive(); setMapWorkspace({ weather: false, editing: false }); return
+    panelHost.hide(); rail.clearActive(); workspaceLifecycle.setMapWorkspace({ weather: false, editing: false, view: plannerWorkspace.view }); return
   }
   if (mode.isPlanning()) mode.exitPlanning()
   setWeatherWorkspace(id === 'weather')
@@ -2903,24 +2894,8 @@ function showTab(id) {
   if (id === 'share') panelHost.show('share', '留存与分享', null, sharePanel.el)
 }
 
-function setMapWorkspace({ weather = false, editing = false } = {}) {
-  mapWorkspaceActive = true
-  document.body.classList.add('planner-operate')
-  document.body.classList.toggle('weather-operate', !!weather)
-  plannerWorkspace.setVisible(true)
-  overviewMap.setPlannerMode(true, { editing })
-  overviewMap.setWeatherMode(!!weather, weatherPreferences)
-  if (weather) {
-    overviewMap.setPlannerView('2d')
-    setLegacyFrameModeActive(false)
-  } else {
-    applyPlannerView(plannerWorkspace.view)
-  }
-  requestAnimationFrame(() => { overviewMap.resize({ fit: false }); overviewMap.update(route, lastRoutePts, currentViewportRect(), { fit: false }) })
-}
-
 function setWeatherWorkspace(on) {
-  setMapWorkspace({ weather: !!on, editing: mode.isPlanning() && !on })
+  workspaceLifecycle.setMapWorkspace({ weather: !!on, editing: mode.isPlanning() && !on, view: plannerWorkspace.view })
 }
 
 const rail = createRail({
@@ -3101,7 +3076,7 @@ function setSettingsOpen(open, { restoreFocus = true } = {}) {
   if (open) {
     settingsReturnFocus = document.activeElement
     mountSettingsPanel()
-    setMapWorkspace({ weather: false, editing: mode.isPlanning() })
+    workspaceLifecycle.setMapWorkspace({ weather: false, editing: mode.isPlanning(), view: plannerWorkspace.view })
     plannerWorkspace.setLayersOpen(false)
     overviewMap.setLayersOpen(false)
     if (!mode.isPlanning() && panelHost.currentId) {
@@ -3162,11 +3137,11 @@ if (params.planning) {
   params.planning = false
   mode.enterPlanning()
 } else {
-  setMapWorkspace({ weather: false, editing: false })
+  workspaceLifecycle.setMapWorkspace({ weather: false, editing: false, view: plannerWorkspace.view })
 }
 
 // console access for debugging/scripting
-window.__exp = { scene, camera, controls, params, terrain, loadRealTerrain, loadAdminBoundaries, expandTerrainToRoute, plannerWorkspace, overviewMap, get renderStats() { return { legacyFps: fps, legacyFrames: legacyFrameLoop?.frameCount ?? 0, legacyFrameLoopRunning: legacyFrameLoop?.running ?? false, plannerTerrain: overviewMap.terrainState } }, get routeCoverage() { return lastRouteCoverage }, get routeAnalysis() { return lastRouteAnalysis }, get routeDemCoverage() { return { state: routeCorridorState, cache: routeDemCoverage.stats() } }, get terrainState() { return { demBusy, demRequestId, rebuildPending, rebuildQueued, terrainGen } }, get routingState() { return { on: snapState.on, profile: snapProfile, version: snapState.version, demKey: snapState.demKey } }, get adminState() { return adminState }, get adminInteraction() { return adminInteraction }, get adminLayer() { return adminLayer }, get labels() { return labels }, get route() { return route.route }, get geo() { return geo }, get dem() { return dem } }
+window.__exp = { scene, camera, controls, params, terrain, loadRealTerrain, loadAdminBoundaries, expandTerrainToRoute, plannerWorkspace, overviewMap, get renderStats() { const frames = workspaceLifecycle?.frameScheduler; return { legacyFps: fps, legacyFrames: frames?.frameCount ?? 0, legacyFrameLoopRunning: frames?.running ?? false, plannerTerrain: overviewMap.terrainState } }, get routeCoverage() { return lastRouteCoverage }, get routeAnalysis() { return lastRouteAnalysis }, get routeDemCoverage() { return { state: routeCorridorState, cache: routeDemCoverage.stats() } }, get terrainState() { return { demBusy, demRequestId, rebuildPending, rebuildQueued, terrainGen } }, get routingState() { return { on: snapState.on, profile: snapProfile, version: snapState.version, demKey: snapState.demKey } }, get adminState() { return adminState }, get adminInteraction() { return adminInteraction }, get adminLayer() { return adminLayer }, get labels() { return labels }, get route() { return route.route }, get geo() { return geo }, get dem() { return dem } }
 
 // real world is the default source — fetch its tiles on startup
 if (params.source === 'real') loadRealTerrain()
@@ -3289,14 +3264,11 @@ function tick() {
     })
   }
 
-  if ((!params.planning && !mapWorkspaceActive) || flyState.active) composer.render(dt)
-  if (!legacyFrameModeActive && !hasLegacyFrameWork()) legacyFrameLoop.stop()
+  if ((!params.planning && !workspaceLifecycle?.mapWorkspaceActive) || flyState.active) composer.render(dt)
+  workspaceLifecycle?.settleLegacyFrames()
 }
 
-legacyFrameLoop = createFrameScheduler({ onFrame: tick })
-const startLegacyFrames = legacyFrameStartPending || legacyFrameModeActive || hasLegacyFrameWork()
-legacyFrameStartPending = false
-if (startLegacyFrames) legacyFrameLoop.start()
+workspaceLifecycle.attachFrameScheduler(createFrameScheduler({ onFrame: tick }))
 
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight

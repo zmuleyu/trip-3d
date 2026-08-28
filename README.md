@@ -35,6 +35,7 @@ The project grew from the upstream terrain experiment, but its current product s
 ## Current architecture
 
 - **Trip state:** `src/lib/tripRouteController.js` owns the single shared route, waypoint selection, mutation/history, revisions, day boundaries, and derived route analysis. `src/main.js` coordinates providers, storage/share codecs, and renderer adapters through that controller without a second state model.
+- **Workspace lifecycle:** `src/lib/workspaceLifecycleCoordinator.js` is the single Plan/Analyze transition entry for MapLibre workspace activation, native-terrain/2D fallback, safe-area fitting, and legacy frame scheduling. Renderer and UI internals remain behind lifecycle ports.
 - **Plan / Analyze map:** MapLibre owns the map workspace, 2D planning, native terrain, route/waypoint overlays, weather markers, fit padding, and truthful terrain fallback.
 - **Legacy Three tools:** Three terrain and its frame scheduler still support procedural terrain, poster/flyover output, advanced settings, and legacy instruments. Plan stops its continuous legacy RAF; Analyze and short camera work wake it when required.
 - **UI:** one Planner workspace, destination rail, shared Inspector host, fluid desktop information instruments, and a mobile peek/half/full sheet.
