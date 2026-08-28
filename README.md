@@ -73,6 +73,17 @@ The gate builds once, starts one temporary preview server and one headless brows
 captures fixed 1440x900 desktop and 390x844 mobile viewports. Evidence is written under
 `.codex/evidence/acceptance/` and is intentionally ignored by Git. It never uses full-page capture.
 
+For the smallest safe test set for the current branch and working tree, run:
+
+```bash
+npm run test:changed
+```
+
+The selector follows relative imports back to affected tests. Shared configuration, runtime source
+without reachable tests, or an unavailable base ref fails closed to the complete Vitest suite;
+documentation-only changes run no product tests. Use `-- --list --files <path...>` to inspect a
+decision without executing it.
+
 No API keys or environment variables needed.
 
 ## Deploy
