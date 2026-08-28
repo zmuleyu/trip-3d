@@ -62,6 +62,7 @@ function createSection(title, description = '') {
 export function createSettingsPanel({
   presets = [], onClose, onSetting, onLayer, onLoad,
   summaryPreferences, onSummaryPreferences, weatherPreferences, onWeatherPreferences,
+  density = 'standard', onDensity,
 } = {}) {
   const el = document.createElement('div')
   el.className = 'settings-native'
@@ -214,7 +215,13 @@ export function createSettingsPanel({
 
   const display = createSection('基础显示', '调整画面明暗和雾效，不改变路线数据。')
   display.id = 'settings-section-display'
+  const densitySelect = document.createElement('select')
+  densitySelect.setAttribute('aria-label', '界面密度')
+  densitySelect.append(new Option('紧凑', 'compact'), new Option('标准', 'standard'), new Option('大字', 'large'))
+  densitySelect.value = density
+  densitySelect.onchange = () => onDensity?.(densitySelect.value)
   display.append(
+    createRow('界面密度', densitySelect, '只保存在此浏览器；通过字号、间距和控件尺寸重新排版'),
     createRow(SETTING_LABELS.exposure, range('exposure', { min: .2, max: 3, step: .02 })),
     createRow(SETTING_LABELS.contrast, range('contrast', { min: -.2, max: .5, step: .01 })),
     createRow(SETTING_LABELS.saturation, range('saturation', { min: -1, max: 0, step: .02 })),

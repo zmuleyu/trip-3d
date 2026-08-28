@@ -54,6 +54,9 @@ import { createSearchSession } from './ui/searchSession.js'
 import { createWeatherPanel } from './ui/weatherPanel.js'
 import { createSettingsPanel } from './ui/settingsPanel.js'
 import { formatSummary, loadSummaryPreferences, saveSummaryPreferences } from './ui/summaryPreferences.js'
+import { applyDensity, loadDensity, saveDensity } from './ui/densityPreferences.js'
+import { reconcileRouteSelection, sameRouteSelection, segmentRouteSelection, waypointRouteSelection } from './ui/routeSelection.js'
+import { selectSearchPlace } from './ui/searchPlaceSelection.js'
 import { createOpenMeteoProvider, createOpenMeteoArchiveProvider } from './providers/openmeteo.js'
 import { createGeocodeProvider, createGeocodeSearchLifecycle } from './providers/geocode.js'
 import { createRoutingProvider } from './providers/routing.js'
@@ -68,6 +71,8 @@ import { routeCanBeAnalyzed, WORKFLOW_STAGES } from './ui/workflowStage.js'
 import { runRouteMutationInPlan } from './ui/routeMutationGuard.js'
 import { createWorkspaceLifecycleCoordinator } from './lib/workspaceLifecycleCoordinator.js'
 import { createLegacyTerrainToolsAdapter } from './lib/legacyTerrainToolsAdapter.js'
+
+let uiDensity = applyDensity(loadDensity())
 
 // ------------------------------------------------------------------ params
 
@@ -931,9 +936,30 @@ function reconcileWaypointSelection() {
   route.reconcileSelection()
 }
 
+function setTransientRouteSelection(next) {
+  const reconciled = reconcileRouteSelection(next, route)
+  routeSelection = sameRouteSelection(routeSelection, reconciled) ? null : reconciled
+  return routeSelection
+}
+
 function setSelectedWaypoint(id) {
-  if (!route.setSelectedWaypoint(id)) return false
+  const waypointChanged = route.setSelectedWaypoint(id)
+  const previousSelection = routeSelection
+  if (isPlanStage()) setTransientRouteSelection(waypointRouteSelection(id))
+  if (!waypointChanged && sameRouteSelection(previousSelection, routeSelection)) return false
   refreshRoute({ recordHistory: false, fitOverview: false })
+  return true
+}
+
+function setSelectedRouteSegment(segmentIndex) {
+  const previousSelection = routeSelection
+  setTransientRouteSelection(segmentRouteSelection(route, segmentIndex))
+  if (sameRouteSelection(previousSelection, routeSelection)) return false
+  refreshRoute({ recordHistory: false, fitOverview: false })
+  requestAnimationFrame(() => {
+    fluidLayout.refresh('summary')
+    overviewMap.fit()
+  })
   return true
 }
 
@@ -1266,11 +1292,14 @@ fluidLayout.register(panelHost.el, {
   maxWidth: 520,
   minHeight: 240,
   maxHeight: ({ height }) => Math.max(320, height - 120),
+  reserved: { top: 88, right: 0, bottom: 24, left: 88 },
+  anchor: 'right',
+  dragHandle: panelHost.dragHandle,
   defaultState: ({ width, height }) => ({
-    x: width - 416,
-    y: 112,
-    width: 328,
-    height: Math.min(460, height - 136),
+    x: width - 360,
+    y: 88,
+    width: 360,
+    height: Math.min(508, height - 112),
   }),
 })
 let summaryPreferences = loadSummaryPreferences()
@@ -1289,6 +1318,7 @@ const saveWeatherPreferences = (value) => {
   return weatherPreferences
 }
 let lastSavedRouteVersion = null
+let routeSelection = null
 
 let lastSyncedTripDays = 0 // itinerary→weather days sync guard
 
@@ -1364,7 +1394,6 @@ function updateRouteUI(route, stats, pts, { fitOverview = true } = {}) {
   panelHost.setSummary(route.waypoints.length
     ? formatSummary(summaryPreferences, summaryData, globalThis.matchMedia?.('(max-width: 1023px)').matches ? 2 : 4)
     : '点击地图添加途经点')
-  plannerWorkspace?.setJourneySpine({ route, legs: legs ?? [], weatherDays: wxDays ?? [] })
   plannerWorkspace?.setAnalyzeAvailable(routeCanBeAnalyzed(route))
   workspaceLifecycle?.reconcile()
   plannerWorkspace?.updateTrip({
@@ -1372,11 +1401,19 @@ function updateRouteUI(route, stats, pts, { fitOverview = true } = {}) {
     dateText: wxDays?.length ? `${wxDays[0].date} — ${wxDays.at(-1).date}` : null,
     saved: summaryData.saved,
   })
+  routeSelection = reconcileRouteSelection(routeSelection, route)
+  plannerWorkspace?.setJourneySpine({
+    route,
+    legs: legs ?? [],
+    weatherDays: wxDays ?? [],
+    selection: workspaceLifecycle?.stage === WORKFLOW_STAGES.PLAN ? routeSelection : null,
+  })
   overviewMap?.setWeatherOverlay({ routeRevision: route.revision, weatherRevision: currentWeather ? route.revision : -1, result: currentWeather })
   overviewMap.update(route, pts, currentViewportRect(), {
     fit: fitOverview,
     alternatives: snapState.alternatives,
     selectedAlternative: snapState.selectedAlternative,
+    legs: legs ?? [],
   })
   overviewMap.setSelectedWaypoint(route.selectedWaypointId)
 }
@@ -1571,16 +1608,16 @@ async function runSearch(query) {
   query = query?.trim()
   if (!query) return
   const reqId = ++searchReqId
-  planningPanel.setSearchSession(searchSession.begin(query))
+  plannerWorkspace.setSearchSession(searchSession.begin(query))
   const result = await geocodeSearch.search(query)
   if (reqId !== searchReqId || ['cancelled', 'stale'].includes(result.state)) return
   if (result.state === 'unavailable') {
     console.warn('search failed', result.primaryError, result.fallbackError)
-    planningPanel.setSearchSession(searchSession.fail())
+    plannerWorkspace.setSearchSession(searchSession.fail())
     toast.show('地点搜索暂不可用，请稍后重试')
     return
   }
-  planningPanel.setSearchSession(searchSession.resolve(result.results, result))
+  plannerWorkspace.setSearchSession(searchSession.resolve(result.results, result))
 }
 
 function flyToLonLat(lon, lat, dist = 8) {
@@ -1611,7 +1648,7 @@ async function searchGo(r) {
 async function searchAssign(r, role) {
   if (role === 'view') {
     await searchGo(r)
-    planningPanel.setSearchSession(searchSession.dismissSelection())
+    plannerWorkspace.setSearchSession(searchSession.dismiss())
     return
   }
   const ele = routeMutationElevation(r.lon, r.lat)
@@ -1623,7 +1660,7 @@ async function searchAssign(r, role) {
   if (!assignment.waypoint) { toast.show('已达途经点上限 32'); return }
   refreshRoute()
   scheduleSnap()
-  planningPanel.setSearchSession(searchSession.dismissSelection())
+  plannerWorkspace.setSearchSession(searchSession.dismiss())
   const label = role === 'start' ? '已设为起点' : role === 'end' ? '已设为终点' : '已添加途经点'
   toast.show(`${label}:${r.name || '地点'}`)
 }
@@ -1961,8 +1998,6 @@ const routeActions = {
   dayNumberAt: (i) => route.dayNumberAt(i),
   onSearch: runSearch,
   onSearchGo: searchGo,
-  onSearchSelect: (place) => planningPanel.setSearchSession(searchSession.select(place)),
-  onSearchRole: (role) => searchAssign(searchSession.selected, role),
   onImportAmap: importAmapLink,
   onExportAmap: exportAmapLink,
   onWpRemove: (i) => runPlanRouteMutation(() => { route.removeWaypoint(i); refreshRoute(); scheduleSnap() }),
@@ -2167,9 +2202,9 @@ const overviewMap = createOverviewMap({
   onWaypointMoveCancel: cancelWaypointMove,
   onWeatherDetails: showHourlyWeatherDetails,
   onAnalysisCursor: setAnalysisCursor,
+  onRouteSelect: ({ segmentIndex }) => setSelectedRouteSegment(segmentIndex),
   getFitPadding: () => fluidLayout.getSafeArea(),
   onDockAction: (action, open) => {
-    if (action === 'more') plannerWorkspace?.setMoreOpen(open)
     if (action === 'layers') plannerWorkspace?.setLayersOpen(open)
   },
   onPlanAdd: (lon, lat) => {
@@ -2235,12 +2270,26 @@ plannerWorkspace = createPlannerWorkspace({
   },
   onSearch: (query) => {
     enterPlanForEditing()
-    showTab('planning', { forceOpen: true })
-    panelHost.setCollapsed(false)
-    planningPanel.search(query)
+    runSearch(query)
+  },
+  onSearchSelect: (place) => selectSearchPlace({
+    session: searchSession,
+    place,
+    publish: (snapshot) => plannerWorkspace.setSearchSession(snapshot),
+    focus: (lon, lat) => overviewMap.focusPlace(lon, lat),
+  }),
+  onSearchRole: (role) => searchAssign(searchSession.selected, role),
+  onSearchDismiss: ({ restoreFocus = false } = {}) => {
+    plannerWorkspace.setSearchSession(searchSession.dismiss())
+    if (restoreFocus) plannerWorkspace.focusSearch()
   },
   onSpineExpand: () => {
     showTab('planning', { forceOpen: true })
+    requestAnimationFrame(() => overviewMap.fit())
+  },
+  onSpineDismiss: () => {
+    routeSelection = null
+    refreshRoute({ recordHistory: false, fitOverview: false })
     requestAnimationFrame(() => overviewMap.fit())
   },
   onMoreAction: (action) => {
@@ -2259,7 +2308,6 @@ plannerWorkspace = createPlannerWorkspace({
       toast.show('面板布局已重置')
       requestAnimationFrame(() => overviewMap.fit())
     }
-    overviewMap.setDockExpanded(false)
   },
   onMenuChange: (_menu, open) => {
     if (open && globalThis.matchMedia?.('(max-width: 1023px)')?.matches) panelHost.setSheetState('peek')
@@ -2415,6 +2463,10 @@ function showTab(id, { forceOpen = false } = {}) {
     panelHost.show('planning', '规划行程', 'ESC 退出', planningPanel.el)
     panelHost.setCollapsed(false)
     rail.setActive('planning')
+    requestAnimationFrame(() => {
+      fluidLayout.refresh('inspector')
+      overviewMap.fit()
+    })
     return
   }
   setWeatherWorkspace(id === 'weather')
@@ -2439,7 +2491,6 @@ const rail = createRail({
     id: 'utility', icon: 'more', label: '更多', onSelect: () => {
       const open = !plannerWorkspace.moreOpen
       plannerWorkspace.setMoreOpen(open)
-      overviewMap.setDockExpanded(open)
     },
   },
 })
@@ -2559,6 +2610,7 @@ function mountSettingsPanel() {
     presets: Object.keys(DEM_PRESETS),
     summaryPreferences,
     weatherPreferences,
+    density: uiDensity,
     onClose: () => setSettingsOpen(false),
     onSetting: applyNativeSetting,
     onLayer: applyNativeLayer,
@@ -2570,6 +2622,13 @@ function mountSettingsPanel() {
     onWeatherPreferences: (next) => {
       saveWeatherPreferences(next)
       overviewMap.setWeatherPreferences(weatherPreferences)
+    },
+    onDensity: (next) => {
+      uiDensity = applyDensity(saveDensity(next))
+      requestAnimationFrame(() => {
+        fluidLayout.refresh('inspector')
+        overviewMap.resize({ fit: false })
+      })
     },
   })
   settingsDrawer.appendChild(settingsPanel.el)

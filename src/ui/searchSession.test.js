@@ -35,4 +35,15 @@ describe('search session', () => {
     })
     expect(session.select(place).message).toContain('搜索来源：Photon 备用')
   })
+
+  it('closes the command popover without discarding cached results', () => {
+    const session = createSearchSession()
+    session.begin('人民公园')
+    session.resolve([{ name: '人民公园' }])
+    session.select({ name: '人民公园' })
+    const closed = session.dismiss()
+    expect(closed.state).toBe(SEARCH_SESSION_STATES.IDLE)
+    expect(closed.results).toHaveLength(1)
+    expect(closed.selected).toBeNull()
+  })
 })

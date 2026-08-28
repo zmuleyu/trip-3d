@@ -65,4 +65,16 @@ describe('native settings panel', () => {
     panel.el.querySelector('[aria-label="悬停显示天气卡"]').click()
     expect(onWeatherPreferences).toHaveBeenLastCalledWith(expect.objectContaining({ hoverCards: false }))
   })
+
+  it('offers compact, standard, and large density as a controlled local-only preference', () => {
+    const onDensity = vi.fn()
+    const panel = createSettingsPanel({ presets: ['Custom'], density: 'standard', onDensity })
+    document.body.appendChild(panel.el)
+    const density = panel.el.querySelector('[aria-label="界面密度"]')
+    expect([...density.options].map((option) => option.value)).toEqual(['compact', 'standard', 'large'])
+    expect(density.value).toBe('standard')
+    density.value = 'large'
+    density.dispatchEvent(new Event('change'))
+    expect(onDensity).toHaveBeenCalledWith('large')
+  })
 })
