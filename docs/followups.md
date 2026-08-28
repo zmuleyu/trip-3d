@@ -1,5 +1,30 @@
 # trip-3d followups (v1.1+)
 
+## Architecture evolution
+
+The current production baseline keeps one shared trip across MapLibre Plan/Analyze,
+local storage, weather, save, and share. Continue architecture work one reviewed
+Goal at a time; do not combine these phases into a broad rewrite.
+
+- [ ] S1: extract a renderer-neutral `TripRouteController` that owns route mutation,
+  selection, history, revision, day boundaries, and derived route stats. Preserve
+  stored-route, share-link, GPX, provider, MapLibre, Three, and UI behavior.
+- [ ] S2: after S1 review, extract a workspace lifecycle coordinator for Plan/Analyze,
+  frame scheduling, renderer activation, fit/safe-area, and fallback transitions.
+- [ ] S3: isolate poster, flyover, procedural terrain, and legacy HUD consumers behind
+  a legacy-tools adapter without creating a second trip state.
+- [ ] S4: only after measured consumer and bundle/runtime evidence, decide whether each
+  legacy Three/HUD capability remains eager, becomes optional/lazy, or is retired.
+
+Architecture constraints:
+
+- Keep MapLibre 2D/native terrain, `frameScheduler`, route mutation guards, truthful
+  provider fallbacks, and stored/share compatibility until an exact replacement is proven.
+- Do not run a standalone whole-file CSS rewrite. Remove dead selectors and consolidate
+  active instrument rules only while changing their owning component.
+- Stop a phase when it would require the next phase, a product decision, provider change,
+  storage/share migration, or production activation.
+
 - [ ] 天气:场景天气粒子(雨/雪氛围,shader 级,美学增强)
 - [ ] 天气:RainViewer 雷达回波贴图 draping(P3 评估)
 - [ ] 设置抽屉剩余实验参数逐件原生化(材质/镜头/运动/Tour/性能)
