@@ -1,6 +1,6 @@
-# trip-3d followups (v1.1+)
+# trip-3d followups (after v0.4.0)
 
-Current active delivery: [R2 non-blocking route enrichment](specs/2026-08-28-search-route-flow-roadmap.md).
+Completed delivery baseline: [R1–R5 search and route flow](specs/2026-08-28-search-route-flow-roadmap.md) for v0.4.0.
 
 ## Architecture evolution
 

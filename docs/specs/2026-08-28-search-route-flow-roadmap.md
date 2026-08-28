@@ -1,6 +1,6 @@
 ---
 title: Search and route intent flow roadmap
-status: R5 active and frozen
+status: R5 completed
 updated: 2026-08-28
 scope: R5 bounded public-provider reliability
 ---
@@ -57,7 +57,7 @@ pan and multi-touch gestures, and permits waypoint preview only after the drag
 hysteresis threshold. Analyze remains read-only. The mobile sheet, global menu,
 and attribution preserve the map working area without overlap.
 
-## R5 — active and frozen
+## R5 — completed
 
 Public Nominatim/Photon search and FOSSGIS OSRM routing remain **light-use
 only**, with no production SLA. Search stays explicit-submit: a latest-only
