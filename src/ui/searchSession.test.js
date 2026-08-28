@@ -20,6 +20,19 @@ describe('search session', () => {
     session.begin('锦里')
     session.select({ name: '锦里', context: '成都市 · 武侯区 · 四川省', category: '景点' })
 
-    expect(session.fail()).toMatchObject({ state: SEARCH_SESSION_STATES.ERROR, selected: null })
+    expect(session.fail()).toMatchObject({ state: SEARCH_SESSION_STATES.ERROR, selected: null, message: expect.stringContaining('Photon 备用') })
+  })
+
+  it('keeps provider and fallback metadata transient and visible in the result message', () => {
+    const session = createSearchSession()
+    session.begin('成都')
+    const source = { kind: 'photon', label: 'Photon 备用' }
+    const place = { name: '成都', context: '成都市 · 锦江区 · 四川省', category: '城市', source }
+    expect(session.resolve([place], { source, fallbackUsed: true })).toMatchObject({
+      source,
+      fallbackUsed: true,
+      message: expect.stringContaining('搜索来源：Photon 备用'),
+    })
+    expect(session.select(place).message).toContain('搜索来源：Photon 备用')
   })
 })

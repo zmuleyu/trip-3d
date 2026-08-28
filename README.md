@@ -107,6 +107,28 @@ Before source merge and again after release, verify Pages branch controls still 
 - Browser-local IndexedDB route storage, GPX import/export, compressed URL sharing, Open-Meteo weather, OSRM routing, and Nominatim/Photon geocoding
 - Hand-rolled seeded noise remains limited to real-DEM surface texture and label placement; flyover math remains a bounded output seam
 
+### Public search and routing providers
+
+The current browser integration is for light use, not a production SLA. Place
+search is explicit-submit only and uses OSM Nominatim with a visibly labelled
+Photon demo fallback when Nominatim is unavailable. Routing uses the FOSSGIS
+`routing.openstreetmap.de` OSRM service. Requests are latest-only, gated,
+cancelable, time-bounded, and cached in small success-only memory caches; there
+are no background retries. A search action makes at most one primary plus one
+fallback request, while one coalesced route edit makes at most one request and
+receives any route alternatives in that response.
+
+Official policies checked 2026-08-28: [Nominatim usage policy](https://operations.osmfoundation.org/policies/nominatim/),
+[Photon demo-server terms](https://github.com/komoot/photon#demo-server), and
+[FOSSGIS routing terms](https://www.fossgis.de/arbeitsgruppen/osm-server/nutzungsbedingungen/)
+plus its [service description](https://routing.openstreetmap.de/about.html).
+Nominatim's one-request-per-second ceiling applies to aggregate application
+traffic, which independent browser throttles cannot guarantee at production
+scale. Photon and FOSSGIS give no availability guarantee and may change or end
+access. Production-scale use therefore requires separate authorization for a
+globally limited gateway, self-hosted services, or an approved commercial/Amap
+provider. Timeout and cancellation are resource boundaries, not usage caps.
+
 ## Elevation data & attribution
 
 Real-world mode uses the **[Terrain Tiles](https://registry.opendata.aws/terrain-tiles/)** dataset (Terrarium encoding), publicly hosted through the AWS Open Data program — no key required.

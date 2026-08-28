@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
-import { createGeocodeProvider, normalizeGeocodePlace } from './geocode.js'
+import { describe, it, expect, vi } from 'vitest'
+import { createGeocodeProvider, createGeocodeSearchLifecycle, normalizeGeocodePlace } from './geocode.js'
 
 const NOMINATIM_FIXTURE = [
   {
@@ -71,6 +71,18 @@ describe('nominatim provider', () => {
     const p = createGeocodeProvider('nominatim', { fetchImpl: async () => ({ ok: false, status: 503, json: async () => ({}) }) })
     await expect(p.search('x')).rejects.toThrow(/503/)
   })
+
+  it('bounds the request with a timeout signal', async () => {
+    vi.useFakeTimers()
+    const p = createGeocodeProvider('nominatim', {
+      fetchImpl: async (_url, { signal }) => new Promise((_, reject) => signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true })),
+    })
+    const request = p.search('x', 6, { timeoutMs: 25 })
+    const assertion = expect(request).rejects.toMatchObject({ code: 'timeout', provider: 'nominatim' })
+    await vi.advanceTimersByTimeAsync(25)
+    await assertion
+    vi.useRealTimers()
+  })
 })
 
 describe('photon provider', () => {
@@ -107,5 +119,76 @@ describe('search result normalizer', () => {
       context: '城市信息暂缺 · 青羊区 · 四川省',
       category: '塔',
     })
+  })
+})
+
+describe('bounded geocode search lifecycle', () => {
+  const source = (kind, label) => ({ kind, label, publicDemo: true, noSla: true })
+
+  it('uses at most primary 1 + fallback 1 and exposes fallback source', async () => {
+    const calls = []
+    const primary = { source: source('nominatim', 'OSM Nominatim'), async search() { calls.push('primary'); throw Object.assign(new Error('down'), { code: 'unavailable' }) } }
+    const fallback = { source: source('photon', 'Photon 备用'), async search() { calls.push('fallback'); return [{ name: '成都', source: this.source }] } }
+    const lifecycle = createGeocodeSearchLifecycle({ primary, fallback, minIntervalMs: 0 })
+
+    await expect(lifecycle.search('成都')).resolves.toMatchObject({ state: 'results', fallbackUsed: true, source: fallback.source })
+    expect(calls).toEqual(['primary', 'fallback'])
+  })
+
+  it('does not fan out a primary no-result to Photon', async () => {
+    const fallback = { source: source('photon', 'Photon 备用'), search: vi.fn(async () => []) }
+    const lifecycle = createGeocodeSearchLifecycle({
+      primary: { source: source('nominatim', 'OSM Nominatim'), search: vi.fn(async () => []) },
+      fallback,
+      minIntervalMs: 0,
+    })
+    await expect(lifecycle.search('不存在')).resolves.toMatchObject({ state: 'empty', fallbackUsed: false })
+    expect(fallback.search).not.toHaveBeenCalled()
+  })
+
+  it('caches only successful non-empty results under normalized queries', async () => {
+    const primary = { source: source('nominatim', 'OSM Nominatim'), search: vi.fn(async () => [{ name: '四姑娘山' }]) }
+    const lifecycle = createGeocodeSearchLifecycle({ primary, fallback: {}, minIntervalMs: 0 })
+    await lifecycle.search('  四姑娘山  ')
+    const cached = await lifecycle.search('四姑娘山')
+    expect(cached.cached).toBe(true)
+    expect(primary.search).toHaveBeenCalledTimes(1)
+    expect(lifecycle.stats().cached).toBe(1)
+  })
+
+  it('does not cache failures', async () => {
+    const primary = { source: source('nominatim', 'OSM Nominatim'), search: vi.fn(async () => { throw Object.assign(new Error('down'), { code: 'unavailable' }) }) }
+    const fallback = { source: source('photon', 'Photon 备用'), search: vi.fn(async () => { throw Object.assign(new Error('down'), { code: 'unavailable' }) }) }
+    const lifecycle = createGeocodeSearchLifecycle({ primary, fallback, minIntervalMs: 0 })
+    await lifecycle.search('成都')
+    await lifecycle.search('成都')
+    expect(primary.search).toHaveBeenCalledTimes(2)
+    expect(fallback.search).toHaveBeenCalledTimes(2)
+    expect(lifecycle.stats().cached).toBe(0)
+  })
+
+  it('cancels an older in-flight query and publishes only the latest intent', async () => {
+    let releaseLatest
+    let markOldStarted
+    const oldStarted = new Promise((resolve) => { markOldStarted = resolve })
+    const primary = {
+      source: source('nominatim', 'OSM Nominatim'),
+      search: vi.fn((query, _limit, { signal }) => new Promise((resolve, reject) => {
+        if (query === '旧查询') {
+          markOldStarted()
+          signal.addEventListener('abort', () => reject(Object.assign(new Error('cancelled'), { code: 'cancelled' })), { once: true })
+        }
+        else releaseLatest = () => resolve([{ name: query }])
+      })),
+    }
+    const lifecycle = createGeocodeSearchLifecycle({ primary, fallback: {}, minIntervalMs: 0 })
+    const old = lifecycle.search('旧查询')
+    await oldStarted
+    const latest = lifecycle.search('新查询')
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    releaseLatest()
+    await expect(old).resolves.toMatchObject({ state: 'cancelled' })
+    await expect(latest).resolves.toMatchObject({ state: 'results', query: '新查询' })
+    expect(primary.search).toHaveBeenCalledTimes(2)
   })
 })

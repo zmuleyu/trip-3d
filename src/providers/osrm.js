@@ -1,12 +1,40 @@
 // OSRM routing provider — FOSSGIS public servers (real per-profile graphs).
-// Verified 2026-08-04/05 from browser: routed-foot 17.3km/13847s (~4.5km/h walking)
-// vs routed-car 21.5km/3094s (mountain-road driving) on the same pair; CORS ok.
-// The official router.project-osrm.org demo serves the driving graph even under
-// /foot/ — do not use it for hiking. Light use only (FOSSGIS policy); self-host
-// for production load (see followups).
+// Light use only: FOSSGIS allows at most one request/second, may change or end
+// service without notice, and gives no availability guarantee. Production-scale
+// use requires separately authorized gateway/self-hosting (README + roadmap).
 const HOST = 'https://routing.openstreetmap.de'
 // service name → OSRM v1 path profile segment (FOSSGIS convention)
 const PATH_PROFILE = { foot: 'foot', car: 'driving', bike: 'bike' }
+export const OSRM_SOURCE = Object.freeze({ kind: 'osrm-fossgis', label: 'OSM/FOSSGIS 公共路由', publicDemo: true, noSla: true })
+
+export class OsrmRequestError extends Error {
+  constructor(code, cause) {
+    super(`osrm: ${code}`, cause ? { cause } : undefined)
+    this.name = 'OsrmRequestError'
+    this.code = code
+  }
+}
+
+async function boundedJson(fetchImpl, url, { signal, timeoutMs = 10000 } = {}) {
+  const controller = new AbortController()
+  let timedOut = false
+  const abort = () => controller.abort(signal?.reason)
+  if (signal?.aborted) abort()
+  else signal?.addEventListener('abort', abort, { once: true })
+  const timer = setTimeout(() => { timedOut = true; controller.abort() }, timeoutMs)
+  try {
+    const response = await fetchImpl(url, { signal: controller.signal })
+    const body = response.ok ? await response.json() : null
+    return { response, body }
+  } catch (error) {
+    if (timedOut) throw new OsrmRequestError('timeout', error)
+    if (controller.signal.aborted) throw new OsrmRequestError('cancelled', error)
+    throw new OsrmRequestError('unavailable', error)
+  } finally {
+    clearTimeout(timer)
+    signal?.removeEventListener('abort', abort)
+  }
+}
 
 function normalizeRoute(route) {
   const geometry = route?.geometry?.coordinates
@@ -33,35 +61,26 @@ export function createOsrmProvider({ fetchImpl = fetch, profile = 'foot', exclud
     kind: 'osrm',
     profile,
     exclude,
-    async route(points) {
+    source: OSRM_SOURCE,
+    async route(points, options = {}) {
       if (!points || points.length < 2) throw new Error('osrm: need >= 2 points')
       const coords = points.map((p) => `${p.lon},${p.lat}`).join(';')
       // alternatives=true stays within the one existing route request. We retain
       // at most two valid responses so the public provider's response size and
       // the planner's choice remain deliberately bounded.
       const url = `${HOST}/${service}/route/v1/${pathProfile}/${coords}?overview=full&geometries=geojson&steps=false&alternatives=true`
-      const call = async (withExclude) => {
-        const res = await fetchImpl(withExclude ? `${url}&exclude=${exclude}` : url)
-        if (!res.ok) throw new Error(`osrm HTTP ${res.status}`)
-        const body = await res.json()
-        if (body.code !== 'Ok') throw new Error(`osrm: ${body.code ?? 'unknown'}`)
+      const requestUrl = exclude ? `${url}&exclude=${exclude}` : url
+      const call = async () => {
+        const { response: res, body } = await boundedJson(fetchImpl, requestUrl, options)
+        if (!res.ok) throw new OsrmRequestError(`http-${res.status}`)
+        if (body.code !== 'Ok') throw new OsrmRequestError(body.code ?? 'unknown')
         const alternatives = normalizeOsrmRoutes(body.routes)
-        if (!alternatives.length) throw new Error('osrm: empty route geometry')
-        return { ...alternatives[0], alternatives }
+        if (!alternatives.length) throw new OsrmRequestError('empty-route')
+        return { ...alternatives[0], alternatives, source: OSRM_SOURCE, availability: 'available' }
       }
-      // FOSSGIS public profiles lack exclude-class support → degrade gracefully:
-      // retry once without exclude and flag the result so the UI can tell the user.
-      if (exclude) {
-        try {
-          return await call(true)
-        } catch (err) {
-          if (!/InvalidValue/.test(err.message)) throw err
-          const out = await call(false)
-          out.excludeIgnored = true
-          return out
-        }
-      }
-      return call(false)
+      // Never retry or silently remove requested semantics: one route intent is
+      // one public-service request. Unsupported exclude fails truthfully.
+      return call()
     },
   }
 }

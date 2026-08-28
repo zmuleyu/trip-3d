@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { createOsrmProvider } from './osrm.js'
 import { createRoutingProvider } from './routing.js'
 
@@ -101,23 +101,19 @@ describe('osrm provider', () => {
     expect(url).toContain('&exclude=motorway')
   })
 
-  it('exclude InvalidValue (FOSSGIS 不支持) → retries without exclude, flags excludeIgnored', async () => {
+  it('exclude InvalidValue fails after one request without silently changing semantics', async () => {
     const urls = []
     const p = createOsrmProvider({
       fetchImpl: async (u) => {
         urls.push(u)
-        if (u.includes('exclude=')) return { ok: true, json: async () => ({ code: 'InvalidValue', message: 'Exclude flag combination is not supported.' }) }
-        return { ok: true, json: async () => OSRM_FIXTURE }
+        return { ok: true, json: async () => ({ code: 'InvalidValue', message: 'Exclude flag combination is not supported.' }) }
       },
       profile: 'car',
       exclude: 'motorway',
     })
-    const r = await p.route([{ lon: 102.83, lat: 31.05 }, { lon: 102.9, lat: 31.02 }])
-    expect(urls).toHaveLength(2)
+    await expect(p.route([{ lon: 102.83, lat: 31.05 }, { lon: 102.9, lat: 31.02 }])).rejects.toMatchObject({ code: 'InvalidValue' })
+    expect(urls).toHaveLength(1)
     expect(urls[0]).toContain('&exclude=motorway')
-    expect(urls[1]).not.toContain('&exclude=')
-    expect(r.excludeIgnored).toBe(true)
-    expect(r.geometry).toHaveLength(4)
   })
 
   it('exclude non-InvalidValue errors propagate (no silent retry)', async () => {
@@ -142,6 +138,18 @@ describe('osrm provider', () => {
   it('throws on HTTP error', async () => {
     const p = createOsrmProvider({ fetchImpl: async () => ({ ok: false, status: 429, json: async () => ({}) }) })
     await expect(p.route([{ lon: 0, lat: 0 }, { lon: 1, lat: 1 }])).rejects.toThrow(/429/)
+  })
+
+  it('bounds a public route request with timeout and does not retry', async () => {
+    vi.useFakeTimers()
+    const fetchImpl = vi.fn(async (_url, { signal }) => new Promise((_, reject) => signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true })))
+    const p = createOsrmProvider({ fetchImpl })
+    const request = p.route([{ lon: 0, lat: 0 }, { lon: 1, lat: 1 }], { timeoutMs: 25 })
+    const assertion = expect(request).rejects.toMatchObject({ code: 'timeout' })
+    await vi.advanceTimersByTimeAsync(25)
+    await assertion
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    vi.useRealTimers()
   })
 })
 
