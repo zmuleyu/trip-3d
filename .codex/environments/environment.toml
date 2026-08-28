@@ -11,9 +11,9 @@ icon = "run"
 command = "npm run dev:acceptance"
 
 [[actions]]
-name = "Focused UI tests"
+name = "Changed-file tests"
 icon = "test"
-command = "npm run test:ui"
+command = "npm run test:changed"
 
 [[actions]]
 name = "Desktop + mobile acceptance"

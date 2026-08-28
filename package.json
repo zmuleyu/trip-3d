@@ -10,6 +10,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
+    "test:changed": "node scripts/focused-tests.mjs",
+    "test:selector": "node --test scripts/focused-tests.node-test.mjs",
     "test:ui": "vitest run src/ui/chrome.test.js src/ui/fluidLayout.test.js src/ui/overviewMap.test.js src/ui/plannerWorkspace.test.js",
     "acceptance": "node scripts/acceptance.mjs"
   },
