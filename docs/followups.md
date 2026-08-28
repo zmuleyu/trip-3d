@@ -9,7 +9,7 @@ Goal at a time; do not combine these phases into a broad rewrite.
 - [x] S1: extract a renderer-neutral `TripRouteController` that owns route mutation,
   selection, history, revision, day boundaries, and derived route stats. Preserve
   stored-route, share-link, GPX, provider, MapLibre, Three, and UI behavior.
-- [ ] S2: after S1 review, extract a workspace lifecycle coordinator for Plan/Analyze,
+- [x] S2: after S1 review, extract a workspace lifecycle coordinator for Plan/Analyze,
   frame scheduling, renderer activation, fit/safe-area, and fallback transitions.
 - [ ] S3: isolate poster, flyover, procedural terrain, and legacy HUD consumers behind
   a legacy-tools adapter without creating a second trip state.
