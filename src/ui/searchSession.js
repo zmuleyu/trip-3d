@@ -63,5 +63,11 @@ export function createSearchSession() {
       message = results.length ? `找到 ${results.length} 个地点，请先确认城市或区县` : '搜索地点、线路或营地'
       return snapshot()
     },
+    dismiss() {
+      selected = null
+      state = SEARCH_SESSION_STATES.IDLE
+      message = '搜索地点、线路或营地'
+      return snapshot()
+    },
   }
 }

@@ -58,6 +58,8 @@ describe('panel collapse accessibility state', () => {
     panel.show('weather', '沿途天气', null, document.createElement('div'))
     expect(panel.el.querySelector('.ui-panel-tabs')).toBeNull()
     expect(panel.el.querySelector('h2').textContent).toContain('沿途天气')
+    expect(panel.dragHandle).toBe(panel.el.querySelector('.ui-panel-titlebar'))
+    expect(panel.dragHandle.title).toContain('双击')
   })
 
   it('keeps aria-expanded synchronized with the panel body', () => {
@@ -114,5 +116,19 @@ describe('panel collapse accessibility state', () => {
     pointer(document, 'pointermove', { y: 160, time: 40 })
     pointer(document, 'pointerup', { y: 160, time: 80 })
     expect(panel.sheetState).toBe('full')
+  })
+
+  it('returns a mounted mobile sheet to an open desktop inspector', () => {
+    let onChange
+    const media = { matches: true, addEventListener: vi.fn((_event, listener) => { onChange = listener }) }
+    vi.stubGlobal('matchMedia', vi.fn(() => media))
+    const panel = createPanelHost()
+    panel.show('planning', '线路规划', null, document.createElement('div'))
+    panel.setSheetState('peek')
+    expect(panel.collapsed).toBe(true)
+    media.matches = false
+    onChange({ matches: false })
+    expect(panel.collapsed).toBe(false)
+    expect(panel.sheetState).toBe('half')
   })
 })

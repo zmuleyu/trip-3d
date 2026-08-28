@@ -1,7 +1,7 @@
 # TRIP 3D — 时间、空间与气候的旅行地图
 
 > **在线访问**: https://trip-3d.pages.dev (Cloudflare Pages)
-> **源码版本**: v0.4.1；Plan / Analyze 已统一为单一 workflow stage，R1–R5 搜索与路线流程保持完成。公共搜索与路由 provider 仍仅限 light use，不提供生产 SLA。
+> **源码版本**: v0.5.0；Map-first Planning Surface 已完成：Plan / Analyze 共享同一 trip state，规划 Inspector、搜索与路线上下文在地图上按需展开。公共搜索与路由 provider 仍仅限 light use，不提供生产 SLA。
 
 TRIP 3D 是以地图和路线为核心的旅行规划与记录工具。用户在 Plan 中编辑同一条路线，在 Analyze 中查看同一空间状态的地形与高程；路线库、沿途天气、GPX、保存和分享都围绕同一个 trip model 工作。
 
@@ -25,13 +25,14 @@ The project grew from the upstream terrain experiment, but its current product s
 
 | Task | Current path |
 |---|---|
-| Plan a route | Enter **Plan**, search or click the map, then add, select, drag, reorder, reverse, or close waypoints. |
+| Plan a route | Enter **Plan**, explicitly submit a place search or click the map, then assign a result role, add, select, drag, reorder, reverse, or close waypoints. Search selection focuses the map without silently changing the route. |
 | Choose routing | Use Direct, Walk, or Drive; provider limitations and unavailable duration/elevation remain explicit. |
 | Inspect terrain | Switch to **Analyze**. The same route and camera context continue into native MapLibre terrain and the elevation profile. |
 | Review weather | Open Weather from the destination rail; the panel uses the current route and selected date. |
 | Save or reopen | Save to the browser-local route library. There is no account or server synchronization. |
 | Import, export, share | Use GPX import/export, supported Amap links, URL sharing, poster output, or flyover recording from the global actions menu. |
-| Adjust the workspace | Desktop information instruments can be moved, resized, brought forward, and reset; compact viewports retain the mobile sheet. |
+| Inspect route context | Select a waypoint or rendered route segment in **Plan** to open its shared context summary; close or clear the selection to return to the unobstructed map. |
+| Adjust the workspace | The desktop Inspector starts anchored to the right edge, detaches when dragged, reflows when resized, and resets by double-click or More → Reset layout. Compact viewports retain the mobile sheet. Compact, standard, and large density preferences are stored locally. |
 
 ## Current architecture
 
@@ -39,7 +40,7 @@ The project grew from the upstream terrain experiment, but its current product s
 - **Workspace lifecycle:** `src/lib/workspaceLifecycleCoordinator.js` is the single Plan/Analyze transition entry for MapLibre workspace activation, native-terrain/2D fallback, safe-area fitting, and legacy frame scheduling. Renderer and UI internals remain behind lifecycle ports.
 - **Plan / Analyze map:** MapLibre owns the map workspace, 2D planning, native terrain, route/waypoint overlays, weather markers, fit padding, and truthful terrain fallback.
 - **Retained output renderer:** `LegacyTerrainToolsAdapter` contains poster/flyover output, real-DEM rebuild, and the minimum camera seam through injected ports. Plan stops its continuous legacy RAF; only explicit output or camera work wakes it.
-- **UI:** one Planner workspace, destination rail, shared Inspector host, fluid desktop information instruments, and a mobile peek/half/full sheet.
+- **UI:** one Planner workspace, a destination rail whose More control is the sole global-actions entry, a four-action horizontal map dock, a right-anchored/detachable shared Inspector, local density reflow, on-demand route context, and a mobile peek/half/full sheet.
 - **Providers and persistence:** routing, geocoding, weather, DEM, administrative overlays, IndexedDB route storage, GPX, and compressed URL sharing remain separate seams around the shared trip.
 
 See [PRODUCT.md](PRODUCT.md) for product behavior, [DESIGN.md](DESIGN.md) for visual authority, and [docs/followups.md](docs/followups.md) for the remaining staged architecture path and deferred capabilities.

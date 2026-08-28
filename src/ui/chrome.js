@@ -64,6 +64,8 @@ export function createPanelHost({ onSummaryCustomize } = {}) {
   let drag = null
   let dragged = false
   const h = document.createElement('h2')
+  h.className = 'ui-panel-titlebar'
+  h.title = '拖动面板；双击恢复右侧停靠'
   const summary = document.createElement('span')
   summary.className = 'ui-panel-summary'
   const customize = document.createElement('button')
@@ -158,12 +160,17 @@ export function createPanelHost({ onSummaryCustomize } = {}) {
     if (dragged) { dragged = false; return }
     if (isMobileSheet()) setSheetState(nextSheetState())
   }
-  mobileQuery?.addEventListener?.('change', () => {
-    if (isMobileSheet() && collapsed) sheetState = 'peek'
+  mobileQuery?.addEventListener?.('change', (event) => {
+    if (event.matches && currentId && collapsed) sheetState = 'peek'
+    if (!event.matches && currentId) {
+      collapsed = false
+      sheetState = 'half'
+    }
     apply()
   })
   return {
     el,
+    dragHandle: h,
     get currentId() { return currentId },
     get collapsed() { return collapsed },
     show(id, title, hint, contentEl) {

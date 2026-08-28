@@ -296,25 +296,7 @@ body.planner-operate .ui-settings { top: 58px; width: min(360px, calc(100vw - 24
 .wx-attr { font-size: 9px; opacity: 0.5; margin-top: 8px; }
 .wx-attr a { color: inherit; }
 
-/* ------------------------------------------------------------------ planning search + snap */
-.pp-results { border: 1px solid rgba(23,25,27,0.2); background: rgba(255,255,255,0.92); margin-bottom: 6px; max-height: 260px; overflow-y: auto; }
-.pp-results.hidden { display: none; }
-.pp-result { display: flex; width: 100%; align-items: center; gap: 8px; padding: 8px 9px; color: var(--trip-ink); text-align: left; font: inherit; font-size: 11px; border: 0; border-bottom: 1px solid var(--trip-line); background: transparent; cursor: pointer; }
-.pp-result:hover, .pp-result:focus-visible { background: rgba(240,74,29,.08); outline: 2px solid var(--trip-route); outline-offset: -2px; }
-.pp-result-copy { flex: 1; min-width: 0; }
-.pp-result-copy b, .pp-result-copy span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pp-result-copy span { margin-top: 2px; color: var(--trip-ink-soft); }
-.pp-result small { flex: 0 0 auto; color: var(--trip-ink-soft); }
-.pp-search-status { margin: 0; padding: 8px 9px; color: var(--trip-ink-soft); font-size: 11px; }
-.pp-search-status.is-error { color: var(--trip-warning); }
-.pp-place-selection { padding: 4px 9px 10px; }
-.pp-place-selection > b, .pp-place-selection > span { display: block; }
-.pp-place-selection > span { margin-top: 2px; color: var(--trip-ink-soft); font-size: 11px; }
-.pp-place-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 10px; }
-.pp-place-actions button { min-height: 34px; padding: 5px 7px; border: 1px solid var(--trip-line-strong); border-radius: var(--trip-radius-control); background: var(--trip-paper-strong); color: var(--trip-ink); font: inherit; font-size: 11px; cursor: pointer; }
-.pp-place-actions button.primary { border-color: var(--trip-route); background: var(--trip-route); color: var(--trip-paper-strong); }
-.pp-place-actions button:focus-visible { outline: 2px solid var(--trip-route); outline-offset: 2px; }
-.pp-attr { font-size: 9px; opacity: 0.5; padding: 3px 6px; }
+/* ------------------------------------------------------------------ planning snap */
 .pp-snap-row { display: flex; align-items: center; gap: 5px; font-size: 11px; margin-bottom: 6px; cursor: pointer; }
 .pp-snap-status { font-size: 10px; opacity: 0.65; }
 
@@ -667,7 +649,7 @@ body.planner-operate.planner-layers-open .ui-layer-tip { display: none; }
   .pp-mobile-primary button:disabled { opacity: .42; }
   .pp-route-mode button, .pp-ops-main button, .pp-ops-edit button,
   .pp-amap-toggle, .ui-panel-chev, .name-input,
-  .pp-result, .pp-place-actions button, .admin-actions button { min-height: 44px; }
+  .admin-actions button { min-height: 44px; }
   body.planner-operate .ui-panel .name-input { min-height: 44px; }
   .ui-panel-chev { min-width: 44px; }
   .pp-amap-box input, .pp-amap-box button { min-height: 44px; }
@@ -728,6 +710,30 @@ body.planner-operate.planner-layers-open .ui-layer-tip { display: none; }
   --trip-radius-card: 14px;
   --trip-shadow: 0 10px 30px rgba(18, 24, 28, 0.16);
   --trip-font: "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", system-ui, sans-serif;
+  --ui-density-font: 14px;
+  --ui-density-meta: 11px;
+  --ui-density-leading: 1.5;
+  --ui-density-gap: 14px;
+  --ui-density-panel-pad: 16px;
+  --ui-density-control: 42px;
+}
+
+:root[data-ui-density="compact"] {
+  --ui-density-font: 13px;
+  --ui-density-meta: 10px;
+  --ui-density-leading: 1.42;
+  --ui-density-gap: 10px;
+  --ui-density-panel-pad: 12px;
+  --ui-density-control: 40px;
+}
+
+:root[data-ui-density="large"] {
+  --ui-density-font: 16px;
+  --ui-density-meta: 12px;
+  --ui-density-leading: 1.58;
+  --ui-density-gap: 18px;
+  --ui-density-panel-pad: 20px;
+  --ui-density-control: 46px;
 }
 
 html, body { font-family: var(--trip-font); color: var(--trip-ink); }
@@ -1258,7 +1264,6 @@ body.planner-operate .ui-panel-body { height: calc(100% - 58px); padding: 18px 1
 .ui-trip-spine-day b { color: var(--trip-ink-soft); font-size: 10px; font-weight: 650; }
 .ui-trip-spine-day span { margin-top: 2px; font-size: 11px; font-weight: 600; }
 .ui-trip-spine-day small { margin-top: 2px; color: var(--trip-ink-soft); font-size: 9px; }
-.ui-trip-spine-empty { display: block; padding: 0 18px; color: var(--trip-ink-soft); font-size: 11px; }
 .settings-open .ui-trip-spine { opacity: 0; transform: translate(-50%, 8px); pointer-events: none; }
 
 @media (min-width: 721px) {
@@ -1479,7 +1484,6 @@ body.planner-operate {
 .ui-trip-spine-day b,
 .ui-trip-spine-day small { color: var(--instrument-muted); }
 .ui-trip-spine-day span { color: var(--instrument-text); }
-.ui-trip-spine-empty { color: var(--instrument-muted); }
 .ui-trip-spine .ui-trip-identity {
   position: static;
   min-width: 0;
@@ -1925,4 +1929,193 @@ body.planner-operate.analyze-operate .profile-recovery { border-color: var(--ins
 @media (prefers-reduced-motion: reduce) {
   .ui-fluid-surface { transition: opacity 120ms ease-out !important; }
   .fluid-interacting { transition: none !important; }
+}
+
+/* Map-first planning surface: selected-command popover, horizontal dock, and
+   density-driven reflow. These override the retained pre-v0.4 chrome rules. */
+.ui-planner-brand-island { position: absolute; }
+.ui-search-popover {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 52;
+  width: min(360px, calc(100vw - 48px));
+  max-height: min(520px, calc(100vh - 104px));
+  overflow: hidden;
+  border-radius: 12px;
+  background: rgba(23, 28, 31, .98);
+  color: var(--text-light-primary);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, .24);
+  font: var(--ui-density-font)/var(--ui-density-leading) var(--trip-font);
+}
+.ui-search-popover.hidden { display: none; }
+.ui-search-popover-close {
+  position: absolute;
+  right: 6px;
+  top: 6px;
+  z-index: 2;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-light-secondary);
+  cursor: pointer;
+}
+.ui-search-popover-close:hover { background: var(--instrument-surface-hover); color: #fff; }
+.ui-search-popover-close svg { width: 16px; height: 16px; }
+.ui-search-popover-body { max-height: inherit; overflow-y: auto; padding: var(--ui-density-panel-pad); padding-top: calc(var(--ui-density-panel-pad) + 22px); }
+.ui-search-popover-status { margin: 0 40px var(--ui-density-gap) 0; color: var(--text-light-secondary); font-size: var(--ui-density-meta); }
+.ui-search-popover-status.is-error { color: #ffd0be; }
+.ui-search-results { display: grid; gap: 2px; }
+.ui-search-result {
+  min-height: var(--ui-density-control);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--ui-density-gap);
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.ui-search-result:hover, .ui-search-result:focus-visible { background: var(--instrument-surface-hover); }
+.ui-search-result > span, .ui-search-place-copy { min-width: 0; display: grid; gap: 2px; }
+.ui-search-result b, .ui-search-place-copy b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--ui-density-font); }
+.ui-search-result span span, .ui-search-place-copy span, .ui-search-result small, .ui-search-attribution { color: var(--text-light-secondary); font-size: var(--ui-density-meta); }
+.ui-search-result small { max-width: 11ch; text-align: right; }
+.ui-search-attribution { display: block; margin-top: 10px; }
+.ui-search-place-copy { padding-right: 40px; }
+.ui-search-place-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: var(--ui-density-gap); }
+.ui-search-place-actions button {
+  min-height: var(--ui-density-control);
+  border: 1px solid rgba(255, 255, 255, .14);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-light-primary);
+  cursor: pointer;
+}
+.ui-search-place-actions button.primary { border-color: transparent; background: var(--trip-route); color: #fff; }
+.ui-search-popover button:focus-visible { outline: 2px solid var(--trip-route); outline-offset: 2px; }
+
+.ui-trip-spine-close {
+  min-width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  align-self: center;
+  margin-right: 6px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--instrument-muted);
+  cursor: pointer;
+}
+.ui-trip-spine-close:hover { background: var(--instrument-surface-hover); color: #fff; }
+.ui-trip-spine-close svg { width: 16px; height: 16px; }
+.ui-trip-spine.hidden { display: none !important; }
+
+body.planner-operate .ui-panel-body,
+body.weather-operate .ui-panel-body {
+  padding: var(--ui-density-panel-pad) !important;
+  font-size: var(--ui-density-font);
+  line-height: var(--ui-density-leading);
+}
+.pp-root { display: grid; gap: var(--ui-density-gap); font-size: var(--ui-density-font); line-height: var(--ui-density-leading); }
+.pp-root .name-input,
+.pp-root .pp-route-mode button,
+.pp-root .pp-ops-main button.primary { min-height: var(--ui-density-control); }
+.pp-root .pp-tl-item { min-height: max(44px, calc(var(--ui-density-control) + 10px)); }
+.pp-root .pp-tl-name, .pp-root .pp-tl-role { font-size: var(--ui-density-font); }
+.pp-root .pp-tl-coord, .pp-root .pp-snap-status { font-size: var(--ui-density-meta); }
+.settings-native { font-size: var(--ui-density-font); line-height: var(--ui-density-leading); }
+.settings-row { min-height: max(44px, calc(var(--ui-density-control) + 4px)); gap: var(--ui-density-gap); }
+.settings-row-copy b { font-size: var(--ui-density-font); }
+.settings-row-copy small { font-size: var(--ui-density-meta); }
+
+@media (min-width: 1024px) {
+  .ui-panel-titlebar[data-fluid-drag-handle] {
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+  }
+  .ui-panel.fluid-interacting .ui-panel-titlebar { cursor: grabbing; }
+  .ui-panel[data-fluid-anchored="true"] { border-radius: 14px 0 0 14px !important; }
+  body.planner-operate .ui-panel[data-fluid-anchored="true"] h2,
+  body.weather-operate .ui-panel[data-fluid-anchored="true"] h2 { border-radius: 14px 0 0 0; }
+  .ui-panel[data-fluid-anchored="true"] .ui-fluid-resize {
+    left: 7px;
+    right: auto;
+    border-right: 0;
+    border-left: 1px solid currentColor;
+  }
+  .ui-overview.planner .ui-map-controls.ui-map-dock {
+    right: 24px !important;
+    top: 24px !important;
+    flex-direction: row;
+    align-items: center;
+  }
+  .ui-overview.planner .ui-map-controls.ui-map-dock button + button {
+    border-top: 0;
+    border-left: 1px solid var(--instrument-line);
+  }
+  body:has(.ui-panel:not(.hidden):not(.collapsed)) .ui-overview.planner .ui-map-controls.ui-map-dock,
+  .settings-open .ui-overview.planner .ui-map-controls.ui-map-dock { right: 24px !important; }
+  .ui-planner-more-menu {
+    left: 84px;
+    right: auto;
+    top: 160px;
+  }
+  .ui-trip-spine[data-fluid-enabled="true"] { grid-template-columns: auto minmax(150px, 220px) minmax(0, 1fr) auto auto; }
+}
+
+@media (max-width: 1023px) {
+  .ui-planner-brand-island { position: static; }
+  .ui-rail .ui-rail-gear {
+    display: flex;
+    flex: 1;
+    width: auto;
+    height: 58px;
+    min-height: 58px;
+    border: 0;
+    border-radius: 0;
+  }
+  .ui-search-popover {
+    position: fixed;
+    left: 8px;
+    right: 8px;
+    top: 64px;
+    width: auto;
+    max-height: min(52vh, 430px);
+    border-radius: 10px;
+  }
+  .ui-search-popover-body { padding-inline: 12px; }
+  .ui-search-result, .ui-search-place-actions button, .ui-search-popover-close { min-height: 44px; }
+  .ui-search-popover-close { width: 44px; height: 44px; right: 2px; top: 2px; }
+  .ui-overview.planner .ui-map-controls.ui-map-dock {
+    right: 10px !important;
+    top: 68px !important;
+    flex-direction: row;
+    align-items: center;
+    gap: 0;
+    padding: 4px;
+  }
+  .ui-overview.planner .ui-map-controls.ui-map-dock button + button { border-top: 0; border-left: 1px solid var(--instrument-line); }
+  .ui-trip-spine { grid-template-columns: auto minmax(0, 1fr) auto auto; }
+  .ui-trip-spine-close { min-width: 44px; min-height: 44px; margin-right: 2px; }
+  :root[data-ui-density="compact"] { --ui-density-control: 44px; }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .ui-search-popover { background: #171c1f; backdrop-filter: none; }
+}
+
+@media (prefers-contrast: more) {
+  .ui-search-popover { border: 1px solid #fff; background: #111; }
+  .ui-search-place-actions button { border-color: #fff; }
 }

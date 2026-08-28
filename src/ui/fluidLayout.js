@@ -129,9 +129,13 @@ export function createFluidLayout({
   const apply = (record) => {
     if (!record.state || !enabled()) {
       record.element.dataset.fluidEnabled = 'false'
+      record.element.dataset.fluidAnchored = 'false'
       return
     }
     record.element.dataset.fluidEnabled = 'true'
+    const size = viewport()
+    const anchored = record.options.anchor === 'right' && Math.abs(record.state.x + record.state.width - size.width) <= 1
+    record.element.dataset.fluidAnchored = String(anchored)
     record.element.style.setProperty('--fluid-x', `${record.state.x}px`)
     record.element.style.setProperty('--fluid-y', `${record.state.y}px`)
     record.element.style.setProperty('--fluid-width', `${record.state.width}px`)
@@ -158,6 +162,11 @@ export function createFluidLayout({
     return clampFluidState(value, boundsFor(record), limitsFor(record))
   }
   const activate = (record) => {
+    if (!enabled()) {
+      apply(record)
+      publish()
+      return
+    }
     if (record.state || (!isVisible(record.element) && record.options.deferUntilVisible)) return
     const rect = record.element.getBoundingClientRect()
     const presented = rect.width > 0 && rect.height > 0
@@ -230,6 +239,7 @@ export function createFluidLayout({
   }
   const pointerDown = (record, mode, event) => {
     if (!enabled() || event.button > 0) return
+    if (mode === 'drag' && event.target?.closest?.('button, input, select, textarea, a, [contenteditable="true"]')) return
     activate(record)
     if (!record.state) return
     cancelAnimation()
@@ -241,29 +251,33 @@ export function createFluidLayout({
       start: { x: event.clientX, y: event.clientY },
       grab: { x: event.clientX - rect.left, y: event.clientY - rect.top },
       state: { ...record.state }, active: mode === 'resize',
+      resizeFromLeft: mode === 'resize' && record.options.anchor === 'right' && record.element.dataset.fluidAnchored === 'true',
       history: [{ x: event.clientX, y: event.clientY, t: event.timeStamp }],
     }
     record.element.classList.add('fluid-interacting')
-    event.preventDefault()
+    if (mode === 'resize') event.preventDefault()
   }
   const pointerMove = (event) => {
     if (!interaction || event.pointerId !== interaction.pointerId) return
     const point = { x: event.clientX, y: event.clientY }
     if (!interaction.active && dragIntentExceeded(interaction.start, point)) interaction.active = true
     if (!interaction.active) return
-    const { record, mode, state, grab } = interaction
+    const { record, mode, state, grab, resizeFromLeft } = interaction
     const next = mode === 'drag'
       ? { ...state, x: event.clientX - grab.x, y: event.clientY - grab.y }
-      : { ...state, width: state.width + event.clientX - interaction.start.x, height: state.height + event.clientY - interaction.start.y }
+      : resizeFromLeft
+        ? { ...state, x: state.x + event.clientX - interaction.start.x, width: state.width - event.clientX + interaction.start.x, height: state.height + event.clientY - interaction.start.y }
+        : { ...state, width: state.width + event.clientX - interaction.start.x, height: state.height + event.clientY - interaction.start.y }
     record.state = rubberState(record, next)
     apply(record)
+    event.preventDefault()
     interaction.history.push({ x: event.clientX, y: event.clientY, t: event.timeStamp })
     interaction.history = interaction.history.filter((sample) => event.timeStamp - sample.t <= 120)
     publish()
   }
   const pointerEnd = (event) => {
     if (!interaction || event.pointerId !== interaction.pointerId) return
-    const { record, active, history, mode } = interaction
+    const { record, active, history, mode, resizeFromLeft } = interaction
     record.element.classList.remove('fluid-interacting')
     interaction = null
     if (!active) return
@@ -272,7 +286,9 @@ export function createFluidLayout({
     const seconds = Math.max(0.001, (last.t - first.t) / 1000)
     const velocity = mode === 'drag'
       ? { x: (last.x - first.x) / seconds, y: (last.y - first.y) / seconds, width: 0, height: 0 }
-      : { x: 0, y: 0, width: (last.x - first.x) / seconds, height: (last.y - first.y) / seconds }
+      : resizeFromLeft
+        ? { x: (last.x - first.x) / seconds, y: 0, width: -((last.x - first.x) / seconds), height: (last.y - first.y) / seconds }
+        : { x: 0, y: 0, width: (last.x - first.x) / seconds, height: (last.y - first.y) / seconds }
     settle(record, record.state, velocity)
   }
   const clampAll = ({ reset = false } = {}) => {
@@ -285,11 +301,24 @@ export function createFluidLayout({
       write(); publish(); return
     }
     for (const record of records.values()) {
-      if (reset || !record.state) record.state = defaultState(record)
+      if (reset) record.state = defaultState(record)
+      else if (!record.state) {
+        record.state = avoidCollisions(record, record.saved
+          ? clampFluidState(record.saved, boundsFor(record), limitsFor(record))
+          : defaultState(record))
+      }
       else if (record.state) record.state = avoidCollisions(record, record.state)
       apply(record)
     }
     write(); publish()
+  }
+  const resetRecord = (record) => {
+    cancelAnimation()
+    record.saved = null
+    record.state = defaultState(record)
+    apply(record)
+    write()
+    publish()
   }
 
   const onMediaChange = () => { clampAll(); for (const record of records.values()) apply(record) }
@@ -316,26 +345,38 @@ export function createFluidLayout({
           reserved: options.reserved,
           defaultState: options.defaultState,
           deferUntilVisible: !!options.deferUntilVisible,
+          anchor: options.anchor,
         },
       }
       records.set(id, record)
       element.classList.add('ui-fluid-surface')
       element.dataset.fluidId = id
-      const grip = documentObject.createElement('span')
-      grip.className = 'ui-fluid-grip'
+      const grip = options.dragHandle ?? documentObject.createElement('span')
+      if (!options.dragHandle) {
+        grip.className = 'ui-fluid-grip'
+        grip.setAttribute('aria-hidden', 'true')
+        element.appendChild(grip)
+      }
       grip.dataset.fluidDragHandle = ''
-      grip.setAttribute('aria-hidden', 'true')
       grip.addEventListener('pointerdown', (event) => pointerDown(record, 'drag', event))
-      element.appendChild(grip)
+      grip.addEventListener('dblclick', (event) => {
+        if (!enabled() || event.target?.closest?.('button, input, select, textarea, a, [contenteditable="true"]')) return
+        event.preventDefault()
+        resetRecord(record)
+      })
       const resize = documentObject.createElement('span')
       resize.className = 'ui-fluid-resize'
       resize.dataset.fluidResizeHandle = ''
       resize.setAttribute('aria-hidden', 'true')
       resize.addEventListener('pointerdown', (event) => pointerDown(record, 'resize', event))
       element.appendChild(resize)
-      const observer = globalThis.MutationObserver ? new MutationObserver(() => { activate(record); if (record.state) { record.state = clampFluidState(record.state, boundsFor(record), limitsFor(record)); apply(record); publish() } }) : null
+      const observer = globalThis.MutationObserver ? new MutationObserver(() => {
+        if (!enabled()) { apply(record); publish(); return }
+        activate(record)
+        if (record.state) { record.state = clampFluidState(record.state, boundsFor(record), limitsFor(record)); apply(record); publish() }
+      }) : null
       observer?.observe(element, { attributes: true, attributeFilter: ['class', 'hidden'], childList: true, subtree: true })
-      record.api = { refresh: () => { activate(record); clampAll() }, destroy: () => observer?.disconnect() }
+      record.api = { refresh: () => { activate(record); clampAll() }, reset: () => resetRecord(record), destroy: () => observer?.disconnect() }
       activate(record)
       return record.api
     },

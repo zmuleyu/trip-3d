@@ -78,6 +78,29 @@ describe('planner workspace chrome', () => {
     expect(onMoreAction).toHaveBeenCalledWith('settings')
   })
 
+  it('keeps search results and one-copy place selection anchored to the command surface', () => {
+    const onSearchSelect = vi.fn()
+    const onSearchRole = vi.fn()
+    const onSearchDismiss = vi.fn()
+    const workspace = createPlannerWorkspace({ onSearchSelect, onSearchRole, onSearchDismiss })
+    document.body.appendChild(workspace.el)
+    const place = { name: '人民公园', context: '成都市 · 青羊区 · 四川省', category: '公园' }
+    workspace.setSearchSession({ state: 'results', results: [place], message: '找到 1 个地点' })
+    const input = workspace.el.querySelector('.ui-command-search input')
+    expect(input.getAttribute('aria-expanded')).toBe('true')
+    workspace.el.querySelector('.ui-search-result').click()
+    expect(onSearchSelect).toHaveBeenCalledWith(place)
+
+    workspace.setSearchSession({ state: 'place-selection', selected: place })
+    const popover = workspace.el.querySelector('.ui-search-popover')
+    expect(popover.textContent.match(/人民公园/g)).toHaveLength(1)
+    expect(popover.textContent.match(/成都市/g)).toHaveLength(1)
+    popover.querySelector('.ui-search-place-actions button').click()
+    expect(onSearchRole).toHaveBeenCalledWith('start')
+    popover.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    expect(onSearchDismiss).toHaveBeenCalledWith({ restoreFocus: true })
+  })
+
   it('keeps secondary destinations discoverable inside the overflow menu', () => {
     const onMoreAction = vi.fn()
     const workspace = createPlannerWorkspace({ onMoreAction })
@@ -99,33 +122,34 @@ describe('planner workspace chrome', () => {
     expect(onMenuChange).toHaveBeenLastCalledWith('more', true)
   })
 
-  it('renders a compact multi-day trip spine and opens details from either edge', () => {
+  it('shows route context only for a selected waypoint or segment and can dismiss it', () => {
     const onSpineExpand = vi.fn()
-    const workspace = createPlannerWorkspace({ onSpineExpand })
+    const onSpineDismiss = vi.fn()
+    const workspace = createPlannerWorkspace({ onSpineExpand, onSpineDismiss })
     document.body.appendChild(workspace.el)
-    workspace.setJourneySpine({
-      route: {
-        dayEnds: ['b'],
-        waypoints: [
-          { id: 'a', name: '起点' },
-          { id: 'b', name: '盆景滩' },
-          { id: 'c', name: '终点' },
-        ],
-      },
-      legs: [{ distanceM: 4800 }, { distanceM: 3200 }],
-      weatherDays: [
-        { date: '2026-08-24', isRain: false, tempMax: 18 },
-        { date: '2026-08-25', isRain: true, tempMax: 12 },
+    const route = {
+      waypoints: [
+        { id: 'a', name: '起点', lon: 102.1, lat: 31.1 },
+        { id: 'b', name: '盆景滩', lon: 102.2, lat: 31.2 },
+        { id: 'c', name: '终点', lon: 102.3, lat: 31.3 },
       ],
+    }
+    workspace.setJourneySpine({ route, legs: [{ distanceM: 4800 }, { distanceM: 3200 }] })
+    expect(workspace.el.querySelector('.ui-trip-spine').classList.contains('hidden')).toBe(true)
+
+    workspace.setJourneySpine({
+      route,
+      legs: [{ distanceM: 4800 }, { distanceM: 3200 }],
+      selection: { kind: 'segment', fromId: 'b', toId: 'c' },
     })
     const days = workspace.el.querySelectorAll('.ui-trip-spine-day')
-    expect(days).toHaveLength(2)
-    expect(days[0].textContent).toContain('D1 · 08月24日')
-    expect(days[0].textContent).toContain('起点 → 盆景滩')
-    expect(days[1].textContent).toContain('有雨 12°')
+    expect(days).toHaveLength(1)
+    expect(days[0].textContent).toContain('盆景滩 → 终点')
+    expect(days[0].textContent).toContain('3.2 km')
     workspace.el.querySelector('.ui-trip-spine-title').click()
-    workspace.el.querySelector('.ui-trip-spine-expand').click()
-    expect(onSpineExpand).toHaveBeenCalledTimes(2)
+    expect(onSpineExpand).toHaveBeenCalledOnce()
+    workspace.el.querySelector('.ui-trip-spine-close').click()
+    expect(onSpineDismiss).toHaveBeenCalledOnce()
   })
 
   it('routes layout reset through the shared utility menu', () => {

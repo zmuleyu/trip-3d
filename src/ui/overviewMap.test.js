@@ -18,6 +18,7 @@ const maplibre = vi.hoisted(() => {
       this.resizeCalls = 0
       this.fitCalls = []
       this.easeCalls = []
+      this.queryCalls = []
       this.terrainCalls = []
       this.terrain = null
       this.pitch = 0
@@ -47,6 +48,7 @@ const maplibre = vi.hoisted(() => {
     dragPan = { disable: vi.fn(), enable: vi.fn() }
     touchZoomRotate = { enable: vi.fn() }
     queryRenderedFeatures(point, { layers } = {}) {
+      this.queryCalls.push({ point, layers })
       return this.renderedFeatures?.filter((feature) => !layers || layers.includes(feature.layer?.id)) ?? []
     }
     getCenter() { return this.center }
@@ -124,7 +126,7 @@ vi.mock('maplibre-gl', () => ({
   ScaleControl: maplibre.ScaleControlMock,
 }))
 
-import { createOverviewMap } from './overviewMap.js'
+import { createOverviewMap, nearestRouteSegmentIndex } from './overviewMap.js'
 
 const VIEWPORT = { minLon: 112.9, minLat: 41.1, maxLon: 113.5, maxLat: 41.7 }
 
@@ -183,16 +185,82 @@ describe('overview MapLibre planner map', () => {
     expect(instance.terrain).toBeNull()
   })
 
-  it('merges global actions, layers, zoom, and fit into one right map dock', () => {
+  it('keeps exactly Layers, Fit, Zoom out, and Zoom in in the map dock', () => {
     const onDockAction = vi.fn()
-    const { overview } = setup({ onDockAction })
+    const { overview, instance } = setup({ onDockAction })
     overview.setPlannerMode(true)
     const dock = overview.el.querySelector('.ui-map-dock')
-    expect(dock.querySelectorAll('button')).toHaveLength(5)
-    dock.querySelector('.ui-map-global-actions').click()
+    expect([...dock.querySelectorAll('button')].map((button) => button.getAttribute('aria-label')))
+      .toEqual(['打开图层工具', '显示完整路线', '缩小地图', '放大地图'])
+    expect(dock.querySelectorAll('button')).toHaveLength(4)
     dock.querySelector('.ui-map-layers-toggle').click()
-    expect(onDockAction).toHaveBeenNthCalledWith(1, 'more', true)
-    expect(onDockAction).toHaveBeenNthCalledWith(2, 'layers', true)
+    expect(onDockAction).toHaveBeenCalledWith('layers', true)
+    expect(dock.querySelector('.ui-map-fit').disabled).toBe(true)
+    dock.querySelector('[aria-label="放大地图"]').click()
+    dock.querySelector('[aria-label="缩小地图"]').click()
+    expect(instance.getZoom()).toBe(3)
+  })
+
+  it('focuses a selected search result without changing the route source', () => {
+    const { overview, instance } = setup()
+    const route = { waypoints: [{ id: 'a', lon: 113, lat: 41.2 }, { id: 'b', lon: 113.2, lat: 41.4 }] }
+    overview.setPlannerMode(true)
+    overview.update(route, null, VIEWPORT)
+    const before = structuredClone(instance.getSource('trip-route-waypoints').data)
+    expect(overview.focusPlace(104.063, 30.67)).toBe(true)
+    expect(instance.easeCalls.at(-1)).toMatchObject({ center: [104.063, 30.67] })
+    expect(instance.getSource('trip-route-waypoints').data).toEqual(before)
+  })
+
+  it('selects a Plan route segment before considering a blank-map add', () => {
+    const onRouteSelect = vi.fn()
+    const onPlanAdd = vi.fn()
+    const { overview, instance } = setup({ onRouteSelect, onPlanAdd })
+    overview.setPlannerMode(true, { editing: true })
+    overview.update({ waypoints: [
+      { id: 'a', lon: 100, lat: 30 }, { id: 'b', lon: 101, lat: 30 }, { id: 'c', lon: 102, lat: 31 },
+    ] }, null, VIEWPORT)
+    instance.renderedFeatures = [{ layer: { id: 'trip-route-line', source: 'trip-planned-route' } }]
+    instance.emit('click', { point: { x: 20, y: 20 }, lngLat: { lng: 101.4, lat: 30.4 } })
+    expect(onRouteSelect).toHaveBeenCalledWith({ kind: 'segment', segmentIndex: 1 })
+    expect(onPlanAdd).not.toHaveBeenCalled()
+    expect(instance.queryCalls.at(-1)).toEqual({
+      point: [{ x: 14, y: 14 }, { x: 26, y: 26 }],
+      layers: ['trip-route-line'],
+    })
+
+    instance.renderedFeatures = []
+    instance.emit('click', { point: { x: 80, y: 80 }, lngLat: { lng: 103, lat: 32 } })
+    expect(onPlanAdd).toHaveBeenCalledWith(103, 32)
+  })
+
+  it('maps a curved rendered path to leg boundaries instead of the nearer waypoint chord', () => {
+    const route = { waypoints: [
+      { id: 'a', lon: 0, lat: 0 },
+      { id: 'b', lon: 10, lat: 0 },
+      { id: 'c', lon: 0, lat: 1 },
+    ] }
+    const points = [
+      { lon: 0, lat: 0, cumDistM: 0 },
+      { lon: 0, lat: .9, cumDistM: 100 },
+      { lon: 9, lat: .9, cumDistM: 200 },
+      { lon: 10, lat: 0, cumDistM: 300 },
+      { lon: 9, lat: 1, cumDistM: 350 },
+      { lon: 0, lat: 1, cumDistM: 450 },
+    ]
+    const legs = [{ distanceM: 300 }, { distanceM: 150 }]
+    const click = { lng: 1, lat: .9 }
+    expect(nearestRouteSegmentIndex({ route, points, legs }, click)).toBe(0)
+
+    const onRouteSelect = vi.fn()
+    const onPlanAdd = vi.fn()
+    const { overview, instance } = setup({ onRouteSelect, onPlanAdd })
+    overview.setPlannerMode(true, { editing: true })
+    overview.update(route, points, VIEWPORT, { legs })
+    instance.renderedFeatures = [{ layer: { id: 'trip-route-line', source: 'trip-planned-route' } }]
+    instance.emit('click', { point: { x: 20, y: 20 }, lngLat: click })
+    expect(onRouteSelect).toHaveBeenCalledWith({ kind: 'segment', segmentIndex: 0 })
+    expect(onPlanAdd).not.toHaveBeenCalled()
   })
 
   it('uses measured shared safe areas for route fit', () => {
@@ -270,7 +338,7 @@ describe('overview MapLibre planner map', () => {
 
     overview.setPlannerView('2d')
     instance.emit('click', { point: { x: 20, y: 20 }, lngLat: { lng: 100.75, lat: 30 } })
-    expect(onJump).toHaveBeenCalledWith(100.75, 30)
+    expect(onJump).not.toHaveBeenCalled()
   })
 
   it('recovers a failed initial style into the same usable 2D route map', () => {

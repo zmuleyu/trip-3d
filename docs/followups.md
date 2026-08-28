@@ -1,6 +1,6 @@
-# trip-3d followups (after v0.4.1)
+# trip-3d followups (after v0.5.0)
 
-Completed delivery baseline: [R1–R5 search and route flow](specs/2026-08-28-search-route-flow-roadmap.md) for v0.4.0.
+Completed delivery baseline: [R1–R5 search and route flow](specs/2026-08-28-search-route-flow-roadmap.md) for v0.4.0, followed by the v0.5.0 Map-first Planning Surface.
 
 ## Architecture evolution
 
@@ -24,6 +24,10 @@ Goal at a time; do not combine these phases into a broad rewrite.
   `browse/planning` mode. Route mutation guards now validate the workflow stage
   directly while storage, share, GPX, and truthful terrain fallback remain separate
   compatibility and recovery boundaries.
+- [x] v0.5.0: keep the map primary with a horizontal four-action map dock, one
+  rail-owned More entry, a right-anchored/detachable desktop Inspector, local
+  density reflow, command-search popover, and on-demand waypoint/route-segment
+  context. Mobile retains the existing bottom sheet and 44px touch floor.
 
 Architecture constraints:
 

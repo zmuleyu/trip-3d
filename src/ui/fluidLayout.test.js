@@ -83,6 +83,46 @@ describe('fluid layout controller', () => {
     expect(element.dataset.fluidEnabled).toBe('false')
   })
 
+  it('does not clamp saved desktop placement through a mobile viewport', () => {
+    sessionStorage.setItem('trip3d.fluidLayout.v1', JSON.stringify({ version: 1, cards: { inspector: { x: 760, y: 100, width: 328, height: 400 } } }))
+    let onMediaChange
+    const media = { matches: false, addEventListener: vi.fn((_event, listener) => { onMediaChange = listener }) }
+    const layout = createFluidLayout({ mediaQuery: media, viewport: () => ({ width: media.matches ? 1200 : 390, height: media.matches ? 800 : 844 }) })
+    const element = document.createElement('section')
+    document.body.appendChild(element)
+    element.getBoundingClientRect = () => ({ left: 0, top: 0, right: 328, bottom: 400, width: 328, height: 400 })
+    layout.register(element, { id: 'inspector', minWidth: 316, maxWidth: 520, minHeight: 220, maxHeight: 560, defaultState: { x: 760, y: 100, width: 328, height: 400 } })
+    expect(layout.getState('inspector')).toBeNull()
+    media.matches = true
+    onMediaChange()
+    expect(layout.getState('inspector')).toEqual({ x: 760, y: 100, width: 328, height: 400 })
+  })
+
+  it('preserves desktop placement when mobile DOM mutations request a refresh', async () => {
+    let onMediaChange
+    const media = { matches: true, addEventListener: vi.fn((_event, listener) => { onMediaChange = listener }) }
+    const layout = createFluidLayout({
+      mediaQuery: media,
+      viewport: () => ({ width: media.matches ? 1200 : 390, height: media.matches ? 800 : 844 }),
+    })
+    const element = document.createElement('section')
+    document.body.appendChild(element)
+    element.getBoundingClientRect = () => ({ left: 760, top: 100, right: 1088, bottom: 500, width: 328, height: 400 })
+    layout.register(element, {
+      id: 'inspector', minWidth: 316, maxWidth: 520, minHeight: 220, maxHeight: 560,
+      defaultState: { x: 760, y: 100, width: 328, height: 400 },
+    })
+
+    media.matches = false
+    onMediaChange()
+    element.appendChild(document.createElement('div'))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    media.matches = true
+    onMediaChange()
+
+    expect(layout.getState('inspector')).toEqual({ x: 760, y: 100, width: 328, height: 400 })
+  })
+
   it('resets the session layout to its safe default', () => {
     const { layout } = create({ stored: { version: 1, cards: { inspector: { x: 200, y: 200, width: 500, height: 500 } } } })
     expect(layout.getState('inspector').width).toBe(500)
@@ -126,5 +166,45 @@ describe('fluid layout controller', () => {
     pointer(document, 'pointerup', { x: 1900, y: 1400, time: 24 })
     expect(layout.getState('inspector').width).toBe(520)
     expect(layout.getState('inspector').height).toBe(560)
+  })
+
+  it('uses the inspector titlebar as a 1:1 drag region and restores right anchoring on double click', () => {
+    const media = { matches: true, addEventListener: vi.fn() }
+    const layout = createFluidLayout({ mediaQuery: media, viewport: () => ({ width: 1200, height: 800 }) })
+    const element = document.createElement('section')
+    const titlebar = document.createElement('h2')
+    const close = document.createElement('button')
+    titlebar.append('线路规划', close)
+    element.appendChild(titlebar)
+    document.body.appendChild(element)
+    element.getBoundingClientRect = () => {
+      const state = layout.getState('inspector') ?? { x: 840, y: 88, width: 360, height: 480 }
+      return { left: state.x, top: state.y, right: state.x + state.width, bottom: state.y + state.height, width: state.width, height: state.height }
+    }
+    layout.register(element, {
+      id: 'inspector', dragHandle: titlebar, anchor: 'right', reserved: { top: 88, right: 0, bottom: 24, left: 88 },
+      minWidth: 316, maxWidth: 520, minHeight: 240, maxHeight: 560,
+      defaultState: { x: 840, y: 88, width: 360, height: 480 },
+    })
+    expect(element.dataset.fluidAnchored).toBe('true')
+
+    pointer(close, 'pointerdown', { x: 1170, y: 110, time: 0 })
+    pointer(document, 'pointermove', { x: 900, y: 200, time: 16 })
+    expect(layout.getState('inspector').x).toBe(840)
+
+    pointer(titlebar, 'pointerdown', { x: 900, y: 110, time: 20 })
+    pointer(document, 'pointermove', { x: 700, y: 210, time: 40 })
+    expect(layout.getState('inspector')).toMatchObject({ x: 640, y: 188 })
+    expect(element.dataset.fluidAnchored).toBe('false')
+
+    titlebar.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }))
+    expect(layout.getState('inspector')).toEqual({ x: 840, y: 88, width: 360, height: 480 })
+    expect(element.dataset.fluidAnchored).toBe('true')
+
+    const resize = element.querySelector('[data-fluid-resize-handle]')
+    pointer(resize, 'pointerdown', { x: 840, y: 568, time: 60 })
+    pointer(document, 'pointermove', { x: 800, y: 608, time: 80 })
+    expect(layout.getState('inspector')).toMatchObject({ x: 800, width: 400, height: 520 })
+    expect(element.dataset.fluidAnchored).toBe('true')
   })
 })

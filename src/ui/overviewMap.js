@@ -44,6 +44,67 @@ function routeCoordinates(route, points) {
   return (path ?? []).map((point) => [point.lon, point.lat])
 }
 
+export function nearestRouteSegmentIndex({ route, points, legs } = {}, lngLat) {
+  const waypoints = route?.waypoints ?? []
+  const path = points?.length >= 2 ? points : waypoints
+  if (waypoints.length < 2 || path.length < 2 || !Number.isFinite(lngLat?.lng) || !Number.isFinite(lngLat?.lat)) return -1
+  const lonScale = Math.max(0.2, Math.cos((lngLat.lat * Math.PI) / 180))
+  const px = lngLat.lng * lonScale
+  const py = lngLat.lat
+  const hasCumulativeDistance = path.every((point) => Number.isFinite(point?.cumDistM))
+  const cumulative = [0]
+  if (!hasCumulativeDistance) {
+    for (let index = 1; index < path.length; index++) {
+      const from = path[index - 1]
+      const to = path[index]
+      const dx = (to.lon - from.lon) * lonScale
+      const dy = to.lat - from.lat
+      cumulative.push(cumulative.at(-1) + Math.hypot(dx, dy))
+    }
+  }
+  const pathDistanceAt = (index, fraction) => hasCumulativeDistance
+    ? path[index].cumDistM - path[0].cumDistM + fraction * (path[index + 1].cumDistM - path[index].cumDistM)
+    : cumulative[index] + fraction * (cumulative[index + 1] - cumulative[index])
+  let nearestPathDistance = 0
+  let bestDistance = Infinity
+  for (let index = 0; index < path.length - 1; index++) {
+    const from = path[index]
+    const to = path[index + 1]
+    const ax = from.lon * lonScale
+    const ay = from.lat
+    const bx = to.lon * lonScale
+    const by = to.lat
+    const dx = bx - ax
+    const dy = by - ay
+    const lengthSq = dx * dx + dy * dy
+    const t = lengthSq ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lengthSq)) : 0
+    const distance = (px - (ax + t * dx)) ** 2 + (py - (ay + t * dy)) ** 2
+    if (distance < bestDistance) {
+      bestDistance = distance
+      nearestPathDistance = pathDistanceAt(index, t)
+    }
+  }
+  const pathTotal = hasCumulativeDistance
+    ? path.at(-1).cumDistM - path[0].cumDistM
+    : cumulative.at(-1)
+  const legDistances = Array.isArray(legs) && legs.length === waypoints.length - 1
+    ? legs.map((leg) => Number(leg?.distanceM))
+    : []
+  const legTotal = legDistances.every((distance) => Number.isFinite(distance) && distance >= 0)
+    ? legDistances.reduce((sum, distance) => sum + distance, 0)
+    : 0
+  if (pathTotal > 0 && legTotal > 0) {
+    const legDistanceAtClick = (nearestPathDistance / pathTotal) * legTotal
+    let boundary = 0
+    for (let index = 0; index < legDistances.length; index++) {
+      boundary += legDistances[index]
+      if (legDistanceAtClick <= boundary || index === legDistances.length - 1) return index
+    }
+  }
+  const fallbackIndex = Math.floor((nearestPathDistance / Math.max(pathTotal, 1)) * (waypoints.length - 1))
+  return Math.max(0, Math.min(waypoints.length - 2, fallbackIndex))
+}
+
 function routeFeature(route, points) {
   const coordinates = routeCoordinates(route, points)
   if (coordinates.length < 2) return null
@@ -304,7 +365,7 @@ function addPlannerLayers(map) {
 export function createOverviewMap({
   terrainExaggeration = 1.6, onTerrainUnavailable, onJump, onPlanAdd, onWaypointSelect,
   onWaypointMoveStart, onWaypointMove, onWaypointMoveEnd, onWaypointMoveCancel,
-  onWeatherDetails, onAnalysisCursor, onDockAction, getFitPadding,
+  onWeatherDetails, onAnalysisCursor, onRouteSelect, onDockAction, getFitPadding,
 } = {}) {
   const el = document.createElement('div')
   el.className = 'ui-overview hidden'
@@ -322,12 +383,6 @@ export function createOverviewMap({
 
   const controls = document.createElement('div')
   controls.className = 'ui-map-controls ui-map-dock'
-  const globalActions = document.createElement('button')
-  globalActions.type = 'button'
-  globalActions.className = 'ui-map-global-actions'
-  globalActions.setAttribute('aria-label', '展开保存与分享')
-  globalActions.setAttribute('aria-expanded', 'false')
-  globalActions.innerHTML = iconSvg('more')
   const layers = document.createElement('button')
   layers.type = 'button'
   layers.className = 'ui-map-layers-toggle'
@@ -344,10 +399,10 @@ export function createOverviewMap({
   zoomOut.innerHTML = iconSvg('zoomOut')
   const fit = document.createElement('button')
   fit.type = 'button'
-  fit.className = 'ui-map-fit hidden'
+  fit.className = 'ui-map-fit'
   fit.setAttribute('aria-label', '显示完整路线')
   fit.innerHTML = `${iconSvg('fit')}<span>完整路线</span>`
-  controls.append(globalActions, layers, zoomIn, zoomOut, fit)
+  controls.append(layers, fit, zoomOut, zoomIn)
 
   const emptyHint = document.createElement('div')
   emptyHint.className = 'ui-map-empty'
@@ -390,6 +445,7 @@ export function createOverviewMap({
 
   let lastRoute = null
   let lastPoints = null
+  let lastLegs = []
   let lastAlternatives = []
   let selectedAlternative = 0
   let viewportLonLat = null
@@ -726,7 +782,7 @@ export function createOverviewMap({
     emptyHint.querySelector('b').textContent = count === 0 ? '设置起点' : '添加途经点'
     emptyHint.querySelector('span').textContent = ''
     const hasRoute = count >= 2
-    fit.classList.toggle('hidden', !hasRoute)
+    fit.disabled = !hasRoute
     const zoom = map.getZoom()
     zoomIn.disabled = zoom >= 14
     zoomOut.disabled = zoom <= 3
@@ -851,7 +907,13 @@ export function createOverviewMap({
     const fromEvent = event.features?.find((feature) => feature.layer?.source === SOURCE_IDS.route)
     if (fromEvent) return fromEvent
     if (!event.point) return null
-    return map.queryRenderedFeatures(event.point, { layers: ['trip-route-line'] })
+    const touch = event.originalEvent?.pointerType === 'touch' || (event.originalEvent?.touches?.length ?? 0) > 0
+    const radius = touch ? 10 : 6
+    const hitBox = [
+      { x: event.point.x - radius, y: event.point.y - radius },
+      { x: event.point.x + radius, y: event.point.y + radius },
+    ]
+    return map.queryRenderedFeatures(hitBox, { layers: ['trip-route-line'] })
       .find((feature) => feature.layer?.source === SOURCE_IDS.route) ?? null
   }
 
@@ -1020,6 +1082,11 @@ export function createOverviewMap({
       if (releaseClick) return
     }
     if (requestAnalysisCursor(event)) return
+    if (plannerMode && plannerView === '2d' && routeFeatureAt(event)) {
+      const segmentIndex = nearestRouteSegmentIndex({ route: lastRoute, points: lastPoints, legs: lastLegs }, event.lngLat)
+      if (segmentIndex >= 0) onRouteSelect?.({ kind: 'segment', segmentIndex })
+      return
+    }
     if (plannerMode && plannerView === '3d' && !editingMode) return
     const { lng, lat } = event.lngLat
     if (editingMode && onPlanAdd) onPlanAdd(lng, lat)
@@ -1033,12 +1100,6 @@ export function createOverviewMap({
   zoomIn.onclick = () => map.zoomIn({ duration: 160 })
   zoomOut.onclick = () => map.zoomOut({ duration: 160 })
   fit.onclick = fitCurrent
-  globalActions.onclick = () => {
-    const open = globalActions.getAttribute('aria-expanded') !== 'true'
-    globalActions.setAttribute('aria-expanded', String(open))
-    globalActions.setAttribute('aria-label', open ? '收起保存与分享' : '展开保存与分享')
-    onDockAction?.('more', open)
-  }
   layers.onclick = () => {
     const open = layers.getAttribute('aria-expanded') !== 'true'
     layers.setAttribute('aria-expanded', String(open))
@@ -1049,10 +1110,6 @@ export function createOverviewMap({
   return {
     el,
     weatherCard,
-    setDockExpanded(open) {
-      globalActions.setAttribute('aria-expanded', String(!!open))
-      globalActions.setAttribute('aria-label', open ? '收起保存与分享' : '展开保存与分享')
-    },
     setLayersOpen(open) {
       layers.setAttribute('aria-expanded', String(!!open))
       layers.setAttribute('aria-label', open ? '关闭图层工具' : '打开图层工具')
@@ -1119,6 +1176,14 @@ export function createOverviewMap({
     resize,
     fit: fitCurrent,
     focusPlanner() { map.getCanvas().focus() },
+    focusPlace(lon, lat) {
+      if (!Number.isFinite(lon) || !Number.isFinite(lat)) return false
+      const reduced = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches
+      map.easeTo({ center: [lon, lat], zoom: Math.max(11, map.getZoom()), duration: reduced ? 0 : 360 })
+      hasCamera = true
+      updateChrome()
+      return true
+    },
     setSelectedWaypoint(id) {
       selectedWaypointId = id ?? null
       syncPlannerData()
@@ -1157,9 +1222,10 @@ export function createOverviewMap({
       openWeatherCard(feature, point, { pinned })
       return true
     },
-    update(route, points, viewport, { fit = true, alternatives = [], selectedAlternative: nextSelectedAlternative = 0 } = {}) {
+    update(route, points, viewport, { fit = true, alternatives = [], selectedAlternative: nextSelectedAlternative = 0, legs } = {}) {
       lastRoute = route
       lastPoints = points
+      if (Array.isArray(legs)) lastLegs = legs
       lastAlternatives = alternatives
       selectedAlternative = nextSelectedAlternative
       viewportLonLat = viewport

@@ -18,16 +18,6 @@ export function createPlanningPanel(actions) {
   const el = document.createElement('div')
   el.className = 'pp-root'
 
-  // Search is owned by the command bar. Results stay in the drawer so the map
-  // remains visible while a user chooses where to go or add a point.
-  const results = document.createElement('div')
-  results.className = 'pp-results hidden'
-  const attr = document.createElement('div')
-  attr.className = 'pp-attr'
-  attr.textContent = '© OpenStreetMap contributors'
-  results.appendChild(attr)
-  el.appendChild(results)
-
   // ---- route mode: first-class straight / foot / car contract
   const snapRow = document.createElement('div')
   snapRow.className = 'pp-snap-row'
@@ -149,7 +139,7 @@ export function createPlanningPanel(actions) {
   secondary.appendChild(importGpx)
   // The inspector has one task: name the route, add/reorder points, then save.
   // Route summaries, day cards, and elevation details stay on the map surface.
-  el.replaceChildren(results, nameSection, name, routeSection, snapRow, alternatives, wpList, secondary, opsMain, mobilePrimary)
+  el.replaceChildren(nameSection, name, routeSection, snapRow, alternatives, wpList, secondary, opsMain, mobilePrimary)
 
   return {
     el,
@@ -289,65 +279,6 @@ export function createPlanningPanel(actions) {
 
     },
 
-    // ---- shared search session: command bar owns input; this surface owns its one result/selection view.
-    setSearchSession(session) {
-      results.classList.remove('hidden')
-      results.setAttribute('aria-live', 'polite')
-      results.setAttribute('aria-busy', String(session?.state === 'searching'))
-      results.replaceChildren()
-      const status = document.createElement('p')
-      status.className = `pp-search-status ${session?.state === 'error' ? 'is-error' : ''}`
-      status.textContent = session?.message ?? '搜索地点、线路或营地'
-      results.appendChild(status)
-      if (session?.state === 'place-selection' && session.selected) {
-        const place = session.selected
-        const card = document.createElement('section')
-        card.className = 'pp-place-selection'
-        const name = document.createElement('b')
-        name.textContent = place.name
-        const detail = document.createElement('span')
-        detail.textContent = `${place.context} · ${place.category}`
-        const actionsRow = document.createElement('div')
-        actionsRow.className = 'pp-place-actions'
-        for (const [role, label, primary] of [
-          ['start', '设为起点', true], ['end', '设为终点', false], ['via', '添加途经点', false], ['view', '仅查看地点', false],
-        ]) {
-          const button = document.createElement('button')
-          button.type = 'button'
-          button.textContent = label
-          if (primary) button.className = 'primary'
-          button.addEventListener('click', () => actions.onSearchRole?.(role))
-          actionsRow.appendChild(button)
-        }
-        card.append(name, detail, actionsRow)
-        results.appendChild(card)
-        results.appendChild(attr)
-        return
-      }
-      if (session?.state === 'results') {
-        for (const place of session.results) {
-          const row = document.createElement('button')
-          row.type = 'button'
-          row.className = 'pp-result'
-          const copy = document.createElement('span')
-          copy.className = 'pp-result-copy'
-          const name = document.createElement('b')
-          name.textContent = place.name
-          const context = document.createElement('span')
-          context.textContent = place.context
-          copy.append(name, context)
-          const category = document.createElement('small')
-          category.textContent = place.category
-          row.append(copy, category)
-          row.addEventListener('click', () => actions.onSearchSelect?.(place))
-          results.appendChild(row)
-        }
-      }
-      results.appendChild(attr) // OSM attribution always visible with results
-    },
-    setSearchBusy(on) { results.setAttribute('aria-busy', String(on)) },
-    setSearchResults(list, query) { this.setSearchSession({ state: list.length ? 'results' : 'empty', results: list, message: list.length ? `找到 ${list.length} 个地点，请先确认城市或区县` : `未找到「${query}」` }) },
-    hideSearchResults() { results.classList.add('hidden') },
     search(query) {
       actions.onSearch?.(query ?? '')
     },
