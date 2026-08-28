@@ -13,8 +13,9 @@ Goal at a time; do not combine these phases into a broad rewrite.
   frame scheduling, renderer activation, fit/safe-area, and fallback transitions.
 - [x] S3: isolate poster, flyover, procedural terrain, and legacy HUD consumers behind
   `LegacyTerrainToolsAdapter` ports without creating a second trip state or an idle RAF path.
-- [ ] S4: only after measured consumer and bundle/runtime evidence, decide whether each
-  legacy Three/HUD capability remains eager, becomes optional/lazy, or is retired.
+- [x] S4: retain poster/flyover and their minimum real-DEM camera/output seam; retire
+  procedural terrain, legacy HUD, lil-gui, Tour, and Scan. Automatic Pages Git
+  deployments are disabled so source delivery and production release remain separate.
 
 Architecture constraints:
 
@@ -27,8 +28,6 @@ Architecture constraints:
 
 - [ ] 天气:场景天气粒子(雨/雪氛围,shader 级,美学增强)
 - [ ] 天气:RainViewer 雷达回波贴图 draping(P3 评估)
-- [ ] 设置抽屉剩余实验参数逐件原生化(材质/镜头/运动/Tour/性能)
-
 - [ ] 多线路同屏对比(不同颜色)
 - [ ] P4 路网吸附:openrouteservice / 高德(GCJ-02 边界转换,provider 骨架已就位)
 - [ ] 移动端触控(双指旋转与单指打点手势冲突消解)

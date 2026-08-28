@@ -16,7 +16,7 @@ TRIP 3D 是以地图和路线为核心的旅行规划与记录工具。用户在
 > npm run build                # 构建
 > ```
 
-The project grew from the upstream terrain experiment, but its current product surface is a map-centered trip workspace rather than a standalone terrain demo. The original procedural terrain, poster, flyover, HUD, and advanced parameter capabilities remain reachable legacy tools; they are not the primary planning information architecture.
+The project grew from the upstream terrain experiment, but its current product surface is a map-centered trip workspace rather than a standalone terrain demo. Poster and flyover remain secondary trip outputs; procedural terrain, the experimental HUD, Tour/Scan, and the lil-gui parameter surface have been retired.
 
 **上游演示:** https://kaolti.github.io/monolith-terrain/
 
@@ -29,7 +29,7 @@ The project grew from the upstream terrain experiment, but its current product s
 | Inspect terrain | Switch to **Analyze**. The same route and camera context continue into native MapLibre terrain and the elevation profile. |
 | Review weather | Open Weather from the destination rail; the panel uses the current route and selected date. |
 | Save or reopen | Save to the browser-local route library. There is no account or server synchronization. |
-| Import, export, share | Use GPX import/export, supported Amap links, URL sharing, or poster output from the global actions menu. |
+| Import, export, share | Use GPX import/export, supported Amap links, URL sharing, poster output, or flyover recording from the global actions menu. |
 | Adjust the workspace | Desktop information instruments can be moved, resized, brought forward, and reset; compact viewports retain the mobile sheet. |
 
 ## Current architecture
@@ -37,7 +37,7 @@ The project grew from the upstream terrain experiment, but its current product s
 - **Trip state:** `src/lib/tripRouteController.js` owns the single shared route, waypoint selection, mutation/history, revisions, day boundaries, and derived route analysis. `src/main.js` coordinates providers, storage/share codecs, and renderer adapters through that controller without a second state model.
 - **Workspace lifecycle:** `src/lib/workspaceLifecycleCoordinator.js` is the single Plan/Analyze transition entry for MapLibre workspace activation, native-terrain/2D fallback, safe-area fitting, and legacy frame scheduling. Renderer and UI internals remain behind lifecycle ports.
 - **Plan / Analyze map:** MapLibre owns the map workspace, 2D planning, native terrain, route/waypoint overlays, weather markers, fit padding, and truthful terrain fallback.
-- **Legacy Three tools:** `LegacyTerrainToolsAdapter` contains the retained poster/flyover output, procedural rebuild, HUD, advanced-settings, and short camera entry seam through injected ports. Three terrain and its frame scheduler remain active only for those tools; Plan stops its continuous legacy RAF, while short camera work explicitly wakes it.
+- **Retained output renderer:** `LegacyTerrainToolsAdapter` contains poster/flyover output, real-DEM rebuild, and the minimum camera seam through injected ports. Plan stops its continuous legacy RAF; only explicit output or camera work wakes it.
 - **UI:** one Planner workspace, destination rail, shared Inspector host, fluid desktop information instruments, and a mobile peek/half/full sheet.
 - **Providers and persistence:** routing, geocoding, weather, DEM, administrative overlays, IndexedDB route storage, GPX, and compressed URL sharing remain separate seams around the shared trip.
 
@@ -88,7 +88,7 @@ No API keys or environment variables needed.
 
 ## Deploy
 
-Pushing to `main` auto-builds and deploys to Cloudflare Pages through the configured Git integration. For a deliberate manual Pages upload, build first and deploy the exact `dist` candidate:
+Automatic Git deployments are disabled for production and preview branches. A deliberate Pages release is a separate authority gate: build the exact candidate, deploy it manually, and verify both the immutable deployment URL and `https://trip-3d.pages.dev`.
 
 ```bash
 npm run build
@@ -98,12 +98,11 @@ npx wrangler pages deploy dist --project-name trip-3d
 ## Tech
 
 - [MapLibre GL JS](https://maplibre.org/) — Plan/Analyze map workspace, native terrain, route/waypoint layers, map controls, and responsive camera fitting
-- [three.js](https://threejs.org) — procedural/legacy terrain tools, poster/flyover output, and advanced terrain rendering
-- [postprocessing](https://github.com/pmndrs/postprocessing) — legacy Three depth-buffer DOF, tone mapping, grain, vignette, and SMAA
-- [lil-gui](https://lil-gui.georgealways.com) — advanced parameter controls embedded under Settings
+- [three.js](https://threejs.org) — retained real-DEM poster/flyover output renderer
+- [postprocessing](https://github.com/pmndrs/postprocessing) — retained poster/flyover DOF, tone mapping, grain, vignette, and SMAA
 - [Vite](https://vitejs.dev) — build; plain JavaScript, no framework
 - Browser-local IndexedDB route storage, GPX import/export, compressed URL sharing, Open-Meteo weather, OSRM routing, and Nominatim/Photon geocoding
-- Hand-rolled seeded simplex noise / FBM / ridged multifractal and Catmull-Rom flyover tooling remain available to the legacy terrain path
+- Hand-rolled seeded noise remains limited to real-DEM surface texture and label placement; flyover math remains a bounded output seam
 
 ## Elevation data & attribution
 
@@ -114,5 +113,3 @@ Real-world mode uses the **[Terrain Tiles](https://registry.opendata.aws/terrain
 ## License
 
 [MIT](LICENSE)
-
-<!-- CF Pages git integration enabled 2026-08-05: push to main auto-builds via `npm run build` → dist/ -->

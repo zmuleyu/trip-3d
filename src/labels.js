@@ -1,22 +1,8 @@
 import * as THREE from 'three'
 import { mulberry32 } from './noise.js'
-import { BASIN_BLEND } from './terrain.js'
 
 // Map-style typography draped flat on the terrain: place names + spot elevations,
 // drawn to canvas textures so they read like printed cartography.
-
-const PLACE_NAMES = [
-  'HUNTS MESA',
-  'RAIN GOD MESA',
-  'MITCHELL BUTTE',
-  'SENTINEL FLAT',
-  'GYPSUM CREEK',
-  'YAZZIE DRAW',
-  'CAIRN RIDGE',
-  'THREE SISTERS',
-  'SUBMARINE ROCK',
-  'EAR OF THE WIND',
-]
 
 function textTexture(text, { size = 96, italic = true, spacing = 0.35, color = '#2e2820' }) {
   const font = `${italic ? 'italic ' : ''}500 ${size}px Georgia, 'Times New Roman', serif`
@@ -67,43 +53,17 @@ function settleHeight(sample, x, z, halfW) {
   return h + 0.14
 }
 
-export function createLabels(sample, seed, { real = false, toFeet } = {}) {
+export function createLabels(sample, seed, { toFeet } = {}) {
   const group = new THREE.Group()
   const rng = mulberry32(seed * 13 + 29)
 
-  // fictional cartography only in procedural mode — real-world maps get real data only
-  if (!real) {
-    const region = makeLabelMesh('N A V A J O   P L A T E A U', { size: 110, italic: false, spacing: 0.9, opacity: 0.78 }, 22)
-    region.rotation.x = -Math.PI / 2
-    region.position.set(0, 0, -12.5)
-    region.position.y = settleHeight(sample, 0, -12.5, 11)
-    group.add(region)
-
-    const names = [...PLACE_NAMES].sort(() => rng() - 0.5).slice(0, 7)
-    names.forEach((name) => {
-      const angle = rng() * Math.PI * 2
-      const dist = BASIN_BLEND + 2.5 + rng() * 12
-      const x = Math.cos(angle) * dist
-      const z = Math.sin(angle) * dist
-      const width = 3.6 + rng() * 1.8
-      const mesh = makeLabelMesh(name, { size: 96, italic: true, spacing: 0.3, opacity: 0.85 }, width)
-      mesh.rotation.x = -Math.PI / 2
-      mesh.rotation.z = (rng() - 0.5) * 0.7
-      mesh.position.set(x, settleHeight(sample, x, z, width / 2), z)
-      group.add(mesh)
-    })
-  }
-
-  // spot elevations: real feet when a DEM drives the terrain
-  const spotCount = real ? 14 : 9
-  const minDist = real ? 3 : BASIN_BLEND + 1
-  for (let i = 0; i < spotCount; i++) {
+  for (let i = 0; i < 14; i++) {
     const angle = rng() * Math.PI * 2
-    const dist = minDist + rng() * (24 - minDist)
+    const dist = 3 + rng() * 21
     const x = Math.cos(angle) * dist
     const z = Math.sin(angle) * dist
     const h = sample(x, z)
-    const feet = toFeet ? toFeet(h) : Math.round(4800 + h * 420 + rng() * 40)
+    const feet = toFeet ? toFeet(h) : Math.round(h * 3.28084)
     const mesh = makeLabelMesh(`· ${feet}`, { size: 78, italic: false, spacing: 0.06, opacity: 0.85, color: '#2a241c' }, 1.5)
     mesh.rotation.x = -Math.PI / 2
     mesh.position.set(x, h + 0.12, z)

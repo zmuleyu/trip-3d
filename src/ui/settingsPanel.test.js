@@ -10,10 +10,10 @@ describe('native settings panel', () => {
     const onLayer = vi.fn()
     const panel = createSettingsPanel({ presets: ['Monument Valley', 'Custom'], onSetting, onLayer })
     document.body.appendChild(panel.el)
-    const source = panel.el.querySelector('[aria-label="地形来源"]')
-    source.value = 'noise'
-    source.dispatchEvent(new Event('change'))
-    expect(onSetting).toHaveBeenCalledWith('source', 'noise', { commit: true })
+    const location = panel.el.querySelector('[aria-label="预设地点"]')
+    location.value = 'Monument Valley'
+    location.dispatchEvent(new Event('change'))
+    expect(onSetting).toHaveBeenCalledWith('demLocation', 'Monument Valley', { commit: true })
     const contour = panel.el.querySelector('[aria-label="等高线"]')
     contour.click()
     expect(onLayer).toHaveBeenCalledWith('contour', true)
@@ -24,22 +24,20 @@ describe('native settings panel', () => {
     document.body.appendChild(panel.el)
     panel.sync({
       params: { source: 'real', demLocation: 'Custom', demLat: 31.2, demLon: 121.4, demZoom: 11, demExaggeration: 1.8, routeArrows: true, exposure: .92 },
-      layers: { contour: true, hud: false },
+      layers: { contour: true },
     })
     expect(panel.el.querySelector('[aria-label="纬度"]').value).toBe('31.2')
     expect(panel.el.querySelector('[aria-label="地图精度"]').value).toBe('11')
     expect(panel.el.querySelector('[aria-label="方向箭头"]').checked).toBe(true)
     expect(panel.el.querySelector('[aria-label="等高线"]').checked).toBe(true)
-    expect(panel.el.querySelector('[aria-label="HUD 信息"]').checked).toBe(false)
+    expect(panel.el.querySelector('[aria-label="HUD 信息"]')).toBeNull()
   })
 
-  it('owns close, loading, and retained advanced controls', () => {
+  it('owns close and truthful loading state without a legacy advanced surface', () => {
     const onClose = vi.fn()
-    const advanced = document.createElement('div')
-    advanced.textContent = 'legacy controls'
-    const panel = createSettingsPanel({ presets: ['Custom'], advancedEl: advanced, onClose })
+    const panel = createSettingsPanel({ presets: ['Custom'], onClose })
     document.body.appendChild(panel.el)
-    expect(panel.el.querySelector('.settings-advanced').textContent).toContain('legacy controls')
+    expect(panel.el.querySelector('.settings-advanced')).toBeNull()
     panel.setTerrainStatus('loading', '正在获取高程数据')
     expect(panel.el.querySelector('.settings-primary').disabled).toBe(true)
     expect(panel.el.querySelector('[role="status"]').textContent).toContain('正在获取')

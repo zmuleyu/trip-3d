@@ -8,9 +8,7 @@ export function createLegacyTerrainToolsAdapter({
   poster,
   flyover,
   terrain,
-  hud,
   camera,
-  advanced,
   requestLegacyFrames,
 }) {
   let rebuildPending = false
@@ -26,6 +24,10 @@ export function createLegacyTerrainToolsAdapter({
       poster.unavailable()
       return { status: 'route-insufficient' }
     }
+    if (poster.isReady?.() === false) {
+      poster.notReady?.()
+      return { status: 'terrain-not-ready' }
+    }
     poster.pending()
     const snapshot = getPosterSnapshot()
     const image = await poster.captureImage()
@@ -40,6 +42,10 @@ export function createLegacyTerrainToolsAdapter({
     if (!snapshot?.points || snapshot.points.length < 2) {
       flyover.routeInsufficient()
       return { status: 'route-insufficient' }
+    }
+    if (flyover.isReady?.() === false) {
+      flyover.notReady?.()
+      return { status: 'terrain-not-ready' }
     }
     if (!flyover.isSupported()) {
       flyover.unsupported()
@@ -110,7 +116,6 @@ export function createLegacyTerrainToolsAdapter({
     terrain.showLoading()
     terrain.schedule(() => {
       terrain.rebuild()
-      hud.regenerate()
       terrain.refreshRoute()
       terrain.reloadAdminIfNeeded()
       terrain.refreshStaticShadow()
@@ -121,7 +126,6 @@ export function createLegacyTerrainToolsAdapter({
         return
       }
       terrain.hideLoading()
-      terrain.reportReady()
       terrain.resolveWaiters()
     })
     return { status: 'scheduled' }
@@ -135,19 +139,6 @@ export function createLegacyTerrainToolsAdapter({
     get flyoverActive() { return flyState.active },
     get rebuildState() { return { rebuildPending, rebuildQueued } },
     rebuildTerrain,
-    syncAdvancedSettings: () => advanced.sync(),
-    setHudVisible: (visible) => hud.setVisible(visible),
-    regenerateHud: () => hud.regenerate(),
-    triggerScan: () => {
-      hud.triggerScan()
-      wakeLegacyFrames()
-    },
-    startTour: () => {
-      if (!camera.startTour()) return false
-      wakeLegacyFrames()
-      return true
-    },
-    stopTour: () => camera.stopTour(),
     wakeCamera: wakeLegacyFrames,
   }
 }

@@ -1,14 +1,10 @@
 import * as THREE from 'three'
-import { Simplex2, mulberry32, fbm, ridged, smoothstep, lerp } from './noise.js'
+import { Simplex2, mulberry32, fbm, lerp } from './noise.js'
 import { sampleDem } from './dem.js'
 
 export const TERRAIN_SIZE = 56
-export const BASIN_RADIUS = 6.6 // flat excavation floor
-export const BASIN_BLEND = 9.0 // where flat floor blends back into mountains
-export const FLOOR_Y = -0.35
-
-// CPU-generated terrain: multi-scale FBM + ridged multifractal + domain warping,
-// with real vertex normals so PBR lighting and DOF read the actual relief.
+// Real DEM terrain with vertex normals so PBR lighting and output capture read
+// the same relief as the map-centered workspace.
 export class Terrain {
   constructor(params) {
     this.material = new THREE.MeshStandardMaterial({
@@ -33,12 +29,6 @@ export class Terrain {
       uHeightPivot: { value: params.heightPivot },
       uSlopeTint: { value: params.slopeTint },
       uContourColor: { value: new THREE.Color(params.contourColor) },
-      uScanT: { value: -1 }, // scan progress 0..1, negative = inactive
-      uScanColor: { value: new THREE.Color(params.scanColor) },
-      uScanWidth: { value: params.scanWidth },
-      uScanBlur: { value: params.scanBlur },
-      uScanDispH: { value: params.scanDispHeight },
-      uScanDispW: { value: params.scanDispFalloff },
       uOverlayTex: { value: null }, // OSM street tiles draped over the relief
       uOverlayMix: { value: 0 },
     }
@@ -50,20 +40,11 @@ export class Terrain {
           '#include <common>',
           `#include <common>
 varying vec3 vWorldPos;
-uniform float uScanT;
-uniform float uScanDispH;
-uniform float uScanDispW;`
+`
         )
         .replace(
           '#include <begin_vertex>',
           `#include <begin_vertex>
-// scan wave physically lifts the surface as it sweeps outward
-if (uScanT >= 0.0) {
-  float dV = length(transformed.xz);
-  float RV = uScanT * 42.0;
-  float bumpV = exp(-pow((dV - RV) / max(uScanDispW, 0.05), 2.0));
-  transformed.y += uScanDispH * bumpV * (1.0 - smoothstep(0.6, 1.0, uScanT));
-}
 vWorldPos = (modelMatrix * vec4(transformed, 1.0)).xyz;`
         )
       shader.fragmentShader = shader.fragmentShader
@@ -82,10 +63,6 @@ uniform float uHeightContrast;
 uniform float uHeightPivot;
 uniform float uSlopeTint;
 uniform vec3 uContourColor;
-uniform float uScanT;
-uniform vec3 uScanColor;
-uniform float uScanWidth;
-uniform float uScanBlur;
 uniform sampler2D uOverlayTex;
 uniform float uOverlayMix;`
         )
@@ -135,29 +112,6 @@ uniform float uOverlayMix;`
   float grid = max(gx, gz) * uGridOpacity;
   diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.14, 0.13, 0.12), grid);
 
-  // --- radar scan wavefront paints the surface (additive-only washes out on white terrain)
-  if (uScanT >= 0.0) {
-    float dScan = length(vWorldPos.xz);
-    float Rs = uScanT * 42.0;
-    float aaS = fwidth(dScan);
-    float edgeS = abs(dScan - Rs) - uScanWidth * 0.5;
-    float bandS = 1.0 - smoothstep(0.0, max(uScanBlur, aaS), edgeS);
-    float fadeS = 1.0 - smoothstep(0.6, 1.0, uScanT);
-    diffuseColor.rgb = mix(diffuseColor.rgb, uScanColor, clamp(bandS * fadeS, 0.0, 0.95));
-  }
-}`
-        )
-        .replace(
-          '#include <emissivemap_fragment>',
-          `#include <emissivemap_fragment>
-// radar scan ripple: an emissive wavefront expanding from the center across the relief
-if (uScanT >= 0.0) {
-  float d = length(vWorldPos.xz);
-  float R = uScanT * 42.0;
-  float edgeE = abs(d - R) - uScanWidth * 0.5;
-  float band = 1.0 - smoothstep(0.0, max(uScanBlur, fwidth(d)), edgeE);
-  float fade = 1.0 - smoothstep(0.6, 1.0, uScanT);
-  totalEmissiveRadiance += uScanColor * band * fade * 0.5;
 }`
         )
     }
@@ -165,8 +119,8 @@ if (uScanT >= 0.0) {
     this.mesh.receiveShadow = true
     this.mesh.castShadow = true
     this.dem = null // real-world heightfield, set via setDem()
-    this.rebuild(params)
-    this.rebuildRoughness(params)
+    this._h2ft = null
+    this.sample = () => 0
   }
 
   setDem(dem) {
@@ -185,84 +139,21 @@ if (uScanT >= 0.0) {
     const meanM = dem.meanM
     this._h2ft = (h) => Math.round((h / scale + meanM) * 3.28084)
 
-    const sDetail = new Simplex2(mulberry32(params.seed))
     const { size } = dem
-    const { detail, detailScale } = params
 
     return (x, z) => {
       const px = (x / TERRAIN_SIZE + 0.5) * (size - 1)
       const py = (z / TERRAIN_SIZE + 0.5) * (size - 1)
-      let h = (sampleDem(dem, px, py) - meanM) * scale
-
-      // optional fine grain on top of the (smoother) 30m-class data
-      const fine =
-        detail * fbm(sDetail, x * detailScale, z * detailScale, 3, 2.3, 0.55) +
-        detail * 0.35 * fbm(sDetail, x * detailScale * 4.1 + 31, z * detailScale * 4.1 - 17, 2, 2.2, 0.5)
-      // no basin carve in real-world mode — the map runs uninterrupted
-      return h + fine
+      return (sampleDem(dem, px, py) - meanM) * scale
     }
   }
 
-  // Height field sampler for the current seed — kept so other objects can query it.
+  // Before the real DEM arrives, keep the retained output surface neutral.
+  // Provider failure remains explicit in the workspace instead of inventing terrain.
   _makeSampler(params) {
-    if (params.source === 'real' && this.dem) return this._makeDemSampler(params)
-    this._h2ft = null // procedural: fictional elevations
-    const rng = mulberry32(params.seed)
-    const sWarp = new Simplex2(rng)
-    const sRidge = new Simplex2(rng)
-    const sBase = new Simplex2(rng)
-    const sDetail = new Simplex2(rng)
-
-    // A handful of explicit impact craters scattered outside the basin
-    const craterRng = mulberry32(params.seed ^ 0x9e3779b9)
-    const craters = []
-    for (let i = 0; i < 7; i++) {
-      const a = craterRng() * Math.PI * 2
-      const d = 10.5 + craterRng() * 10
-      craters.push({
-        x: Math.cos(a) * d,
-        z: Math.sin(a) * d,
-        r: 1.6 + craterRng() * 2.8,
-        depth: (0.45 + craterRng() * 0.9) * params.amplitude * 0.35,
-      })
-    }
-
-    const { scale, octaves, lacunarity, gain, amplitude, warp, detail, detailScale } = params
-
-    return (x, z) => {
-      // domain warp — breaks up the "obviously noise" look
-      const wx = x + warp * fbm(sWarp, x * 0.045 + 7.3, z * 0.045 + 2.1, 3, 2.1, 0.5)
-      const wz = z + warp * fbm(sWarp, x * 0.045 - 4.7, z * 0.045 + 9.4, 3, 2.1, 0.5)
-
-      // large-scale ridged mountains + mid-scale rolling base
-      const m = ridged(sRidge, wx * scale, wz * scale, octaves, lacunarity, gain)
-      const base = fbm(sBase, wx * scale * 2.1, wz * scale * 2.1, octaves, lacunarity, gain)
-      let h = amplitude * (m * m * 1.2 + base * 0.28)
-
-      // impact craters: bowl + raised rim
-      for (const c of craters) {
-        const dx = x - c.x
-        const dz = z - c.z
-        const d = Math.sqrt(dx * dx + dz * dz)
-        if (d < c.r * 1.6) {
-          const bowl = 1 - smoothstep(0, c.r, d)
-          h -= c.depth * bowl * bowl * bowl * 2.2
-          const rim = Math.exp(-Math.pow((d - c.r) / (c.r * 0.28), 2))
-          h += c.depth * 0.4 * rim
-        }
-      }
-
-      // fine surface grain (two extra scales)
-      const fine =
-        detail * fbm(sDetail, x * detailScale, z * detailScale, 3, 2.3, 0.55) +
-        detail * 0.35 * fbm(sDetail, x * detailScale * 4.1 + 31, z * detailScale * 4.1 - 17, 2, 2.2, 0.5)
-
-      // flatten the central excavation basin
-      const r = Math.sqrt(x * x + z * z)
-      const t = smoothstep(BASIN_RADIUS, BASIN_BLEND, r)
-      const floorH = FLOOR_Y + fine * 0.12
-      return lerp(floorH, h + fine, t)
-    }
+    if (this.dem) return this._makeDemSampler(params)
+    this._h2ft = null
+    return () => 0
   }
 
   rebuild(params) {
@@ -303,8 +194,6 @@ if (uScanT >= 0.0) {
       let v = lerp(0.62, 0.95, Math.pow(hn, 0.85))
       v *= lerp(0.78, 1.0, Math.pow(Math.max(0, ny), 0.6))
       v += fbm(sTint, x * 1.7, z * 1.7, 2, 2.2, 0.5) * 0.05
-      const r = Math.sqrt(x * x + z * z)
-      if (r < BASIN_BLEND) v = lerp(0.52, v, smoothstep(BASIN_RADIUS, BASIN_BLEND, r))
       colors[i * 3] = colors[i * 3 + 1] = colors[i * 3 + 2] = v
     }
     geo.setAttribute('color', new THREE.BufferAttribute(colors, 3))
