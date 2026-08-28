@@ -3,6 +3,22 @@ import { describe, expect, it, vi } from 'vitest'
 import { createLibraryPanel, createPlanningPanel, createProfileCard } from './panels.js'
 
 describe('planning panel route contract', () => {
+  it('shows two textual route choices only when alternatives are available', () => {
+    const onRouteAlternative = vi.fn()
+    const panel = createPlanningPanel({ onRouteAlternative })
+    panel.setRouteAlternatives([
+      { distanceM: 12000, durationS: 1800 },
+      { distanceM: 14000, durationS: 2100 },
+    ], 1)
+    const choices = [...panel.el.querySelectorAll('.pp-route-alternative')]
+    expect(choices).toHaveLength(2)
+    expect(choices[1].textContent).toContain('方案 2（当前）')
+    expect(choices[1].textContent).toContain('14.0 km')
+    choices[0].click()
+    expect(onRouteAlternative).toHaveBeenCalledWith(0)
+    panel.setRouteAlternatives([{ distanceM: 12000, durationS: 1800 }])
+    expect(panel.el.querySelector('.pp-route-alternatives').classList.contains('hidden')).toBe(true)
+  })
   it('uses an explicit straight/foot/car mode control', () => {
     const onRouteMode = vi.fn()
     const panel = createPlanningPanel({ onRouteMode })

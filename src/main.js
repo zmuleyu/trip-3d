@@ -798,20 +798,36 @@ function routeMutationElevation(lon, lat, fallback = 0) {
 let lastRouteCoverage = { covered: true, outsideCount: 0, total: 0, bounds: null }
 
 function activeRouteCoordinates() {
-  if (!route.waypointPreviewing && snapState.on && snapState.geometry && snapState.version === snapVersion()) return snapState.geometry
+  const candidate = activeSnapCandidate()
+  if (candidate) return candidate.geometry
   return route.waypoints
 }
 
 function activeRouteAnalysisGeometry() {
-  return !route.waypointPreviewing && snapState.on && snapState.geometry && snapState.version === snapVersion()
-    ? snapState.geometry
-    : null
+  return activeSnapCandidate()?.geometry ?? null
+}
+
+function activeSnapCandidate() {
+  if (route.waypointPreviewing || !snapState.on || snapState.version !== snapVersion() || snapState.mode !== route.mode) return null
+  const candidate = snapState.alternatives?.[snapState.selectedAlternative]
+  if (!candidate || candidate.routeId !== route.id || candidate.geometryRevision !== route.geometryRevision || candidate.mode !== route.mode) return null
+  return candidate
+}
+
+function clearSnapResult() {
+  snapState.geometry = null
+  snapState.legs = null
+  snapState.alternatives = []
+  snapState.selectedAlternative = 0
+  snapState.mode = route.mode
+  planningPanel?.setRouteAlternatives?.([])
 }
 
 function currentRouteAnalysisGeometryKey() {
   const snappedGeometry = activeRouteAnalysisGeometry()
   if (route.waypointPreviewing) return 'preview'
-  return snappedGeometry ? `snapped:${snapState.version}:result:${snapState.resultId}` : 'raw'
+  const candidate = activeSnapCandidate()
+  return snappedGeometry ? `snapped:${snapState.version}:result:${snapState.resultId}:candidate:${candidate.id}` : 'raw'
 }
 
 function currentRouteCorridorRun() {
@@ -1078,6 +1094,9 @@ const snapState = {
   on: route.mode !== 'straight',
   geometry: null,
   legs: null,
+  alternatives: [],
+  selectedAlternative: 0,
+  mode: route.mode,
   version: '',
   resultId: 0,
   requestId: 0,
@@ -1091,6 +1110,9 @@ const snapRouteKey = (wps) => `osrm:${snapProfile}:` + wps.map((w) => `${w.lon.t
 
 function scheduleSnap() {
   if (!snapState.on) return
+  // A new request is a new result boundary even before the response arrives;
+  // never leave a prior route choice selectable while its replacement is pending.
+  if (snapState.alternatives.length) clearSnapResult()
   clearTimeout(snapTimer)
   snapTimer = setTimeout(runSnap, 400)
 }
@@ -1099,8 +1121,7 @@ async function runSnap() {
   const wps = route.waypoints
   if (!snapState.on) return
   if (wps.length < 2) {
-    snapState.geometry = null
-    snapState.legs = null
+    clearSnapResult()
     snapState.version = snapVersion()
     refreshRoute()
     return
@@ -1109,17 +1130,16 @@ async function runSnap() {
   const ver = snapVersion()
   const reqId = ++snapState.requestId
   const cached = snapCache.get(key)
-  if (cached) { commitSnap(cached.geometry, cached.legs, ver, reqId); return }
+  if (cached) { commitSnap(cached, ver, reqId); return }
   planningPanel.setRouteMode(route.mode, routeProviderStatus({ state: 'calculating' }))
   try {
-    const { geometry, legs } = await snapFetch(key, wps)
+    const result = await snapFetch(key, wps)
     if (reqId !== snapState.requestId || ver !== snapVersion()) return
-    commitSnap(geometry, legs, ver, reqId)
+    commitSnap(result, ver, reqId)
   } catch (err) {
     console.warn('snap failed', err)
     if (reqId !== snapState.requestId) return
-    snapState.geometry = null
-    snapState.legs = null
+    clearSnapResult()
     snapState.version = ver
     planningPanel.setRouteMode(route.mode, routeProviderStatus({ state: 'unavailable' }))
     toast.show('路网暂不可用：当前为直线示意，无时长')
@@ -1136,7 +1156,7 @@ function snapFetch(key, wps) {
   const p = (async () => {
     try {
       const r = await getRouter().route(wps.map(({ lon, lat }) => ({ lon, lat })))
-      const out = { geometry: r.geometry, legs: r.legs }
+      const out = { geometry: r.geometry, legs: r.legs, alternatives: r.alternatives }
       snapCache.set(key, out)
       return out
     } catch (err) {
@@ -1177,15 +1197,40 @@ function snapFetch(key, wps) {
   return p
 }
 
-function commitSnap(geometry, legs, ver, reqId) {
+function commitSnap(result, ver, reqId) {
   if (reqId !== snapState.requestId || ver !== snapVersion()) return
-  snapState.geometry = geometry
-  snapState.legs = legs
+  const alternatives = (result.alternatives?.length ? result.alternatives : [result]).slice(0, 2)
+    .filter((candidate) => candidate?.geometry?.length >= 2 && Array.isArray(candidate.legs))
+    .map((candidate, index) => ({
+      ...candidate,
+      id: `${route.id}:${route.geometryRevision}:${route.mode}:${reqId}:${index}`,
+      routeId: route.id,
+      geometryRevision: route.geometryRevision,
+      mode: route.mode,
+      requestId: reqId,
+    }))
+  if (!alternatives.length) return
+  snapState.alternatives = alternatives
+  snapState.selectedAlternative = 0
+  snapState.geometry = alternatives[0].geometry
+  snapState.legs = alternatives[0].legs
+  snapState.mode = route.mode
   snapState.version = ver
   snapState.resultId++
-  const routed = legs.filter((leg) => leg?.real !== false).length
-  planningPanel.setRouteMode(route.mode, routeProviderStatus({ routed, total: legs.length }))
+  const routed = alternatives[0].legs.filter((leg) => leg?.real !== false).length
+  planningPanel.setRouteMode(route.mode, routeProviderStatus({ routed, total: alternatives[0].legs.length }))
+  planningPanel.setRouteAlternatives(alternatives, 0)
   refreshRoute()
+}
+
+function selectRouteAlternative(index) {
+  const candidate = snapState.alternatives?.[index]
+  if (!candidate || !activeSnapCandidate() || candidate.routeId !== route.id || candidate.geometryRevision !== route.geometryRevision || candidate.mode !== route.mode) return
+  snapState.selectedAlternative = index
+  snapState.geometry = candidate.geometry
+  snapState.legs = candidate.legs
+  planningPanel.setRouteAlternatives(snapState.alternatives, index)
+  refreshRoute({ recordHistory: false, fitOverview: false })
 }
 
 function ensureRouteLayer() {
@@ -1260,8 +1305,9 @@ let lastSavedRouteVersion = null
 let lastSyncedTripDays = 0 // itinerary→weather days sync guard
 
 function currentLegs(pts) {
-  const osrmLegs = snapState.on && snapState.legs && snapState.version === snapVersion()
-    ? normalizeOsrmLegs(snapState.legs, route.waypoints)
+  const activeCandidate = activeSnapCandidate()
+  const osrmLegs = activeCandidate
+    ? normalizeOsrmLegs(activeCandidate.legs, route.waypoints)
     : null
   if (osrmLegs) return osrmLegs
   if (!waypointElevationOutputReady()) return computeHorizontalLegs(route.waypoints)
@@ -1338,7 +1384,11 @@ function updateRouteUI(route, stats, pts, { fitOverview = true } = {}) {
     saved: summaryData.saved,
   })
   overviewMap?.setWeatherOverlay({ routeRevision: route.revision, weatherRevision: weatherState.revision, result: weatherState.result })
-  overviewMap.update(route, pts, currentViewportRect(), { fit: fitOverview })
+  overviewMap.update(route, pts, currentViewportRect(), {
+    fit: fitOverview,
+    alternatives: snapState.alternatives,
+    selectedAlternative: snapState.selectedAlternative,
+  })
   overviewMap.setSelectedWaypoint(route.selectedWaypointId)
 }
 
@@ -1884,8 +1934,7 @@ function applyRouteModeState(nextMode, { persist = true, refresh = true } = {}) 
     localStorage.setItem(SNAP_PROFILE_LS, snapProfile)
   }
   snapState.version = ''
-  snapState.geometry = null
-  snapState.legs = null
+  clearSnapResult()
   snapState.resultId++
   snapState.requestId++
   planningPanel.setRouteMode(route.mode, snapState.on ? '等待路网吸附' : '仅测距；不估算时长')
@@ -1895,6 +1944,7 @@ function applyRouteModeState(nextMode, { persist = true, refresh = true } = {}) 
 }
 
 const routeActions = {
+  onRouteAlternative: selectRouteAlternative,
   onMapFocus: () => { panelHost.setSheetState('peek'); overviewMap.focusPlanner?.() },
   onNameChange: (v) => {
     route.setName(v)

@@ -36,6 +36,7 @@ describe('osrm provider', () => {
     expect(r.durationS).toBeCloseTo(3094.4)
     expect(r.geometry).toHaveLength(4)
     expect(r.geometry[0]).toEqual([102.83, 31.05])
+    expect(r.alternatives).toHaveLength(1)
   })
 
   it('maps legs to { distanceM, durationS } per leg', async () => {
@@ -74,6 +75,22 @@ describe('osrm provider', () => {
     expect(url).toContain('routing.openstreetmap.de/routed-foot/route/v1/foot/102.83,31.05;102.9,31.02')
     expect(url).toContain('overview=full')
     expect(url).toContain('geometries=geojson')
+    expect(url).toContain('alternatives=true')
+  })
+
+  it('keeps at most two valid alternatives and fails closed for malformed candidates', async () => {
+    const p = createOsrmProvider({ fetchImpl: okJson({
+      code: 'Ok',
+      routes: [
+        OSRM_FIXTURE.routes[0],
+        { distance: 100, duration: 80, geometry: { coordinates: [[0, 0]] } },
+        { distance: 22000, duration: 3100, geometry: { coordinates: [[102.83, 31.05], [102.86, 31.04], [102.9, 31.02]] }, legs: [{ distance: 22000, duration: 3100 }] },
+        { distance: 23000, duration: 3200, geometry: { coordinates: [[102.83, 31.05], [102.87, 31.04], [102.9, 31.02]] }, legs: [{ distance: 23000, duration: 3200 }] },
+      ],
+    }) })
+    const result = await p.route([{ lon: 102.83, lat: 31.05 }, { lon: 102.9, lat: 31.02 }])
+    expect(result.alternatives).toHaveLength(2)
+    expect(result.alternatives[1].distanceM).toBe(22000)
   })
 
   it('appends exclude param when set (car: 避开高速)', async () => {

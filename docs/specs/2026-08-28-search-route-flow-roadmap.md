@@ -1,8 +1,8 @@
 ---
 title: Search and route intent flow roadmap
-status: active
+status: R3 active and frozen
 updated: 2026-08-28
-scope: R2 non-blocking route enrichment
+scope: R3 bounded route-result alternatives
 ---
 
 # Search and route intent flow roadmap
@@ -20,7 +20,7 @@ and reports a plain-language state: calculating, available, or a straight-line
 fallback. A fallback explicitly says that it has no duration and offers the
 smallest recovery action.
 
-## R2 — active and frozen
+## R2 — completed
 
 Plan route mutations from search, the map, waypoint movement, and reordering take
 effect immediately in the single `TripRouteController` route. Routing and its
@@ -35,8 +35,21 @@ unavailable. Analyze reports elevation loading or unavailable truthfully and can
 recover when current-run enrichment succeeds. Stored routes, share links, GPX,
 weather, Admin, poster, flyover, and provider fallback contracts remain compatible.
 
-## Later dependencies (not part of R2)
+## R3 — active and frozen
 
-- R3: route results and alternatives depend on R2's single-route ownership and stale-result boundary.
-- R4: mobile gesture and accessibility work depends on the settled R2 mutation seam.
-- R5: provider productionization remains a separate cost, policy, and production-authority phase.
+One existing OSRM request may yield up to two structurally valid route results.
+The active result is transiently bound to `route.id`, `geometryRevision`, mode,
+and the request/result identity. Desktop and 390px users can identify and select
+one of the two choices by order and distance/duration text, while MapLibre shows
+the unselected option as a subdued dashed line. The selected result supplies the
+derived map geometry, summary, legs, and Analyze input without changing the
+single Trip route, revision, history, save/share, or GPX contracts.
+
+Malformed candidates fail closed. One result or a routing failure retains the
+existing single-route or truthful straight-line fallback state with no empty
+selector. A route or mode change invalidates all prior candidates.
+
+## Later dependencies (not part of R3)
+
+- R4: mobile gesture and accessibility work depends on the settled R3 choice and stale-result seam.
+- R5: provider productionization, response-size policy, caching, and rate controls remain a separate cost, policy, and production-authority phase.

@@ -387,6 +387,11 @@ body.planner-operate .ui-settings { top: 58px; width: min(360px, calc(100vw - 24
 .pp-plan-big { font-size: 22px; font-weight: bold; line-height: 1.1; }
 .pp-plan-sub { font-size: 10px; opacity: 0.75; margin-top: 2px; }
 .pp-legs { margin-top: 4px; }
+.pp-route-alternatives { display: grid; gap: 6px; margin: 8px 0 10px; }
+.pp-route-alternative { min-height: 40px; padding: 7px 9px; text-align: left; border: 1px solid rgba(23,25,27,.25); background: rgba(23,25,27,.04); color: #17191b; font: inherit; font-size: 12px; cursor: pointer; }
+.pp-route-alternative:hover { border-color: #ff4d00; background: rgba(255,77,0,.06); }
+.pp-route-alternative.selected { border-color: #ff4d00; background: rgba(255,77,0,.1); font-weight: 700; }
+.pp-route-alternative:focus-visible { outline: 2px solid #ff4d00; outline-offset: 2px; }
 .pp-legs-head { font: inherit; font-size: 10px; padding: 1px 6px; cursor: pointer; background: none; border: 1px solid rgba(23,25,27,0.25); }
 .pp-legs-list { margin-top: 3px; border-left: 2px solid rgba(255,77,0,0.4); padding-left: 6px; }
 .pp-legs-list.hidden { display: none; }

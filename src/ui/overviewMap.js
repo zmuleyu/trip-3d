@@ -26,6 +26,7 @@ const SOURCE_IDS = {
   terrainShade: 'trip-terrain-hillshade',
   admin: 'trip-admin-boundaries',
   route: 'trip-planned-route',
+  alternatives: 'trip-route-alternatives',
   weather: 'trip-route-weather',
   waypoints: 'trip-route-waypoints',
   cursor: 'trip-analysis-cursor',
@@ -50,6 +51,17 @@ function routeFeature(route, points) {
     properties: {},
     geometry: { type: 'LineString', coordinates },
   }
+}
+
+function alternativeFeatures(alternatives = [], selectedIndex = 0) {
+  return alternatives.flatMap((alternative, index) => {
+    if (index === selectedIndex || !Array.isArray(alternative?.geometry) || alternative.geometry.length < 2) return []
+    return [{
+      type: 'Feature',
+      properties: { alternativeId: alternative.id ?? String(index), label: `方案 ${index + 1}` },
+      geometry: { type: 'LineString', coordinates: alternative.geometry },
+    }]
+  })
 }
 
 function waypointFeatures(route, selectedWaypointId) {
@@ -128,11 +140,26 @@ function addPlannerLayers(map) {
   })
   map.addSource(SOURCE_IDS.admin, { type: 'geojson', data: EMPTY_FEATURE_COLLECTION })
   map.addSource(SOURCE_IDS.route, { type: 'geojson', data: EMPTY_FEATURE_COLLECTION })
+  map.addSource(SOURCE_IDS.alternatives, { type: 'geojson', data: EMPTY_FEATURE_COLLECTION })
   map.addSource(SOURCE_IDS.weather, { type: 'geojson', data: EMPTY_FEATURE_COLLECTION })
   map.addSource(SOURCE_IDS.waypoints, { type: 'geojson', data: EMPTY_FEATURE_COLLECTION })
   map.addSource(SOURCE_IDS.cursor, { type: 'geojson', data: EMPTY_FEATURE_COLLECTION })
 
   const firstSymbolLayer = (map.getStyle()?.layers ?? []).find((layer) => layer.type === 'symbol')?.id
+  map.addLayer({
+    id: 'trip-route-alternatives-casing',
+    type: 'line',
+    source: SOURCE_IDS.alternatives,
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': '#ffffff', 'line-opacity': 0.58, 'line-width': 6 },
+  })
+  map.addLayer({
+    id: 'trip-route-alternatives-line',
+    type: 'line',
+    source: SOURCE_IDS.alternatives,
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': '#596260', 'line-opacity': 0.68, 'line-width': 2.5, 'line-dasharray': [1.4, 1.1] },
+  })
   map.addLayer({
     id: 'trip-terrain-relief',
     type: 'hillshade',
@@ -362,6 +389,8 @@ export function createOverviewMap({
 
   let lastRoute = null
   let lastPoints = null
+  let lastAlternatives = []
+  let selectedAlternative = 0
   let viewportLonLat = null
   let plannerMode = false
   let editingMode = false
@@ -583,6 +612,7 @@ export function createOverviewMap({
     const route = routeFeature(lastRoute, lastPoints)
     map.getSource(SOURCE_IDS.admin)?.setData(adminOverlayGeoJSON(adminOverlay))
     map.getSource(SOURCE_IDS.route)?.setData(route ? featureCollection([route]) : EMPTY_FEATURE_COLLECTION)
+    map.getSource(SOURCE_IDS.alternatives)?.setData(featureCollection(alternativeFeatures(lastAlternatives, selectedAlternative)))
     weatherData = weatherOverlayGeoJSON(weatherOverlay)
     map.getSource(SOURCE_IDS.weather)?.setData(weatherData)
     map.getSource(SOURCE_IDS.waypoints)?.setData(featureCollection(waypointFeatures(lastRoute, selectedWaypointId)))
@@ -1089,9 +1119,11 @@ export function createOverviewMap({
       openWeatherCard(feature, point, { pinned })
       return true
     },
-    update(route, points, viewport, { fit = true } = {}) {
+    update(route, points, viewport, { fit = true, alternatives = [], selectedAlternative: nextSelectedAlternative = 0 } = {}) {
       lastRoute = route
       lastPoints = points
+      lastAlternatives = alternatives
+      selectedAlternative = nextSelectedAlternative
       viewportLonLat = viewport
       const waypoints = route?.waypoints ?? []
       if (waypoints.length < 2 && !plannerMode) {
