@@ -167,7 +167,7 @@ export function createPlanningPanel(actions) {
     el,
     get nameEl() { return name },
     // update(route, stats, legs, weatherIndex, profile) — timeline list + summary card + legs
-    update(route, stats, legs = null, weatherIndex = null, profile = 'foot', weatherDays = null) {
+    update(route, stats, legs = null, weatherIndex = null, profile = 'foot', weatherDays = null, waypointElevation = {}) {
       if (document.activeElement !== name) name.value = route.name
       wpList.replaceChildren()
       const n = route.waypoints.length
@@ -291,7 +291,13 @@ export function createPlanningPanel(actions) {
         }
         const coord = document.createElement('span')
         coord.className = 'pp-tl-coord'
-        coord.textContent = `${w.lon.toFixed(4)}, ${w.lat.toFixed(4)} · ${Math.round(w.ele)}m`
+        const measuredElevation = waypointElevation.values?.[w.id]
+        const elevationText = waypointElevation.status === 'loading'
+          ? '高程待补齐'
+          : waypointElevation.status === 'ready' && Number.isFinite(measuredElevation)
+            ? `${Math.round(measuredElevation)}m`
+            : '高程暂不可用'
+        coord.textContent = `${w.lon.toFixed(4)}, ${w.lat.toFixed(4)} · ${elevationText}`
         const ops = document.createElement('span')
         ops.className = 'pp-tl-ops'
         const mkOp = (label, title, fn) => {
@@ -724,7 +730,7 @@ export function createProfileCard(accent = '#ff4d00') {
         metrics.replaceChildren()
         source.textContent = ''
         setDetailsAvailable(false)
-        const recoverable = ['outside-coverage', 'route-terrain-unavailable', 'route-terrain-budget', 'route-terrain-cancelled'].includes(analysis.status)
+        const recoverable = ['dem-unavailable', 'outside-coverage', 'route-terrain-unavailable', 'route-terrain-budget', 'route-terrain-cancelled'].includes(analysis.status)
         recoveryActions.hidden = !recoverable
         recovery.hidden = !recoverable
         returnPlan.hidden = !recoverable

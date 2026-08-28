@@ -4,6 +4,20 @@
 // normalizeOsrmLegs: attach waypoint names to OSRM legs (real routed segments).
 import { haversineMeters } from './geo.js'
 
+export function computeHorizontalLegs(waypoints) {
+  if (!waypoints || waypoints.length < 2) return []
+  return waypoints.slice(1).map((to, index) => {
+    const from = waypoints[index]
+    return {
+      from: from.name,
+      to: to.name,
+      distanceM: Math.round(haversineMeters(from.lat, from.lon, to.lat, to.lon)),
+      real: false,
+      elevationStatus: 'unavailable',
+    }
+  })
+}
+
 export function computeLegs(waypoints) {
   if (!waypoints || waypoints.length < 2) return []
   const legs = []

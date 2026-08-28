@@ -31,15 +31,16 @@ const constantTile = (value = 100) => ({
 
 describe('route corridor Terrarium coverage', () => {
   it('freezes zoom and the existing Terrarium source identity into each run key', () => {
-    const routeKey = 'route-a:raw:1'
-    const z12 = createRouteDemRunIdentity({ routeKey, zoom: 12, sourceIdentity: TERRARIUM_SOURCE_ID })
-    const z13 = createRouteDemRunIdentity({ routeKey, zoom: 13, sourceIdentity: TERRARIUM_SOURCE_ID })
-    const unavailableSource = createRouteDemRunIdentity({ routeKey, zoom: 12, sourceIdentity: 'unavailable:noise' })
+    const route = { routeId: 'route-a', geometryRevision: 1, geometryKey: 'raw' }
+    const z12 = createRouteDemRunIdentity({ ...route, zoom: 12, sourceIdentity: TERRARIUM_SOURCE_ID })
+    const z13 = createRouteDemRunIdentity({ ...route, zoom: 13, sourceIdentity: TERRARIUM_SOURCE_ID })
+    const unavailableSource = createRouteDemRunIdentity({ ...route, zoom: 12, sourceIdentity: 'unavailable:noise' })
 
+    expect(z12).toContain('route:route-a:geometry:1:raw')
     expect(z12).toContain(TERRARIUM_SOURCE_ID)
     expect(z12).not.toBe(z13)
     expect(z12).not.toBe(unavailableSource)
-    expect(() => createRouteDemRunIdentity({ routeKey, zoom: Number.NaN, sourceIdentity: TERRARIUM_SOURCE_ID })).toThrow(/状态无效/)
+    expect(() => createRouteDemRunIdentity({ ...route, geometryRevision: Number.NaN, zoom: 12, sourceIdentity: TERRARIUM_SOURCE_ID })).toThrow(/状态无效/)
   })
   it('enumerates only sampled corridor tiles and includes the bilinear neighbor at a boundary', () => {
     const zoom = 1
@@ -237,14 +238,15 @@ describe('route corridor Terrarium coverage', () => {
     const loadCoverage = vi.fn(({ points }) => new Promise((resolve) => deferred.set(points[0].id, resolve)))
     const onState = vi.fn()
     const controller = createRouteDemAnalysisController({ loadCoverage, onState })
-    const first = controller.start({ key: 'route-a:1', points: [{ id: 'a' }], zoom: 12, analyze: () => ({ status: 'ready', id: 'old' }) })
-    const second = controller.start({ key: 'route-b:2', points: [{ id: 'b' }], zoom: 12, analyze: () => ({ status: 'ready', id: 'new' }) })
+    const first = controller.start({ key: 'route-a:1', routeId: 'route-a', geometryRevision: 1, points: [{ id: 'a' }], zoom: 12, analyze: () => ({ status: 'ready', id: 'old' }) })
+    const second = controller.start({ key: 'route-a:2', routeId: 'route-a', geometryRevision: 2, points: [{ id: 'b' }], zoom: 12, analyze: () => ({ status: 'ready', id: 'new' }) })
 
     deferred.get('b')({})
     await expect(second).resolves.toMatchObject({ status: 'ready', analysis: { id: 'new' } })
     deferred.get('a')({})
     await expect(first).resolves.toMatchObject({ status: 'stale', key: 'route-a:1' })
-    expect(onState.mock.calls.filter(([state]) => state.status === 'ready').map(([state]) => state.key)).toEqual(['route-b:2'])
+    expect(onState.mock.calls.filter(([state]) => state.status === 'ready').map(([state]) => state.key)).toEqual(['route-a:2'])
+    expect(onState.mock.calls.find(([state]) => state.status === 'ready')?.[0]).toMatchObject({ routeId: 'route-a', geometryRevision: 2 })
   })
 
   it('rejects old success and failure after a frozen zoom/source run changes, then retries with the new run', async () => {
@@ -252,9 +254,9 @@ describe('route corridor Terrarium coverage', () => {
     const loadCoverage = vi.fn(({ zoom, sourceIdentity }) => new Promise((resolve, reject) => deferred.set(zoom, { resolve, reject, sourceIdentity })))
     const onState = vi.fn()
     const controller = createRouteDemAnalysisController({ loadCoverage, onState })
-    const routeKey = 'route-a:raw:1'
-    const z12 = createRouteDemRunIdentity({ routeKey, zoom: 12, sourceIdentity: TERRARIUM_SOURCE_ID })
-    const z13 = createRouteDemRunIdentity({ routeKey, zoom: 13, sourceIdentity: TERRARIUM_SOURCE_ID })
+    const routeIdentity = { routeId: 'route-a', geometryRevision: 1, geometryKey: 'raw' }
+    const z12 = createRouteDemRunIdentity({ ...routeIdentity, zoom: 12, sourceIdentity: TERRARIUM_SOURCE_ID })
+    const z13 = createRouteDemRunIdentity({ ...routeIdentity, zoom: 13, sourceIdentity: TERRARIUM_SOURCE_ID })
 
     const readyAt12 = controller.start({ key: z12, points: [{ id: 'a' }], zoom: 12, sourceIdentity: TERRARIUM_SOURCE_ID, analyze: () => ({ status: 'ready', id: 'z12' }) })
     deferred.get(12).resolve({})
@@ -279,10 +281,10 @@ describe('route corridor Terrarium coverage', () => {
     }))
     const onState = vi.fn()
     const controller = createRouteDemAnalysisController({ loadCoverage, onState })
-    const routeKey = 'legacy-terrain:raw:1'
-    const z12 = createRouteDemRunIdentity({ routeKey, zoom: 12, sourceIdentity: TERRARIUM_SOURCE_ID })
-    const z13 = createRouteDemRunIdentity({ routeKey, zoom: 13, sourceIdentity: TERRARIUM_SOURCE_ID })
-    const noise = createRouteDemRunIdentity({ routeKey, zoom: 13, sourceIdentity: 'unavailable:noise' })
+    const routeIdentity = { routeId: 'legacy-terrain', geometryRevision: 1, geometryKey: 'raw' }
+    const z12 = createRouteDemRunIdentity({ ...routeIdentity, zoom: 12, sourceIdentity: TERRARIUM_SOURCE_ID })
+    const z13 = createRouteDemRunIdentity({ ...routeIdentity, zoom: 13, sourceIdentity: TERRARIUM_SOURCE_ID })
+    const noise = createRouteDemRunIdentity({ ...routeIdentity, zoom: 13, sourceIdentity: 'unavailable:noise' })
 
     const original = controller.start({ key: z12, points: [], zoom: 12, sourceIdentity: TERRARIUM_SOURCE_ID, analyze: () => ({ status: 'ready', id: 'z12' }) })
     const zoomChanged = controller.start({ key: z13, points: [], zoom: 13, sourceIdentity: TERRARIUM_SOURCE_ID, analyze: () => ({ status: 'ready', id: 'z13' }) })

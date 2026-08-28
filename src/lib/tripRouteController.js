@@ -100,6 +100,26 @@ export class TripRouteController {
     if (geometry) this.#route.geometryRevision++
   }
 
+  waypointElevationsReady(authority) {
+    return authority?.status === 'ready' &&
+      authority.routeId === this.#route.id &&
+      authority.geometryRevision === this.#route.geometryRevision &&
+      this.#route.waypoints.every((waypoint) => Number.isFinite(authority.values?.[waypoint.id]))
+  }
+
+  applyWaypointElevations(authority) {
+    if (!this.waypointElevationsReady(authority)) return false
+    let changed = false
+    for (const waypoint of this.#route.waypoints) {
+      const elevation = authority.values[waypoint.id]
+      if (waypoint.ele === elevation) continue
+      waypoint.ele = elevation
+      changed = true
+    }
+    if (changed) this.#route.revision++
+    return changed
+  }
+
   addWaypoint(lon, lat, ele, name) {
     return addWaypoint(this.#route, lon, lat, ele, name)
   }

@@ -77,6 +77,26 @@ describe('planning panel route contract', () => {
     expect(panel.el.querySelector('.pp-plan')).toBeNull()
     expect(panel.el.querySelector('.ui-profile')).toBeNull()
   })
+
+  it('keeps waypoint elevation truthful while background enrichment loads, fails, and recovers', () => {
+    const panel = createPlanningPanel({})
+    const route = {
+      name: '异步高程', mode: 'straight', dayEnds: [],
+      waypoints: [{ id: 'a', name: 'A', lon: 1, lat: 2, ele: 0 }, { id: 'b', name: 'B', lon: 2, lat: 3, ele: 0 }],
+    }
+    const update = (waypointElevation) => panel.update(route, { distanceM: 6100 }, null, null, 'foot', null, waypointElevation)
+
+    update({ status: 'loading', values: {} })
+    expect(panel.el.textContent).toContain('高程待补齐')
+    expect(panel.el.textContent).not.toContain('· 0m')
+
+    update({ status: 'unavailable', values: {} })
+    expect(panel.el.textContent).toContain('高程暂不可用')
+
+    update({ status: 'ready', values: { a: 1180, b: 1360 } })
+    expect(panel.el.textContent).toContain('1180m')
+    expect(panel.el.textContent).toContain('1360m')
+  })
 })
 
 describe('route library recovery', () => {
@@ -173,7 +193,7 @@ describe('Analyze elevation profile', () => {
 
     const recovery = card.el.querySelector('.profile-recovery')
     const returnPlan = card.el.querySelector('.profile-return-plan')
-    for (const status of ['outside-coverage', 'route-terrain-unavailable', 'route-terrain-budget', 'route-terrain-cancelled']) {
+    for (const status of ['dem-unavailable', 'outside-coverage', 'route-terrain-unavailable', 'route-terrain-budget', 'route-terrain-cancelled']) {
       card.update({ status, points: [], profile: null })
       expect(recovery.hidden).toBe(false)
       expect(returnPlan.hidden).toBe(false)
@@ -185,7 +205,7 @@ describe('Analyze elevation profile', () => {
     expect(onRetry).toHaveBeenCalledOnce()
     expect(onReturnPlan).toHaveBeenCalledOnce()
 
-    for (const status of ['incomplete', 'dem-unavailable', 'route-terrain-loading']) {
+    for (const status of ['incomplete', 'route-terrain-loading']) {
       card.update({ status, points: [], profile: null })
       expect(recovery.hidden).toBe(true)
       expect(returnPlan.hidden).toBe(true)
