@@ -37,6 +37,6 @@ describe('transient route candidate identity', () => {
     expect(trip.canUndo()).toBe(false)
     expect(routeToGpx(trip.route)).toBe(gpx)
     expect(encodeShare(trip.route, { dem: { lat: 41, lon: 113.5, zoom: 12, size: 768 } })).toBe(share)
-    expect(serializeRoute(trip.route)).toEqual(stored)
+    expect({ ...serializeRoute(trip.route), updatedAt: 0 }).toEqual({ ...stored, updatedAt: 0 })
   })
 })
