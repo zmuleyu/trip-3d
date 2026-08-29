@@ -30,6 +30,17 @@ describe('layer button accessibility state', () => {
     expect(onStateChange).toHaveBeenCalledWith('contour', false)
     expect(layers.get('contour').btn.getAttribute('aria-pressed')).toBe('false')
   })
+
+  it('groups the layer controls beneath map display, base map, and overlay headings', () => {
+    const layers = createLayerButtons({ buttons: [
+      { id: 'roads', group: 'base', icon: 'roads', tip: '路网', initial: false, onToggle: vi.fn() },
+      { id: 'contour', group: 'overlay', icon: 'contour', tip: '等高线', initial: true, onToggle: vi.fn() },
+    ] })
+    expect(layers.el.getAttribute('aria-label')).toBe('地图显示')
+    expect(layers.el.textContent).toContain('底图')
+    expect(layers.el.textContent).toContain('叠加信息')
+    expect(layers.get('roads').btn.textContent).toContain('路网')
+  })
 })
 
 describe('rail accessibility', () => {

@@ -122,6 +122,46 @@ describe('planner workspace chrome', () => {
     expect(onMenuChange).toHaveBeenLastCalledWith('more', true)
   })
 
+  it('closes an attached layers surface on Escape, outside press, and stage changes', () => {
+    const workspace = createPlannerWorkspace()
+    const trigger = document.createElement('button')
+    const surface = document.createElement('section')
+    surface.id = 'ui-layer-tools'
+    document.body.append(trigger, surface)
+    workspace.attachLayers({ trigger, surface })
+    workspace.setLayersOpen(true)
+    expect(trigger.getAttribute('aria-controls')).toBe(surface.id)
+    expect(trigger.getAttribute('aria-expanded')).toBe('true')
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    expect(document.body.classList.contains('planner-layers-open')).toBe(false)
+    expect(document.activeElement).toBe(trigger)
+    expect(trigger.getAttribute('aria-expanded')).toBe('false')
+    expect(trigger.getAttribute('aria-label')).toBe('打开图层工具')
+
+    workspace.setLayersOpen(true)
+    const outside = document.createElement('div')
+    document.body.appendChild(outside)
+    const lowerPointerHandler = vi.fn()
+    const lowerClickHandler = vi.fn()
+    document.addEventListener('pointerdown', lowerPointerHandler)
+    document.addEventListener('click', lowerClickHandler)
+    const down = new Event('pointerdown', { bubbles: true, cancelable: true })
+    Object.defineProperty(down, 'pointerId', { value: 7 })
+    outside.dispatchEvent(down)
+    expect(document.body.classList.contains('planner-layers-open')).toBe(false)
+    expect(down.defaultPrevented).toBe(true)
+    expect(lowerPointerHandler).not.toHaveBeenCalled()
+    const click = new MouseEvent('click', { bubbles: true, cancelable: true })
+    outside.dispatchEvent(click)
+    expect(click.defaultPrevented).toBe(true)
+    expect(lowerClickHandler).not.toHaveBeenCalled()
+
+    workspace.setLayersOpen(true)
+    workspace.setStage('plan')
+    expect(document.body.classList.contains('planner-layers-open')).toBe(false)
+  })
+
   it('shows route context only for a selected waypoint or segment and can dismiss it', () => {
     const onSpineExpand = vi.fn()
     const onSpineDismiss = vi.fn()

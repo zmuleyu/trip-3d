@@ -1,7 +1,7 @@
 # TRIP 3D — 时间、空间与气候的旅行地图
 
 > **在线访问**: https://trip-3d.pages.dev (Cloudflare Pages)
-> **源码版本**: v0.5.0；Map-first Planning Surface 已完成：Plan / Analyze 共享同一 trip state，规划 Inspector、搜索与路线上下文在地图上按需展开。公共搜索与路由 provider 仍仅限 light use，不提供生产 SLA。
+> **源码版本**: v0.5.1；Map-first Planning Surface 已完成：Plan / Analyze 共享同一 trip state，规划 Inspector、搜索与路线上下文在地图上按需展开。公共搜索与路由 provider 仍仅限 light use，不提供生产 SLA。
 
 TRIP 3D 是以地图和路线为核心的旅行规划与记录工具。用户在 Plan 中编辑同一条路线，在 Analyze 中查看同一空间状态的地形与高程；路线库、沿途天气、GPX、保存和分享都围绕同一个 trip model 工作。
 
