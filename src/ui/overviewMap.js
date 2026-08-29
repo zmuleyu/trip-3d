@@ -1110,6 +1110,7 @@ export function createOverviewMap({
   return {
     el,
     weatherCard,
+    get layerToggle() { return layers },
     setLayersOpen(open) {
       layers.setAttribute('aria-expanded', String(!!open))
       layers.setAttribute('aria-label', open ? '关闭图层工具' : '打开图层工具')

@@ -2119,3 +2119,139 @@ body.weather-operate .ui-panel-body {
   .ui-search-popover { border: 1px solid #fff; background: #111; }
   .ui-search-place-actions button { border-color: #fff; }
 }
+
+/* Workspace layers use one anchored surface on desktop and the existing
+   Inspector sheet on compact viewports. */
+.ui-panel-back { display: none; }
+
+@media (min-width: 1024px) {
+  body.planner-operate .ui-layers {
+    position: fixed;
+    top: 76px;
+    right: 24px;
+    z-index: 56;
+    display: block;
+    width: 312px;
+    padding: 14px 16px 12px;
+    border: 1px solid var(--trip-line-strong);
+    border-radius: 12px;
+    background: var(--panel-surface);
+    color: var(--trip-ink);
+    box-shadow: var(--trip-shadow);
+    backdrop-filter: none;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translateY(-4px);
+    transition: opacity 160ms ease-out, transform 160ms ease-out, visibility 0s linear 160ms;
+  }
+  body.planner-operate.planner-layers-open .ui-layers {
+    display: block;
+    max-width: none;
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transform: translateY(0);
+    transition-delay: 0s;
+  }
+  body.planner-operate .ui-layers::before {
+    content: '';
+    position: absolute;
+    top: -6px;
+    right: 138px;
+    width: 11px;
+    height: 11px;
+    border-top: 1px solid var(--trip-line-strong);
+    border-left: 1px solid var(--trip-line-strong);
+    background: var(--panel-surface);
+    transform: rotate(45deg);
+  }
+}
+
+.ui-layers-title {
+  position: relative;
+  z-index: 1;
+  margin: 0 0 10px;
+  color: var(--trip-ink);
+  font: 700 16px/1.2 var(--trip-font);
+}
+.ui-layer-section { position: relative; z-index: 1; padding: 12px 0 0; border-top: 1px solid var(--trip-line); }
+.ui-layer-section h3 { margin: 0 0 5px; color: var(--trip-ink-soft); font: 600 12px/1.3 var(--trip-font); }
+.ui-layer-rows { display: grid; }
+.ui-layer-btn {
+  width: 100%;
+  min-height: 40px;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) 30px;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 2px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--trip-ink);
+  text-align: left;
+  box-shadow: none;
+  transform: none;
+}
+.ui-layer-btn svg { width: 18px; height: 18px; color: var(--trip-ink-soft); }
+.ui-layer-btn:hover, .ui-layer-btn:focus-visible { border-color: transparent; background: color-mix(in srgb, var(--trip-ink) 7%, transparent); color: var(--trip-ink); }
+.ui-layer-btn:focus-visible { outline: 2px solid var(--trip-route); outline-offset: 2px; }
+.ui-layer-btn:active { transform: scale(.99); }
+.ui-layer-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 14px/1.25 var(--trip-font); }
+.ui-layer-state { justify-self: end; width: 28px; height: 16px; padding: 2px; border-radius: 9px; background: var(--trip-line-strong); }
+.ui-layer-state::after { content: ''; display: block; width: 12px; height: 12px; border-radius: 50%; background: var(--trip-paper-strong); transition: transform 140ms ease-out, background-color 140ms ease-out; }
+.ui-layer-btn.on .ui-layer-state { background: var(--trip-route); }
+.ui-layer-btn.on .ui-layer-state::after { transform: translateX(12px); }
+.ui-layer-btn.on { border-color: transparent; background: transparent; color: var(--trip-ink); box-shadow: inset 0 -2px var(--trip-route); }
+.ui-layer-btn.on svg { color: var(--trip-route); }
+
+body.planner-operate .ui-panel:not(.collapsed) { background: var(--panel-surface) !important; backdrop-filter: none; }
+body.planner-operate .ui-panel-body :is(input, select, textarea) { background-color: var(--trip-paper-strong); }
+
+@media (max-width: 1023px) {
+  body.planner-operate .ui-panel .ui-layers {
+    position: static;
+    display: block;
+    width: auto;
+    max-width: none;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    color: var(--trip-ink);
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transform: none;
+  }
+  body.planner-operate .ui-panel .ui-layers::before { display: none; }
+  .ui-panel-back {
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+    display: grid;
+    place-items: center;
+    margin-left: -8px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--instrument-text);
+  }
+  .ui-panel-back:focus-visible { outline: 2px solid var(--trip-route); outline-offset: 2px; }
+  .ui-panel-back svg { width: 19px; height: 19px; }
+  .ui-panel .ui-layers-title { display: none; }
+  .ui-panel .ui-layer-section:first-of-type { padding-top: 0; border-top: 0; }
+  .ui-panel .ui-layer-btn { min-height: 44px; padding-block: 8px; }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  body.planner-operate .ui-layers, body.planner-operate .ui-panel:not(.collapsed) { background: var(--panel-surface) !important; backdrop-filter: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body.planner-operate .ui-layers { transform: none; transition: opacity 120ms ease-out, visibility 0s linear 120ms; }
+  body.planner-operate.planner-layers-open .ui-layers { transition-delay: 0s; }
+  .ui-layer-state::after { transition-duration: 120ms; }
+}

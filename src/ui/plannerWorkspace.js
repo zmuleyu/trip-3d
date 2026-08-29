@@ -84,6 +84,9 @@ export function createPlannerWorkspace({
   spine.querySelector('.ui-trip-spine-expand').addEventListener('click', () => onSpineExpand?.())
   spine.querySelector('.ui-trip-spine-close').addEventListener('click', () => onSpineDismiss?.())
   const moreMenu = el.querySelector('.ui-planner-more-menu')
+  let layersSurface = null
+  let layersTrigger = null
+  let layerReturnFocus = null
   const setMoreOpen = (open) => {
     if (open) setLayersOpen(false)
     moreMenu.classList.toggle('hidden', !open)
@@ -95,11 +98,26 @@ export function createPlannerWorkspace({
     setMoreOpen(false)
     onMoreAction?.(action)
   })
-  const setLayersOpen = (open) => {
+  const setLayersOpen = (open, { restoreFocus = false } = {}) => {
     if (open) setMoreOpen(false)
-    document.body.classList.toggle('planner-layers-open', open)
-    onMenuChange?.('layers', !!open)
+    const next = !!open
+    if (next) layerReturnFocus = document.activeElement
+    document.body.classList.toggle('planner-layers-open', next)
+    layersTrigger?.setAttribute('aria-expanded', String(next))
+    if (!next && restoreFocus) (layersTrigger ?? layerReturnFocus)?.focus?.()
+    onMenuChange?.('layers', next)
   }
+  const isLayersOpen = () => document.body.classList.contains('planner-layers-open')
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape' || !layersSurface || !isLayersOpen()) return
+    event.preventDefault()
+    setLayersOpen(false, { restoreFocus: true })
+  })
+  document.addEventListener('pointerdown', (event) => {
+    if (!layersSurface || !isLayersOpen()) return
+    if (layersSurface?.contains(event.target) || layersTrigger?.contains(event.target)) return
+    setLayersOpen(false)
+  })
   const syncPrimary = () => {
     moreMenu.querySelector('[data-more-action="save"]').disabled = !analyzeAvailable
   }
@@ -107,6 +125,7 @@ export function createPlannerWorkspace({
     const requested = next === 'analyze' ? 'analyze' : 'plan'
     if (requested === 'analyze' && !analyzeAvailable) return false
     stage = requested
+    setLayersOpen(false)
     for (const button of buttons) {
       const active = button.dataset.stage === stage
       button.classList.toggle('active', active)
@@ -140,6 +159,12 @@ export function createPlannerWorkspace({
     toggleMore() { setMoreOpen(moreMenu.classList.contains('hidden')) },
     get moreOpen() { return !moreMenu.classList.contains('hidden') },
     setLayersOpen,
+    attachLayers({ trigger, surface } = {}) {
+      layersTrigger = trigger ?? layersTrigger
+      layersSurface = surface ?? layersSurface
+      if (layersSurface?.id) layersTrigger?.setAttribute('aria-controls', layersSurface.id)
+      layersTrigger?.setAttribute('aria-expanded', String(isLayersOpen()))
+    },
     setStage(next) { return applyStage(next) },
     setView(next) { return applyStage(next === '3d' ? 'analyze' : 'plan') },
     setAnalyzeAvailable(available, message = '至少添加起点和终点') {

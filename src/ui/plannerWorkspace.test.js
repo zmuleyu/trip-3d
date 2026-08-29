@@ -122,6 +122,30 @@ describe('planner workspace chrome', () => {
     expect(onMenuChange).toHaveBeenLastCalledWith('more', true)
   })
 
+  it('closes an attached layers surface on Escape, outside press, and stage changes', () => {
+    const workspace = createPlannerWorkspace()
+    const trigger = document.createElement('button')
+    const surface = document.createElement('section')
+    surface.id = 'ui-layer-tools'
+    document.body.append(trigger, surface)
+    workspace.attachLayers({ trigger, surface })
+    workspace.setLayersOpen(true)
+    expect(trigger.getAttribute('aria-controls')).toBe(surface.id)
+    expect(trigger.getAttribute('aria-expanded')).toBe('true')
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    expect(document.body.classList.contains('planner-layers-open')).toBe(false)
+    expect(document.activeElement).toBe(trigger)
+
+    workspace.setLayersOpen(true)
+    document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+    expect(document.body.classList.contains('planner-layers-open')).toBe(false)
+
+    workspace.setLayersOpen(true)
+    workspace.setStage('plan')
+    expect(document.body.classList.contains('planner-layers-open')).toBe(false)
+  })
+
   it('shows route context only for a selected waypoint or segment and can dismiss it', () => {
     const onSpineExpand = vi.fn()
     const onSpineDismiss = vi.fn()

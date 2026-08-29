@@ -66,6 +66,11 @@ export function createPanelHost({ onSummaryCustomize } = {}) {
   const h = document.createElement('h2')
   h.className = 'ui-panel-titlebar'
   h.title = '拖动面板；双击恢复右侧停靠'
+  const back = document.createElement('button')
+  back.type = 'button'
+  back.className = 'ui-panel-back'
+  back.innerHTML = iconSvg('back')
+  back.setAttribute('aria-label', '返回上一个面板')
   const summary = document.createElement('span')
   summary.className = 'ui-panel-summary'
   const customize = document.createElement('button')
@@ -173,9 +178,13 @@ export function createPanelHost({ onSummaryCustomize } = {}) {
     dragHandle: h,
     get currentId() { return currentId },
     get collapsed() { return collapsed },
-    show(id, title, hint, contentEl) {
+    show(id, title, hint, contentEl, { onBack = null } = {}) {
       currentId = id
       h.replaceChildren()
+      if (onBack) {
+        back.onclick = onBack
+        h.append(back)
+      }
       h.append(document.createTextNode(title), summary, customize, chev)
       if (hint) {
         const s = document.createElement('span')
@@ -222,11 +231,31 @@ export function createLayerButtons({ buttons, onStateChange } = {}) {
   const el = document.createElement('div')
   el.className = 'ui-layers'
   el.id = 'ui-layer-tools'
+  el.setAttribute('role', 'dialog')
+  el.setAttribute('aria-label', '地图显示')
+  const title = document.createElement('h2')
+  title.className = 'ui-layers-title'
+  title.textContent = '地图显示'
+  el.appendChild(title)
+  const groups = new Map()
+  const ensureGroup = (id) => {
+    if (groups.has(id)) return groups.get(id)
+    const section = document.createElement('section')
+    section.className = 'ui-layer-section'
+    const heading = document.createElement('h3')
+    heading.textContent = id === 'base' ? '底图' : '叠加信息'
+    const rows = document.createElement('div')
+    rows.className = 'ui-layer-rows'
+    section.append(heading, rows)
+    groups.set(id, rows)
+    el.appendChild(section)
+    return rows
+  }
   const map = new Map()
   for (const b of buttons) {
     const btn = document.createElement('button')
     btn.className = 'ui-layer-btn'
-    btn.innerHTML = iconSvg(b.icon)
+    btn.innerHTML = `${iconSvg(b.icon)}<span class="ui-layer-label">${b.tip}</span><span class="ui-layer-state" aria-hidden="true"></span>`
     btn.dataset.id = b.id
     const tip = document.createElement('span')
     tip.className = 'ui-layer-tip'
@@ -267,7 +296,7 @@ export function createLayerButtons({ buttons, onStateChange } = {}) {
       },
       setPanelOpen(v) { panelOpen = !!v; btn.classList.toggle('panel-open', panelOpen); if (b.repeatOpensPanel) btn.setAttribute('aria-expanded', String(panelOpen)) },
     })
-    el.appendChild(btn)
+    ensureGroup(b.group === 'base' ? 'base' : 'overlay').appendChild(btn)
   }
   document.body.appendChild(el)
   return { el, get: (id) => map.get(id) }

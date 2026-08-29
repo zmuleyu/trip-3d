@@ -501,6 +501,48 @@ let demRequestId = 0
 let settingsPanel = null
 let profileCard = null
 let layerBtns = null
+let mobileLayerReturn = null
+const isCompactWorkspace = () => !!globalThis.matchMedia?.('(max-width: 1023px)')?.matches
+
+function restoreLayerSurface() {
+  if (layerBtns?.el?.parentElement !== document.body) document.body.appendChild(layerBtns.el)
+}
+
+function closeMobileLayers({ restoreInspector = true, restoreFocus = true } = {}) {
+  if (panelHost.currentId !== 'layers') return
+  panelHost.hide()
+  restoreLayerSurface()
+  overviewMap?.setLayersOpen(false)
+  const previous = mobileLayerReturn
+  mobileLayerReturn = null
+  if (restoreInspector && previous?.id) {
+    showTab(previous.id, { forceOpen: true })
+    panelHost.setSheetState(previous.sheetState)
+  } else if (restoreFocus) overviewMap?.layerToggle?.focus?.()
+}
+
+function openMobileLayers() {
+  if (!layerBtns) return
+  if (panelHost.currentId !== 'layers') mobileLayerReturn = panelHost.currentId
+    ? { id: panelHost.currentId, sheetState: panelHost.sheetState }
+    : null
+  panelHost.show('layers', '地图显示', 'ESC 返回', layerBtns.el, {
+    onBack: () => closeMobileLayers(),
+  })
+  panelHost.setSheetState('half')
+  overviewMap?.setLayersOpen(true)
+}
+
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape' || panelHost?.currentId !== 'layers') return
+  event.preventDefault()
+  closeMobileLayers()
+})
+document.addEventListener('pointerdown', (event) => {
+  if (panelHost?.currentId !== 'layers') return
+  if (panelHost.el.contains(event.target) || overviewMap?.layerToggle?.contains(event.target)) return
+  closeMobileLayers({ restoreFocus: false })
+})
 // terrain-ready contract: the latest successful load bumps terrainGen; when the
 // rebuild completes, waiters resolve with the built generation. Callers compare
 // gens to detect supersession (search-add / snap flows). No demBusy polling.
@@ -2205,7 +2247,13 @@ const overviewMap = createOverviewMap({
   onRouteSelect: ({ segmentIndex }) => setSelectedRouteSegment(segmentIndex),
   getFitPadding: () => fluidLayout.getSafeArea(),
   onDockAction: (action, open) => {
-    if (action === 'layers') plannerWorkspace?.setLayersOpen(open)
+    if (action !== 'layers') return
+    if (isCompactWorkspace()) {
+      if (open) openMobileLayers()
+      else closeMobileLayers({ restoreInspector: true, restoreFocus: false })
+      return
+    }
+    plannerWorkspace?.setLayersOpen(open)
   },
   onPlanAdd: (lon, lat) => {
     if (!isPlanStage()) return
@@ -2266,6 +2314,7 @@ function runPlanRouteMutation(mutate) {
 plannerWorkspace = createPlannerWorkspace({
   version: packageMetadata.version,
   onStage: (stage) => {
+    closeMobileLayers({ restoreInspector: false, restoreFocus: false })
     if (!workspaceLifecycle?.setStage(stage)) plannerWorkspace.setStage(workspaceLifecycle?.stage ?? WORKFLOW_STAGES.PLAN)
   },
   onSearch: (query) => {
@@ -2368,6 +2417,7 @@ workspaceLifecycle = createWorkspaceLifecycleCoordinator({
   hasLegacyFrameWork,
   onBlocked: (message) => toast.show(message),
   onStageChange: (stage) => {
+    closeMobileLayers({ restoreInspector: false, restoreFocus: false })
     const analyze = stage === WORKFLOW_STAGES.ANALYZE
     profileCard?.setStage(stage)
     if (!analyze) {
@@ -2449,6 +2499,7 @@ window.addEventListener('keydown', (e) => {
 })
 
 function showTab(id, { forceOpen = false } = {}) {
+  if (panelHost.currentId === 'layers') closeMobileLayers({ restoreInspector: false, restoreFocus: false })
   if (settingsDrawer?.classList.contains('open')) setSettingsOpen(false, { restoreFocus: false })
   if (panelHost.currentId === id && !forceOpen) {
     if (id === 'weather') setWeatherWorkspace(false)
@@ -2661,15 +2712,16 @@ function toggleSettings() {
 // High-frequency layer toggles use the same native setters as the settings drawer.
 layerBtns = createLayerButtons({
   buttons: [
-    { id: 'contour', icon: 'contour', tip: '等高线', initial: params.contourOpacity > 0, onToggle: (id, on) => setContourVisible(on) },
-    { id: 'grid', icon: 'grid', tip: '测量网格', initial: params.gridOpacity > 0, onToggle: (id, on) => setGridVisible(on) },
-    { id: 'labels', icon: 'labels', tip: '山峰标签', initial: params.labels, onToggle: (id, on) => setLabelsVisible(on) },
-    { id: 'mapov', icon: 'roads', tip: '路网叠加', initial: params.mapOverlay, onToggle: (id, on) => { params.mapOverlay = on; terrain.setOverlayMix(on ? 0.55 : 0) } },
-    { id: 'admin', icon: 'admin', tip: '行政区划', initial: false, repeatOpensPanel: true, onToggle: (id, on) => setAdminEnabled(on), onPanelToggle: (id, open) => setAdminPanelOpen(open) },
-    { id: 'sun', icon: 'sun', tip: '日照分析', initial: false, onToggle: (id, on) => { sunState.on = on; sunPanel.classList.toggle('hidden', !on); document.body.classList.toggle('sun-open', on); if (on) applySun() } },
+    { id: 'mapov', group: 'base', icon: 'roads', tip: '路网', initial: params.mapOverlay, onToggle: (id, on) => { params.mapOverlay = on; terrain.setOverlayMix(on ? 0.55 : 0) } },
+    { id: 'contour', group: 'overlay', icon: 'contour', tip: '等高线', initial: params.contourOpacity > 0, onToggle: (id, on) => setContourVisible(on) },
+    { id: 'grid', group: 'overlay', icon: 'grid', tip: '测量网格', initial: params.gridOpacity > 0, onToggle: (id, on) => setGridVisible(on) },
+    { id: 'labels', group: 'overlay', icon: 'labels', tip: '山峰标签', initial: params.labels, onToggle: (id, on) => setLabelsVisible(on) },
+    { id: 'admin', group: 'overlay', icon: 'admin', tip: '行政区划', initial: false, repeatOpensPanel: true, onToggle: (id, on) => setAdminEnabled(on), onPanelToggle: (id, open) => setAdminPanelOpen(open) },
+    { id: 'sun', group: 'overlay', icon: 'sun', tip: '日照分析', initial: false, onToggle: (id, on) => { sunState.on = on; sunPanel.classList.toggle('hidden', !on); document.body.classList.toggle('sun-open', on); if (on) applySun() } },
   ],
   onStateChange: syncSettingsControls,
 })
+plannerWorkspace.attachLayers({ trigger: overviewMap.layerToggle, surface: layerBtns.el })
 syncSettingsControls()
 
 // restore shared route from URL hash BEFORE the default DEM load below.
