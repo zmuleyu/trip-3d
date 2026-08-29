@@ -502,6 +502,7 @@ let settingsPanel = null
 let profileCard = null
 let layerBtns = null
 let mobileLayerReturn = null
+let mobileOutsideLayerPointer = null
 const isCompactWorkspace = () => !!globalThis.matchMedia?.('(max-width: 1023px)')?.matches
 
 function restoreLayerSurface() {
@@ -538,11 +539,30 @@ document.addEventListener('keydown', (event) => {
   event.preventDefault()
   closeMobileLayers()
 })
+const isMobileOutsideLayerPointer = (event) => {
+  const path = event.composedPath?.() ?? []
+  return !!mobileOutsideLayerPointer && (path.includes(mobileOutsideLayerPointer.target) || event.target === mobileOutsideLayerPointer.target)
+}
 document.addEventListener('pointerdown', (event) => {
   if (panelHost?.currentId !== 'layers') return
   if (panelHost.el.contains(event.target) || overviewMap?.layerToggle?.contains(event.target)) return
+  mobileOutsideLayerPointer = { target: event.target, pointerId: event.pointerId }
   closeMobileLayers({ restoreFocus: false })
-})
+  event.preventDefault()
+  event.stopImmediatePropagation()
+}, true)
+document.addEventListener('pointerup', (event) => {
+  if (!isMobileOutsideLayerPointer(event) || event.pointerId !== mobileOutsideLayerPointer.pointerId) return
+  event.preventDefault()
+  event.stopImmediatePropagation()
+  requestAnimationFrame(() => { mobileOutsideLayerPointer = null })
+}, true)
+document.addEventListener('click', (event) => {
+  if (!isMobileOutsideLayerPointer(event)) return
+  mobileOutsideLayerPointer = null
+  event.preventDefault()
+  event.stopImmediatePropagation()
+}, true)
 // terrain-ready contract: the latest successful load bumps terrainGen; when the
 // rebuild completes, waiters resolve with the built generation. Callers compare
 // gens to detect supersession (search-add / snap flows). No demBusy polling.

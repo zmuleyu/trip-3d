@@ -112,6 +112,11 @@ export function createPlannerWorkspace({
     onMenuChange?.('layers', next)
   }
   const isLayersOpen = () => document.body.classList.contains('planner-layers-open')
+  let outsideLayerPointer = null
+  const isOutsideLayerPointer = (event) => {
+    const path = event.composedPath?.() ?? []
+    return !!outsideLayerPointer && (path.includes(outsideLayerPointer.target) || event.target === outsideLayerPointer.target)
+  }
   document.addEventListener('keydown', (event) => {
     if (event.key !== 'Escape' || !layersSurface || !isLayersOpen()) return
     event.preventDefault()
@@ -120,8 +125,23 @@ export function createPlannerWorkspace({
   document.addEventListener('pointerdown', (event) => {
     if (!layersSurface || !isLayersOpen()) return
     if (layersSurface?.contains(event.target) || layersTrigger?.contains(event.target)) return
+    outsideLayerPointer = { target: event.target, pointerId: event.pointerId }
     setLayersOpen(false)
-  })
+    event.preventDefault()
+    event.stopImmediatePropagation()
+  }, true)
+  document.addEventListener('pointerup', (event) => {
+    if (!isOutsideLayerPointer(event) || event.pointerId !== outsideLayerPointer.pointerId) return
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    requestAnimationFrame(() => { outsideLayerPointer = null })
+  }, true)
+  document.addEventListener('click', (event) => {
+    if (!isOutsideLayerPointer(event)) return
+    outsideLayerPointer = null
+    event.preventDefault()
+    event.stopImmediatePropagation()
+  }, true)
   const syncPrimary = () => {
     moreMenu.querySelector('[data-more-action="save"]').disabled = !analyzeAvailable
   }
