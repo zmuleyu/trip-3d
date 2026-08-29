@@ -2147,6 +2147,8 @@ body.weather-operate .ui-panel-body {
   }
   body.planner-operate.planner-layers-open .ui-layers {
     display: block;
+    top: 74px;
+    right: 24px;
     max-width: none;
     opacity: 1;
     visibility: visible;
@@ -2243,7 +2245,7 @@ body.planner-operate .ui-panel-body :is(input, select, textarea) { background-co
   .ui-panel-back svg { width: 19px; height: 19px; }
   .ui-panel .ui-layers-title { display: none; }
   .ui-panel .ui-layer-section:first-of-type { padding-top: 0; border-top: 0; }
-  .ui-panel .ui-layer-btn { min-height: 44px; padding-block: 8px; }
+  body.planner-operate .ui-panel .ui-layer-btn { width: 100%; height: auto; min-height: 44px; max-width: none; padding-block: 8px; }
 }
 
 @media (prefers-reduced-transparency: reduce) {

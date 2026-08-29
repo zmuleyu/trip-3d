@@ -136,6 +136,8 @@ describe('planner workspace chrome', () => {
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
     expect(document.body.classList.contains('planner-layers-open')).toBe(false)
     expect(document.activeElement).toBe(trigger)
+    expect(trigger.getAttribute('aria-expanded')).toBe('false')
+    expect(trigger.getAttribute('aria-label')).toBe('打开图层工具')
 
     workspace.setLayersOpen(true)
     document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }))

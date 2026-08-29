@@ -98,12 +98,16 @@ export function createPlannerWorkspace({
     setMoreOpen(false)
     onMoreAction?.(action)
   })
+  const syncLayersTrigger = (open) => {
+    layersTrigger?.setAttribute('aria-expanded', String(open))
+    layersTrigger?.setAttribute('aria-label', open ? '关闭图层工具' : '打开图层工具')
+  }
   const setLayersOpen = (open, { restoreFocus = false } = {}) => {
     if (open) setMoreOpen(false)
     const next = !!open
     if (next) layerReturnFocus = document.activeElement
     document.body.classList.toggle('planner-layers-open', next)
-    layersTrigger?.setAttribute('aria-expanded', String(next))
+    syncLayersTrigger(next)
     if (!next && restoreFocus) (layersTrigger ?? layerReturnFocus)?.focus?.()
     onMenuChange?.('layers', next)
   }
@@ -163,7 +167,7 @@ export function createPlannerWorkspace({
       layersTrigger = trigger ?? layersTrigger
       layersSurface = surface ?? layersSurface
       if (layersSurface?.id) layersTrigger?.setAttribute('aria-controls', layersSurface.id)
-      layersTrigger?.setAttribute('aria-expanded', String(isLayersOpen()))
+      syncLayersTrigger(isLayersOpen())
     },
     setStage(next) { return applyStage(next) },
     setView(next) { return applyStage(next === '3d' ? 'analyze' : 'plan') },
