@@ -59,7 +59,7 @@ import { createWeatherPanel } from './ui/weatherPanel.js'
 import { createSettingsPanel } from './ui/settingsPanel.js'
 import { formatSummary, loadSummaryPreferences, saveSummaryPreferences } from './ui/summaryPreferences.js'
 import { applyDensity, loadDensity, saveDensity } from './ui/densityPreferences.js'
-import { dismissRouteSelection as dismissRouteSelectionState, reconcileRouteSelection, sameRouteSelection, segmentRouteSelection, waypointRouteSelection } from './ui/routeSelection.js'
+import { dismissRouteSelection as dismissRouteSelectionState, planEscapeAction, reconcileRouteSelection, sameRouteSelection, segmentRouteSelection, waypointRouteSelection } from './ui/routeSelection.js'
 import { adjacentAnalysisSegment, analysisSegmentAtDistance, analysisSegmentForSelection } from './ui/analysisSelection.js'
 import { selectSearchPlace } from './ui/searchPlaceSelection.js'
 import { createOpenMeteoProvider, createOpenMeteoArchiveProvider } from './providers/openmeteo.js'
@@ -2816,14 +2816,18 @@ window.addEventListener('keydown', (e) => {
     performHistoryAction('redo')
     return
   }
-  if (e.key === 'Escape' && isPlanStage() && routeSelection?.kind === 'waypoint') {
+  const escapeAction = e.key === 'Escape' && isPlanStage()
+    ? planEscapeAction({ insertIndex, selection: routeSelection })
+    : 'none'
+  if (escapeAction === 'cancel-insert') {
     e.preventDefault()
-    dismissRouteSelection()
+    insertIndex = null
+    toast.show('已取消插入')
     return
   }
-  if (e.key === 'Escape' && insertIndex != null) {
-    insertIndex = null // cancel pending insert before exiting planning
-    toast.show('已取消插入')
+  if (escapeAction === 'dismiss-selection') {
+    e.preventDefault()
+    dismissRouteSelection()
     return
   }
   if (adminInteraction.handleKey(e.key)) {

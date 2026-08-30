@@ -35,6 +35,12 @@ export function dismissRouteSelection(selection, selectedWaypointId = null) {
   }
 }
 
+export function planEscapeAction({ insertIndex = null, selection = null } = {}) {
+  if (insertIndex != null) return 'cancel-insert'
+  if (selection?.kind === 'waypoint') return 'dismiss-selection'
+  return 'none'
+}
+
 export function routeSelectionIndex(selection, route) {
   const waypoints = route?.waypoints ?? []
   if (selection?.kind === 'waypoint') return waypoints.findIndex((waypoint) => waypoint.id === selection.waypointId)

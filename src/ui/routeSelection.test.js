@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { dismissRouteSelection, reconcileRouteSelection, segmentRouteSelection, waypointRouteSelection } from './routeSelection.js'
+import { dismissRouteSelection, planEscapeAction, reconcileRouteSelection, segmentRouteSelection, waypointRouteSelection } from './routeSelection.js'
 
 const route = { waypoints: [{ id: 'a' }, { id: 'b' }, { id: 'c' }] }
 
@@ -22,5 +22,11 @@ describe('transient route selection', () => {
       changed: true,
     })
     expect(dismissRouteSelection(null, null).changed).toBe(false)
+  })
+
+  it('cancels a pending insert before dismissing the selected waypoint on a second Escape', () => {
+    const selectedWaypoint = waypointRouteSelection('b')
+    expect(planEscapeAction({ insertIndex: 2, selection: selectedWaypoint })).toBe('cancel-insert')
+    expect(planEscapeAction({ insertIndex: null, selection: selectedWaypoint })).toBe('dismiss-selection')
   })
 })
