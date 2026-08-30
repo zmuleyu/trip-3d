@@ -164,7 +164,7 @@ export function createPlanningPanel(actions) {
     },
     // Keep the established positional update contract; the inspector only renders
     // editable route controls while summaries remain on the map surface.
-    update(route, stats, legs = null, weatherIndex = null, profile = 'foot', weatherDays = null, waypointElevation = {}) {
+    update(route, stats, legs = null, weatherIndex = null, profile = 'foot', weatherDays = null, waypointElevation = {}, selectedWaypointId = null) {
       if (document.activeElement !== name) name.value = route.name
       wpList.replaceChildren()
       const n = route.waypoints.length
@@ -175,99 +175,85 @@ export function createPlanningPanel(actions) {
       const isLoop = n > 1 && Math.hypot(wpsArr[0].lon - wpsArr[n - 1].lon, wpsArr[0].lat - wpsArr[n - 1].lat) < 0.0003
       route.waypoints.forEach((w, i) => {
         const item = document.createElement('div')
-        item.className = 'pp-tl-item'
+        const selected = w.id === selectedWaypointId
+        item.className = 'pp-tl-item pp-ledger-item'
+        item.classList.toggle('selected', selected)
+        item.dataset.waypointId = w.id
         const role = i === 0 ? 'start' : i === n - 1 && n > 1 ? 'end' : 'via'
-
-        const rail = document.createElement('div')
-        rail.className = 'pp-tl-rail'
+        const row = document.createElement('button')
+        row.type = 'button'
+        row.className = 'pp-ledger-row'
+        row.setAttribute('aria-expanded', String(selected))
+        row.setAttribute('aria-controls', `waypoint-actions-${w.id}`)
+        row.onclick = () => actions.onWaypointSelect?.(w.id)
+        const sequence = document.createElement('span')
+        sequence.className = 'pp-ledger-sequence'
+        sequence.textContent = `P${i + 1}`
         const dot = document.createElement('span')
         dot.className = `pp-tl-dot ${role}`
-        rail.appendChild(dot)
-        if (i < n - 1) {
-          const line = document.createElement('span')
-          line.className = 'pp-tl-line'
-          rail.appendChild(line)
-        }
-
-        const body = document.createElement('div')
-        body.className = 'pp-tl-body'
         const roleLabel = document.createElement('b')
         roleLabel.className = 'pp-tl-role'
         roleLabel.textContent = role === 'start' ? '起点' : role === 'end' ? '终点' : '途经点'
         const nm = document.createElement('span')
         nm.className = 'pp-tl-name'
         nm.textContent = isLoop && i === n - 1 ? `${w.name}(环线终点)` : w.name
-        // day badge from dayEnds (multi-day segmentation)
-        const day = actions.dayNumberAt?.(i) ?? 1
-        const badge = document.createElement('span')
-        badge.className = 'pp-day-badge'
-        badge.textContent = `D${day}`
-        nm.prepend(badge)
-        nm.title = '双击重命名'
-        nm.ondblclick = () => {
-          const inp = document.createElement('input')
-          inp.className = 'pp-tl-rename'
-          inp.value = w.name
-          nm.replaceWith(inp)
-          inp.focus()
-          inp.select()
-          let done = false // Enter commits → re-render detaches input → blur must not re-commit
-          const commit = () => {
-            if (done) return
-            done = true
-            actions.onWpRename?.(i, inp.value.trim() || w.name)
-          }
-          inp.onkeydown = (e) => {
-            if (e.key === 'Enter') commit()
-            if (e.key === 'Escape') { done = true; inp.replaceWith(nm) }
-          }
-          inp.onblur = commit
-        }
-        const coord = document.createElement('span')
-        coord.className = 'pp-tl-coord'
+        // Keep enrichment truthful to assistive technology without adding a second
+        // visual metrics row to the compact route ledger.
+        const elevation = document.createElement('span')
+        elevation.className = 'visually-hidden'
         const measuredElevation = waypointElevation.values?.[w.id]
-        const elevationText = waypointElevation.status === 'loading'
+        elevation.textContent = waypointElevation.status === 'loading'
           ? '高程待补齐'
           : waypointElevation.status === 'ready' && Number.isFinite(measuredElevation)
             ? `${Math.round(measuredElevation)}m`
             : '高程暂不可用'
-        coord.textContent = `${w.lon.toFixed(4)}, ${w.lat.toFixed(4)} · ${elevationText}`
-        const ops = document.createElement('span')
-        ops.className = 'pp-tl-ops'
-        const mkOp = (label, title, fn) => {
-          const b = document.createElement('button')
-          b.textContent = label
-          b.title = title
-          b.onclick = fn
-          ops.appendChild(b)
-        }
-        if (i > 0) mkOp('↑', '上移', () => actions.onWpMove?.(i, -1))
-        if (i < n - 1) mkOp('↓', '下移', () => actions.onWpMove?.(i, 1))
-        if (i < n - 1) mkOp('☀', '设为/取消此天终点(多日分段)', () => actions.onToggleDayEnd?.(i))
-        mkOp('✕', '删除', () => actions.onWpRemove?.(i))
-        body.append(roleLabel, nm, coord, ops)
-        item.append(rail, body)
-        // drag-sort: HTML5 DnD between timeline rows
-        item.draggable = true
-        item.ondragstart = (e) => { e.dataTransfer.setData('text/plain', String(i)); e.dataTransfer.effectAllowed = 'move' }
-        item.ondragover = (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move' }
-        item.ondrop = (e) => {
-          e.preventDefault()
-          const from = +e.dataTransfer.getData('text/plain')
-          if (Number.isInteger(from)) actions.onWpMoveTo?.(from, i)
+        const chevron = document.createElement('span')
+        chevron.className = 'pp-ledger-chevron'
+        chevron.setAttribute('aria-hidden', 'true')
+        chevron.textContent = selected ? '⌃' : '⌄'
+        row.append(sequence, dot, roleLabel, nm, elevation, chevron)
+        item.appendChild(row)
+        if (selected) {
+          const actionsEl = document.createElement('div')
+          actionsEl.className = 'pp-ledger-actions'
+          actionsEl.id = `waypoint-actions-${w.id}`
+          actionsEl.setAttribute('aria-label', `${w.name} 操作`)
+          const rename = document.createElement('button')
+          rename.type = 'button'
+          rename.textContent = '重命名'
+          const renameForm = document.createElement('form')
+          renameForm.className = 'pp-ledger-rename hidden'
+          const renameInput = document.createElement('input')
+          renameInput.value = w.name
+          renameInput.setAttribute('aria-label', '途经点名称')
+          const confirm = document.createElement('button')
+          confirm.type = 'submit'
+          confirm.textContent = '确认'
+          renameForm.append(renameInput, confirm)
+          rename.onclick = () => {
+            renameForm.classList.remove('hidden')
+            renameInput.focus()
+            renameInput.select()
+          }
+          renameForm.onsubmit = (event) => {
+            event.preventDefault()
+            actions.onWpRenameById?.(w.id, renameInput.value.trim() || w.name)
+          }
+          const insert = document.createElement('button')
+          insert.type = 'button'
+          insert.textContent = '在后方插入'
+          insert.onclick = () => actions.onWpInsertAfter?.(w.id)
+          const remove = document.createElement('button')
+          remove.type = 'button'
+          remove.className = 'danger'
+          remove.textContent = '删除'
+          remove.disabled = n <= 2
+          remove.title = n <= 2 ? '至少保留起点和终点' : ''
+          remove.onclick = () => actions.onWpRemoveById?.(w.id)
+          actionsEl.append(rename, renameForm, insert, remove)
+          item.appendChild(actionsEl)
         }
         wpList.appendChild(item)
-        // between-row insert divider
-        if (i < n - 1) {
-          const sep = document.createElement('div')
-          sep.className = 'pp-tl-sep'
-          const add = document.createElement('button')
-          add.textContent = '⊕'
-          add.title = '在此插入途经点(下一次地形点击落在此处)'
-          add.onclick = () => actions.onInsertAt?.(i + 1)
-          sep.appendChild(add)
-          wpList.appendChild(sep)
-        }
       })
 
       const addPoint = document.createElement('button')

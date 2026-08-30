@@ -31,15 +31,33 @@ describe('layer button accessibility state', () => {
     expect(layers.get('contour').btn.getAttribute('aria-pressed')).toBe('false')
   })
 
-  it('groups the layer controls beneath map display, base map, and overlay headings', () => {
+  it('groups the layer controls beneath map display, base map, annotations, and analysis headings', () => {
     const layers = createLayerButtons({ buttons: [
       { id: 'roads', group: 'base', icon: 'roads', tip: '路网', initial: false, onToggle: vi.fn() },
-      { id: 'contour', group: 'overlay', icon: 'contour', tip: '等高线', initial: true, onToggle: vi.fn() },
+      { id: 'contour', group: 'annotation', icon: 'contour', tip: '等高线', initial: true, onToggle: vi.fn() },
+      { id: 'admin', group: 'analysis', icon: 'admin', tip: '行政区划', initial: false, onToggle: vi.fn() },
     ] })
     expect(layers.el.getAttribute('aria-label')).toBe('地图显示')
     expect(layers.el.textContent).toContain('底图')
-    expect(layers.el.textContent).toContain('叠加信息')
+    expect(layers.el.textContent).toContain('地图标注')
+    expect(layers.el.textContent).toContain('分析叠加')
     expect(layers.get('roads').btn.textContent).toContain('路网')
+    expect(layers.el.querySelector('.ui-layer-feedback').classList.contains('hidden')).toBe(true)
+  })
+
+  it('keeps a remote layer off while loading and exposes a truthful retry after failure', () => {
+    const retry = vi.fn()
+    const layers = createLayerButtons({ buttons: [{ id: 'admin', group: 'analysis', icon: 'admin', tip: '行政区划', initial: false, onToggle: vi.fn() }] })
+    const layer = layers.get('admin')
+    layer.set(true)
+    layer.setAvailability({ state: 'loading', message: '正在加载行政区划…' })
+    layer.set(false)
+    expect(layer.btn.getAttribute('aria-pressed')).toBe('false')
+    expect(layer.btn.getAttribute('aria-busy')).toBe('true')
+    layer.setAvailability({ state: 'error', message: '请求失败，请重试', onRetry: retry })
+    expect(layers.el.textContent).toContain('请求失败，请重试')
+    layers.el.querySelector('.ui-layer-retry').click()
+    expect(retry).toHaveBeenCalledOnce()
   })
 })
 

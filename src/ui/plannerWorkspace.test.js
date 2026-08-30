@@ -157,11 +157,13 @@ describe('planner workspace chrome', () => {
     expect(trigger.getAttribute('aria-controls')).toBe(surface.id)
     expect(trigger.getAttribute('aria-expanded')).toBe('true')
 
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    const escape = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+    document.dispatchEvent(escape)
     expect(document.body.classList.contains('planner-layers-open')).toBe(false)
     expect(document.activeElement).toBe(trigger)
     expect(trigger.getAttribute('aria-expanded')).toBe('false')
     expect(trigger.getAttribute('aria-label')).toBe('打开图层工具')
+    expect(escape.defaultPrevented).toBe(true)
 
     workspace.setLayersOpen(true)
     const outside = document.createElement('div')

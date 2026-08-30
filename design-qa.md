@@ -46,4 +46,31 @@ No actionable P0, P1, or P2 issue remains.
 - Impeccable detector ran once over changed UI paths. It reported inherited stylesheet advisories and no newly introduced P0–P2 blocker; sidecar drift was not repaired.
 - `npm run acceptance` completed the v0.5.0 build and captured its desktop/390 states. Windows then reported `EBUSY` while removing a temporary Chromium dictionary after the gate had printed completion; the exact task-owned temporary directory was removed once unlocked. The later narrow FluidLayout guard was revalidated only through its focused test and original browser symptom, as required by the post-acceptance differential rule.
 
+## Route ledger pass — 2026-08-31
+
+- Source visual truth: `C:\Users\Admin\.codex\generated_images\01a04d00-70f3-76d3-acda-01f368256204\exec-2852ab0f-0647-450b-8098-928ad9c46583.png`.
+- Rendered implementation: current in-app Browser planning state with two local waypoints, the second selected, its Inspector ledger expanded, and the map display popover open. The browser capture used its available 1280 × 720 desktop surface; comparison normalizes the route geometry/content difference and assesses the app-owned anchors, hierarchy, controls, and states. Final runtime evidence also includes `.codex/evidence/acceptance/desktop.png` (1440 × 900) and `.codex/evidence/acceptance/mobile-390.png` (390 × 844), both captured at device scale 1 with no console errors.
+
+### Findings
+
+1. **P2 — map display popover initially covered the right Inspector.** Fixed by assigning it the role-based 278px width and placing it to the left of the 360px Inspector with a 16px gap. The confirmation capture shows non-overlapping popover (`x=626…904`) and Inspector (`x=920…1280`).
+2. **P2 — hidden rename and remote-layer feedback controls were initially still visible.** Fixed with explicit hidden-state rules. The confirmation interaction shows rename only after its explicit command, while normal layers no longer display retry controls.
+
+### Required fidelity surfaces
+
+- Fonts and typography: the current system/CJK stack and compact 11–14px operational hierarchy remain intact; the ledger sequence, role, name, and actions are visually distinct without adding a second metric row.
+- Spacing and layout rhythm: the Inspector preserves its 16px internal edge rhythm and full-width save continuation; the map display surface now holds a 16px spatial relationship to, rather than overlaying, the Inspector.
+- Colors and tokens: Route Ember is confined to the route, selected ledger edge, active stage, enabled switches, and save action. The added danger and pill roles are documented in `DESIGN.md` and used by runtime CSS.
+- Image and asset fidelity: live MapLibre terrain and the existing icon system remain the rendered map and controls; no raster placeholder or newly drawn icon was introduced.
+- Copy and content: `P1`/`P2` are derived display labels, while selection, rename, insertion, and deletion resolve by waypoint ID. Administrative boundaries remain off until ready; failure copy and neutral retry are explicit.
+
+### Interaction and responsive evidence
+
+- Two map additions selected the new endpoint; the Inspector rendered exactly one expanded ledger row.
+- The collapsed row had no visible rename field. `重命名` exposed it; `在后方插入` and the protected two-point delete state were visible and keyboard-operable.
+- The display popover exposed `底图` / `地图标注` / `分析叠加`; `Esc` closed it, returned focus to `打开图层工具`, and left the selected waypoint expanded.
+- `npm run acceptance` completed against the final v0.12.1 candidate, produced the final desktop and 390px screenshots, and reported an empty console-error list.
+
+No actionable P0, P1, or P2 mismatch remains for the frozen route-ledger target.
+
 final result: passed

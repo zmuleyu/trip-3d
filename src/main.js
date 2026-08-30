@@ -662,7 +662,7 @@ async function buildMapOverlay(demSnap, gen) {
 // reverse at the DEM center. Reloads on demKey change like snap/weather.
 const DATAV = 'https://geo.datav.aliyun.com/areas_v3/bound'
 const adminBoundaryCache = createAdminBoundaryCache()
-const adminState = { on: false, demKey: null, loading: false, panelOpen: false, rings: [], regions: [], breadcrumb: [], cacheStatus: '缓存状态未知' }
+const adminState = { on: false, status: 'idle', error: '', demKey: null, loading: false, panelOpen: false, rings: [], regions: [], breadcrumb: [], cacheStatus: '缓存状态未知' }
 let adminLayer = null
 let adminUI = null
 const adminInteraction = createAdminInteractionState({ onChange: () => refreshAdminUI() })
@@ -716,12 +716,34 @@ function refreshAdminUI() {
   scheduleAdminRouteStat()
 }
 
+function syncAdminLayerAvailability() {
+  layerBtns?.get('admin')?.setAvailability({
+    state: adminState.status,
+    message: adminState.status === 'loading'
+      ? '正在加载行政区划…'
+      : adminState.status === 'error'
+        ? adminState.error
+        : '',
+    onRetry: adminState.status === 'error' ? () => setAdminEnabled(true) : null,
+  })
+}
+
 function setAdminEnabled(enabled) {
-  adminState.on = enabled
-  adminInteraction.setEnabled(enabled)
-  layerBtns?.get('admin')?.set(enabled)
-  if (enabled) loadAdminBoundaries()
-  else {
+  if (enabled) {
+    adminState.on = false
+    adminState.status = 'loading'
+    adminState.error = ''
+    adminInteraction.setEnabled(false)
+    layerBtns?.get('admin')?.set(false)
+    syncAdminLayerAvailability()
+    void loadAdminBoundaries()
+  } else {
+    adminState.on = false
+    adminState.status = 'idle'
+    adminState.error = ''
+    adminInteraction.setEnabled(false)
+    layerBtns?.get('admin')?.set(false)
+    syncAdminLayerAvailability()
     adminState.panelOpen = false
     adminLayer?.setVisible(false)
     adminUI?.setPanelOpen(false)
@@ -760,7 +782,16 @@ adminUI = createAdminBoundaryUI({
 async function loadAdminBoundaries() {
   if (!dem || !geo) return
   const key = currentDemKey()
-  if (adminState.demKey === key && adminLayer) { adminLayer.setVisible(true); refreshAdminUI(); return }
+  if (adminState.demKey === key && adminLayer) {
+    adminState.on = true
+    adminState.status = 'ready'
+    adminInteraction.setEnabled(true)
+    layerBtns?.get('admin')?.set(true)
+    adminLayer.setVisible(true)
+    syncAdminLayerAvailability()
+    refreshAdminUI()
+    return
+  }
   if (adminState.demKey && adminState.demKey !== key) {
     adminState.rings = []
     adminState.regions = []
@@ -772,7 +803,7 @@ async function loadAdminBoundaries() {
     // province adcode from the DEM center (one reverse call, explicit toggle)
     const rev = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${dem.lat}&lon=${dem.lon}&format=json&zoom=5&accept-language=zh`).then((r) => r.json())
     const adcode = provinceAdcode(rev?.address)
-    if (!adcode) { toast.show('境外区域暂未接入区划边界(仅中国)'); setAdminEnabled(false); return }
+    if (!adcode) throw new Error('当前区域暂不支持行政区划')
     const [outline, full] = await Promise.all([
       adminBoundaryCache.fetchJson(`${DATAV}/${adcode}.json`),
       adminBoundaryCache.fetchJson(`${DATAV}/${adcode}_full.json`),
@@ -813,7 +844,6 @@ async function loadAdminBoundaries() {
       scene.add(adminLayer.group)
     }
     adminLayer.setRings(rings)
-    adminLayer.setVisible(adminState.on)
     adminState.demKey = key
     adminState.rings = rings
     adminState.regions = regions
@@ -824,11 +854,24 @@ async function loadAdminBoundaries() {
       district: deepest?.level === 'district' ? deepest.name : rev?.address?.county,
     })
     adminState.cacheStatus = '● 已缓存'
+    adminState.on = true
+    adminState.status = 'ready'
+    adminInteraction.setEnabled(true)
+    layerBtns?.get('admin')?.set(true)
+    adminLayer.setVisible(true)
+    syncAdminLayerAvailability()
     refreshAdminUI()
     toast.show(`区划边界已加载(${rings.length} 段)`)
   } catch (err) {
     console.warn('admin boundaries failed', err)
-    toast.show('区划边界加载失败')
+    adminState.on = false
+    adminState.status = 'error'
+    adminState.error = err?.message || '行政区划加载失败，请重试'
+    adminInteraction.setEnabled(false)
+    adminLayer?.setVisible(false)
+    layerBtns?.get('admin')?.set(false)
+    syncAdminLayerAvailability()
+    toast.show('区划边界加载失败，请重试')
   } finally {
     adminState.loading = false
     refreshAdminUI()
@@ -1445,7 +1488,7 @@ function updateRouteUI(route, stats, pts, { fitOverview = true } = {}) {
   const currentWeather = weatherMatchesCurrentPath() ? weatherState.result : null
   const wxIndex = currentWeather?.index?.overall ?? null
   const wxDays = currentWeather?.agg ?? null
-  planningPanel.update(route, stats, legs, wxIndex, snapProfile, wxDays, waypointElevationState)
+  planningPanel.update(route, stats, legs, wxIndex, snapProfile, wxDays, waypointElevationState, route.selectedWaypointId)
   weatherPanel?.setRouteContext?.({ route, distanceM: stats?.distanceM })
   // share tab summary mirrors the same data block
   const pd = buildPosterData({
@@ -2097,6 +2140,29 @@ const routeActions = {
   onSearchGo: searchGo,
   onImportAmap: importAmapLink,
   onExportAmap: exportAmapLink,
+  onWaypointSelect: setSelectedWaypoint,
+  onWpRenameById: (id, name) => runPlanRouteMutation(() => {
+    const index = route.waypoints.findIndex((waypoint) => waypoint.id === id)
+    if (index < 0 || !route.renameWaypoint(index, name)) return
+    refreshRoute()
+  }),
+  onWpInsertAfter: (id) => {
+    const index = route.waypoints.findIndex((waypoint) => waypoint.id === id)
+    if (index < 0) return
+    insertIndex = index + 1
+    toast.show(`点击地形，新途经点将插入到 ${route.waypoints[index].name} 后方（ESC 取消）`)
+  },
+  onWpRemoveById: (id) => runPlanRouteMutation(() => {
+    const index = route.waypoints.findIndex((waypoint) => waypoint.id === id)
+    if (index < 0) return
+    if (route.waypoints.length <= 2) { toast.show('至少保留起点和终点'); return }
+    const next = route.waypoints[index + 1] ?? route.waypoints[index - 1]
+    if (!route.removeWaypoint(index)) return
+    route.setSelectedWaypoint(next?.id ?? null)
+    if (isPlanStage()) setTransientRouteSelection(waypointRouteSelection(next?.id ?? null))
+    refreshRoute()
+    scheduleSnap()
+  }),
   onWpRemove: (i) => runPlanRouteMutation(() => { route.removeWaypoint(i); refreshRoute(); scheduleSnap() }),
   onWpMove: (i, dir) => runPlanRouteMutation(() => { route.moveWaypoint(i, i + dir); refreshRoute(); scheduleSnap() }),
   onWpMoveTo: (from, to) => runPlanRouteMutation(() => { if (route.moveWaypoint(from, to)) { refreshRoute(); scheduleSnap() } }),
@@ -2567,6 +2633,8 @@ const overviewMap = createOverviewMap({
     })
     if (!waypoint) { toast.show('途经点已达上限'); return }
     insertIndex = null
+    route.setSelectedWaypoint(waypoint.id)
+    if (isPlanStage()) setTransientRouteSelection(waypointRouteSelection(waypoint.id))
     refreshRoute()
     scheduleSnap()
   },
@@ -2826,6 +2894,7 @@ workspaceLifecycle = createWorkspaceLifecycleCoordinator({
 })
 plannerWorkspace.setAnalyzeAvailable(routeCanBeAnalyzed(route))
 window.addEventListener('keydown', (e) => {
+  if (e.defaultPrevented) return
   if (e.key === 'Escape' && settingsDrawer?.classList.contains('open')) {
     toggleSettings()
     return
@@ -3084,11 +3153,11 @@ function toggleSettings() {
 layerBtns = createLayerButtons({
   buttons: [
     { id: 'mapov', group: 'base', icon: 'roads', tip: '路网', initial: params.mapOverlay, onToggle: (id, on) => { params.mapOverlay = on; terrain.setOverlayMix(on ? 0.55 : 0) } },
-    { id: 'contour', group: 'overlay', icon: 'contour', tip: '等高线', initial: params.contourOpacity > 0, onToggle: (id, on) => setContourVisible(on) },
-    { id: 'grid', group: 'overlay', icon: 'grid', tip: '测量网格', initial: params.gridOpacity > 0, onToggle: (id, on) => setGridVisible(on) },
-    { id: 'labels', group: 'overlay', icon: 'labels', tip: '山峰标签', initial: params.labels, onToggle: (id, on) => setLabelsVisible(on) },
-    { id: 'admin', group: 'overlay', icon: 'admin', tip: '行政区划', initial: false, repeatOpensPanel: true, onToggle: (id, on) => setAdminEnabled(on), onPanelToggle: (id, open) => setAdminPanelOpen(open) },
-    { id: 'sun', group: 'overlay', icon: 'sun', tip: '日照分析', initial: false, onToggle: (id, on) => { sunState.on = on; sunPanel.classList.toggle('hidden', !on); document.body.classList.toggle('sun-open', on); if (on) applySun() } },
+    { id: 'contour', group: 'annotation', icon: 'contour', tip: '等高线', initial: params.contourOpacity > 0, onToggle: (id, on) => setContourVisible(on) },
+    { id: 'grid', group: 'annotation', icon: 'grid', tip: '测量网格', initial: params.gridOpacity > 0, onToggle: (id, on) => setGridVisible(on) },
+    { id: 'labels', group: 'annotation', icon: 'labels', tip: '山峰标签', initial: params.labels, onToggle: (id, on) => setLabelsVisible(on) },
+    { id: 'admin', group: 'analysis', icon: 'admin', tip: '行政区划', initial: false, repeatOpensPanel: true, onToggle: (id, on) => setAdminEnabled(on), onPanelToggle: (id, open) => setAdminPanelOpen(open) },
+    { id: 'sun', group: 'analysis', icon: 'sun', tip: '日照分析', initial: false, onToggle: (id, on) => { sunState.on = on; sunPanel.classList.toggle('hidden', !on); document.body.classList.toggle('sun-open', on); if (on) applySun() } },
   ],
   onStateChange: syncSettingsControls,
 })

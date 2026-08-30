@@ -95,7 +95,6 @@ describe('planning panel route contract', () => {
     expect(panel.el.textContent).toContain('1360m')
   })
 })
-
 describe('route library recovery', () => {
   it('offers a direct planning action when the local library is empty', () => {
     const onPlan = vi.fn()
@@ -542,5 +541,52 @@ describe('Analyze elevation profile', () => {
     expect(thresholdComparison).toContain('高程变化 · 100 m · 100 m · 增加 <1 m')
     expect(thresholdComparison).toContain('净坡度 · 10.0 % · 10.0 % · 增加 <0.1 %')
     expect(thresholdComparison).toContain('时长 · 10 分钟 · 10 分钟 · 增加 <1 分钟')
+  })
+})
+
+
+describe('planning route ledger', () => {
+  const route = {
+    name: '测试线路', mode: 'straight', dayEnds: [],
+    waypoints: [
+      { id: 'start-id', name: '起点', lon: 100, lat: 30, ele: 0 },
+      { id: 'end-id', name: '终点', lon: 101, lat: 31, ele: 0 },
+    ],
+  }
+
+  it('derives labels from order and expands only the selected stable waypoint ID', () => {
+    const onWaypointSelect = vi.fn()
+    const panel = createPlanningPanel({ onWaypointSelect })
+    panel.update(route, null, null, null, 'foot', null, {}, 'end-id')
+
+    const rows = panel.el.querySelectorAll('.pp-ledger-row')
+    expect(rows[0].textContent).toContain('P1')
+    expect(rows[0].textContent).toContain('起点')
+    expect(rows[0].getAttribute('aria-expanded')).toBe('false')
+    expect(rows[1].textContent).toContain('P2')
+    expect(rows[1].getAttribute('aria-expanded')).toBe('true')
+    expect(panel.el.querySelectorAll('.pp-ledger-actions')).toHaveLength(1)
+    rows[0].click()
+    expect(onWaypointSelect).toHaveBeenCalledWith('start-id')
+  })
+
+  it('targets rename and insertion actions by waypoint ID and protects a two-point route', () => {
+    const onWpRenameById = vi.fn()
+    const onWpInsertAfter = vi.fn()
+    const onWpRemoveById = vi.fn()
+    const panel = createPlanningPanel({ onWpRenameById, onWpInsertAfter, onWpRemoveById })
+    panel.update(route, null, null, null, 'foot', null, {}, 'start-id')
+
+    panel.el.querySelector('.pp-ledger-actions > button').click()
+    const form = panel.el.querySelector('.pp-ledger-rename')
+    form.querySelector('input').value = '新起点'
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+    expect(onWpRenameById).toHaveBeenCalledWith('start-id', '新起点')
+    panel.el.querySelectorAll('.pp-ledger-actions > button')[1].click()
+    expect(onWpInsertAfter).toHaveBeenCalledWith('start-id')
+    const remove = panel.el.querySelectorAll('.pp-ledger-actions > button')[2]
+    expect(remove.disabled).toBe(true)
+    remove.click()
+    expect(onWpRemoveById).not.toHaveBeenCalled()
   })
 })

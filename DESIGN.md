@@ -14,6 +14,7 @@ colors:
   route: "#ff4f17"
   weather: "#2f80a8"
   success: "#23845f"
+  danger: "#b53a38"
   warning: "#b66b12"
 typography:
   body:
@@ -37,6 +38,7 @@ rounded:
   context: "10px"
   instrument: "12px"
   inspector: "14px"
+  pill: "999px"
 spacing:
   tight: "4px"
   compact: "8px"
@@ -204,6 +206,14 @@ Forms are rounded, compact, and repeatable. Use the 8/10/12/14px geometry delibe
 **The Grouped Row Rule.** Reserve rounded outer corners for a meaningful group; internal rows divide with fine lines and selection rules instead of acquiring individual card silhouettes.
 
 ## Components
+
+### Route ledger and display layers
+
+**Map-first and edge rhythm.** The map and Route Ember corridor remain the primary proof of a trip. Inspector content follows one 16px edge rhythm; it must not reserve blank space for hidden route alternatives. Route Ember is scarce: use it only for the route, explicit waypoint selection, active stage, enabled switches, and the single save continuation.
+
+**Waypoint ledger.** A waypoint is an explicit selectable object backed by its stable route ID. `P1`/`P2`/`Pn` and start/via/end labels are derived from current array order, never stored as business identity. Exactly one selected waypoint expands at a time; its explicit actions are rename, insert after, and delete. Insertion targets the selected ID, then selects the newly created waypoint. Deletion preserves the minimum start/end contract and moves selection to an adjacent remaining ID.
+
+**Map display.** The anchored display popover has three ordered sections: `底图`, `地图标注`, and `分析叠加`. On desktop it sits to the left of the right-anchored Inspector with the same 16px edge rhythm, never covering ledger controls. A switch is the sole strong enabled signal; selected rows do not add orange underlines. Remote analysis layers use truthful `idle → loading → ready | error` semantics. A request is not enabled while loading; errors reset the switch to off, state the reason, and provide a neutral retry action.
 
 ### Command buttons
 - **Primary continuation:** Route Ember is the active Plan/Analyze state and an enabled direct route action; white text, 42px desktop height, and 8px internal radius. Hover darkens the orange; pressed state scales to 0.97.
