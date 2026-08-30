@@ -207,4 +207,15 @@ describe('planner workspace chrome', () => {
     expect(analyze.textContent).toBe('重新分析')
     expect(analyze.getAttribute('aria-label')).toContain('路线已变更')
   })
+
+  it('keeps fresh available Analyze copy actionable and reserves the missing-route copy for disabled state', () => {
+    const workspace = createPlannerWorkspace()
+    const analyze = workspace.el.querySelector('[data-stage="analyze"]')
+    workspace.setAnalyzeAvailable(true)
+    workspace.setAnalysisFreshness({ stale: false })
+    expect(analyze.textContent).toBe('分析')
+    expect(analyze.getAttribute('aria-label')).toBe('分析当前路线地形')
+    workspace.setAnalyzeAvailable(false, '至少添加起点和终点')
+    expect(analyze.getAttribute('aria-label')).toContain('至少添加起点和终点')
+  })
 })

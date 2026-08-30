@@ -37,7 +37,7 @@ import { sampleRouteAnalysisPath, syncRouteAnalysisConsumer } from './lib/routeA
 import { createRouteDemAnalysisController, createRouteDemCoverage, createRouteDemRunIdentity } from './lib/routeDemCoverage.js'
 import { createRouteCandidateId, isCurrentRouteCandidate, routeCandidatePathKey, weatherResultMatchesPath } from './lib/routeCandidates.js'
 import { initialAnalysisCursorDistance } from './lib/analysisCursor.js'
-import { createAnalysisFreshness } from './lib/analysisFreshness.js'
+import { canMarkAnalysisFresh, createAnalysisFreshness } from './lib/analysisFreshness.js'
 import { sunPosition, shadeFraction } from './lib/sun.js'
 import { resamplePath, flyoverDuration, cameraFrame } from './lib/flyover.js'
 import { TripRouteController } from './lib/tripRouteController.js'
@@ -1170,6 +1170,7 @@ function applyReadyRouteAnalysis({ recordHistory = false, fitOverview = false } 
   analysisCursorPathKey = nextAnalysisCursorPathKey
   lastRoutePts = pts
   profileCard?.update(lastRouteAnalysis)
+  markAnalysisFreshIfUsable()
   if (!initializeAnalysisCursor(pts)) overviewMap?.setAnalysisCursor({ points: pts, distanceM: analysisCursorDistanceM })
   route.normalizeDayBoundaries() // id-based markers: drop refs to deleted waypoints
   if (recordHistory) route.recordHistory() // safe: dedup no-ops on non-route refreshes
@@ -2170,6 +2171,17 @@ function syncAnalysisFreshness() {
   plannerWorkspace?.setAnalysisFreshness({ stale: analysisFreshness.isStale(route) })
 }
 
+function markAnalysisFreshIfUsable() {
+  if (!canMarkAnalysisFresh({
+    stage: workspaceLifecycle?.stage,
+    analysis: lastRouteAnalysis,
+    plannerView: overviewMap?.plannerView,
+  })) return false
+  analysisFreshness.markAnalyzed(route)
+  syncAnalysisFreshness()
+  return true
+}
+
 function currentCorridorAdjustment() {
   corridorAdjustmentSelection = reconcileRouteSelection(corridorAdjustmentSelection, route)
   return corridorAdjustmentSelection
@@ -2186,6 +2198,7 @@ function renderCorridorAdjustment() {
   corridorAdjustmentLayer.querySelector('[data-corridor-title]').textContent = `调整第 ${index + 1} 段`
   corridorAdjustmentLayer.querySelector('[data-corridor-route]').textContent = `${from.name} → ${to.name}`
   corridorAdjustmentLayer.querySelector('[data-corridor-stale]').hidden = !analysisFreshness.isStale(route)
+  corridorAdjustmentLayer.querySelector('[data-corridor-reanalyze]').textContent = analysisFreshness.isStale(route) ? '重新分析' : '返回分析'
 }
 
 function endCorridorAdjustment({ fit = true } = {}) {
@@ -2200,10 +2213,11 @@ function beginCorridorAdjustment(segment) {
   if (selection?.kind !== 'segment') return false
   corridorAdjustmentSelection = selection
   if (workspaceLifecycle?.stage !== WORKFLOW_STAGES.PLAN) workspaceLifecycle?.setStage(WORKFLOW_STAGES.PLAN)
-  overviewMap?.setAnalysisSegment(analysisSegmentForSelection(selection, route, lastRouteAnalysis?.points, analysisSegmentLegs))
+  const actualSegment = analysisSegmentForSelection(selection, route, lastRouteAnalysis?.points, analysisSegmentLegs)
+  overviewMap?.setAnalysisSegment(actualSegment)
   renderCorridorAdjustment()
   requestAnimationFrame(() => {
-    if (!currentCorridorAdjustment() || !overviewMap?.focusRouteSelection(selection)) {
+    if (!currentCorridorAdjustment() || !overviewMap?.focusRouteSelection({ selection, segment: actualSegment })) {
       endCorridorAdjustment({ fit: false })
       return
     }
@@ -2359,6 +2373,7 @@ function restoreAnalyzeTerrainView() {
     return false
   }
   profileCard?.setTerrainState('ready')
+  markAnalysisFreshIfUsable()
   workspaceLifecycle.fit()
   void requestRouteCorridorAnalysis()
   return true
@@ -2423,7 +2438,7 @@ corridorAdjustmentLayer = document.createElement('section')
 corridorAdjustmentLayer.className = 'ui-corridor-adjustment hidden'
 corridorAdjustmentLayer.setAttribute('aria-label', '路段调整')
 corridorAdjustmentLayer.innerHTML = `
-  <div><h2 data-corridor-title tabindex="-1">调整路线段</h2><p data-corridor-route></p><p data-corridor-stale hidden>分析已过期 · 路线已变更</p></div>
+  <div><h2 data-corridor-title tabindex="-1">调整路线段</h2><p data-corridor-route></p><p>拖动途经点 · 地图添加 · 切换路线方式</p><p data-corridor-stale hidden>分析已过期 · 路线已变更</p></div>
   <div class="ui-corridor-actions"><button type="button" data-corridor-reanalyze>重新分析</button><button type="button" data-corridor-end>结束聚焦</button></div>
 `
 corridorAdjustmentLayer.querySelector('[data-corridor-reanalyze]').addEventListener('click', () => {
@@ -2591,7 +2606,6 @@ workspaceLifecycle = createWorkspaceLifecycleCoordinator({
       clearAnalysisCursor()
       clearAnalysisSegment()
     } else initializeAnalysisCursor()
-    if (analyze) analysisFreshness.markAnalyzed(route)
     syncAnalysisFreshness()
     document.body.classList.toggle('analyze-operate', analyze)
     plannerWorkspace?.setStage(stage)

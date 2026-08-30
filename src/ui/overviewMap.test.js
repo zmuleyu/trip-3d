@@ -887,4 +887,20 @@ describe('overview MapLibre planner map', () => {
     expect(overview.el.querySelector('.ui-weather-card').classList.contains('hidden')).toBe(false)
     expect(overview.el.querySelector('[data-weather="role"]').textContent).toBe('木骡子')
   })
+
+  it('fits a curved selected analysis interval instead of cropping to its waypoint chord', () => {
+    const { overview, instance } = setup()
+    overview.setPlannerMode(true)
+    const route = { waypoints: [{ id: 'a', lon: 113, lat: 41.2 }, { id: 'b', lon: 113.2, lat: 41.4 }] }
+    const points = [
+      { lon: 113, lat: 41.2, ele: 1000, cumDistM: 0 },
+      { lon: 113.8, lat: 41.7, ele: 1100, cumDistM: 500 },
+      { lon: 113.2, lat: 41.4, ele: 1200, cumDistM: 1000 },
+    ]
+    const selection = { kind: 'segment', fromId: 'a', toId: 'b' }
+    overview.update(route, points, VIEWPORT)
+
+    expect(overview.focusRouteSelection({ selection, segment: { selection, startM: 0, endM: 1000 } })).toBe(true)
+    expect(instance.fitCalls.at(-1).bounds).toEqual([[113, 41.2], [113.8, 41.7]])
+  })
 })

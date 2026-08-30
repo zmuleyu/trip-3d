@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createAnalysisFreshness, routeGeometryFingerprint } from './analysisFreshness.js'
+import { canMarkAnalysisFresh, createAnalysisFreshness, routeGeometryFingerprint } from './analysisFreshness.js'
 
 describe('analysis freshness', () => {
   it('only expires a completed analysis when route geometry changes', () => {
@@ -9,5 +9,13 @@ describe('analysis freshness', () => {
     freshness.markAnalyzed(route)
     expect(freshness.isStale({ ...route, revision: 9 })).toBe(false)
     expect(freshness.isStale({ ...route, geometryRevision: 3 })).toBe(true)
+    expect(freshness.isStale({ id: 'trip-b', geometryRevision: 9 })).toBe(false)
+  })
+
+  it('marks fresh only for a ready current analysis in the usable Analyze view', () => {
+    expect(canMarkAnalysisFresh({ stage: 'analyze', analysis: { status: 'ready' }, plannerView: '3d' })).toBe(true)
+    expect(canMarkAnalysisFresh({ stage: 'analyze', analysis: { status: 'loading' }, plannerView: '3d' })).toBe(false)
+    expect(canMarkAnalysisFresh({ stage: 'analyze', analysis: { status: 'ready' }, plannerView: '2d' })).toBe(false)
+    expect(canMarkAnalysisFresh({ stage: 'plan', analysis: { status: 'ready' }, plannerView: '3d' })).toBe(false)
   })
 })

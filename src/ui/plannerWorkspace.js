@@ -51,6 +51,7 @@ export function createPlannerWorkspace({
   let stage = 'plan'
   let analyzeAvailable = false
   let analysisStale = false
+  let analyzeUnavailableMessage = '至少添加起点和终点'
   const buttons = [...el.querySelectorAll('[data-stage]')]
   const search = el.querySelector('.ui-command-search')
   const searchInput = search.querySelector('input')
@@ -146,6 +147,18 @@ export function createPlannerWorkspace({
   const syncPrimary = () => {
     moreMenu.querySelector('[data-more-action="save"]').disabled = !analyzeAvailable
   }
+  const syncAnalyzeCopy = () => {
+    const analyze = el.querySelector('[data-stage="analyze"]')
+    const stale = analysisStale
+    const copy = stale
+      ? { label: '重新分析', title: '路线已变更，重新分析地形', aria: '重新分析地形（路线已变更）' }
+      : analyzeAvailable
+        ? { label: '分析', title: '分析当前路线地形', aria: '分析当前路线地形' }
+        : { label: '分析', title: analyzeUnavailableMessage, aria: `分析地形（${analyzeUnavailableMessage}）` }
+    analyze.textContent = copy.label
+    analyze.title = copy.title
+    analyze.setAttribute('aria-label', copy.aria)
+  }
   const applyStage = (next, notify = false) => {
     const requested = next === 'analyze' ? 'analyze' : 'plan'
     if (requested === 'analyze' && !analyzeAvailable) return false
@@ -194,18 +207,15 @@ export function createPlannerWorkspace({
     setView(next) { return applyStage(next === '3d' ? 'analyze' : 'plan') },
     setAnalyzeAvailable(available, message = '至少添加起点和终点') {
       analyzeAvailable = !!available
+      analyzeUnavailableMessage = message
       const analyze = el.querySelector('[data-stage="analyze"]')
       analyze.disabled = !analyzeAvailable
-      analyze.title = analyzeAvailable ? '分析当前路线地形' : message
-      analyze.setAttribute('aria-label', analyzeAvailable ? '分析当前路线地形' : `分析地形（${message}）`)
+      syncAnalyzeCopy()
       syncPrimary()
     },
     setAnalysisFreshness({ stale = false } = {}) {
       analysisStale = !!stale
-      const analyze = el.querySelector('[data-stage="analyze"]')
-      analyze.textContent = analysisStale ? '重新分析' : '分析'
-      analyze.title = analysisStale ? '路线已变更，重新分析地形' : '至少添加起点和终点'
-      analyze.setAttribute('aria-label', analysisStale ? '重新分析地形（路线已变更）' : '分析地形（至少添加起点和终点）')
+      syncAnalyzeCopy()
       el.classList.toggle('analysis-stale', analysisStale)
     },
     setSearchSession(session) {
