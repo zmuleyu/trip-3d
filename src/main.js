@@ -2232,6 +2232,28 @@ function endCorridorAdjustment({ fit = true } = {}) {
   if (fit) requestAnimationFrame(() => overviewMap?.fit())
 }
 
+function prepareCorridorReanalysis() {
+  const selection = currentCorridorAdjustment()
+  if (!selection) return false
+  const segment = comparisonSegment(selection)
+  segmentComparison.observe({
+    fingerprint: routeGeometryFingerprint(route),
+    selection,
+    analysisReady: false,
+    metrics: createSegmentMetrics(segment, lastRouteAnalysis?.points),
+  })
+  segmentComparison.requestReanalysis({ fingerprint: routeGeometryFingerprint(route), selection })
+  profileCard?.setSegmentComparison(segmentComparison.value)
+  analysisSegmentSelection = selection
+  endCorridorAdjustment({ fit: false })
+  return true
+}
+
+function enterAnalyzeStage() {
+  if (workspaceLifecycle?.stage === WORKFLOW_STAGES.PLAN) prepareCorridorReanalysis()
+  return workspaceLifecycle?.setStage(WORKFLOW_STAGES.ANALYZE)
+}
+
 function beginCorridorAdjustment(segment) {
   const selection = reconcileRouteSelection(segment?.selection, route)
   if (selection?.kind !== 'segment') return false
@@ -2474,19 +2496,7 @@ corridorAdjustmentLayer.innerHTML = `
   <div class="ui-corridor-actions"><button type="button" data-corridor-reanalyze>重新分析</button><button type="button" data-corridor-end>结束聚焦</button></div>
 `
 corridorAdjustmentLayer.querySelector('[data-corridor-reanalyze]').addEventListener('click', () => {
-  const selection = currentCorridorAdjustment()
-  const segment = comparisonSegment(selection)
-  segmentComparison.observe({
-    fingerprint: routeGeometryFingerprint(route),
-    selection,
-    analysisReady: false,
-    metrics: createSegmentMetrics(segment, lastRouteAnalysis?.points),
-  })
-  segmentComparison.requestReanalysis({ fingerprint: routeGeometryFingerprint(route), selection })
-  profileCard?.setSegmentComparison(segmentComparison.value)
-  if (selection) analysisSegmentSelection = selection
-  endCorridorAdjustment({ fit: false })
-  workspaceLifecycle?.setStage(WORKFLOW_STAGES.ANALYZE)
+  enterAnalyzeStage()
 })
 corridorAdjustmentLayer.querySelector('[data-corridor-end]').addEventListener('click', () => endCorridorAdjustment())
 document.addEventListener('keydown', (event) => {
@@ -2539,7 +2549,10 @@ plannerWorkspace = createPlannerWorkspace({
   version: packageMetadata.version,
   onStage: (stage) => {
     closeMobileLayers({ restoreInspector: false, restoreFocus: false })
-    if (!workspaceLifecycle?.setStage(stage)) plannerWorkspace.setStage(workspaceLifecycle?.stage ?? WORKFLOW_STAGES.PLAN)
+    const transitioned = stage === WORKFLOW_STAGES.ANALYZE
+      ? enterAnalyzeStage()
+      : workspaceLifecycle?.setStage(stage)
+    if (!transitioned) plannerWorkspace.setStage(workspaceLifecycle?.stage ?? WORKFLOW_STAGES.PLAN)
   },
   onSearch: (query) => {
     enterPlanForEditing()

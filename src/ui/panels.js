@@ -506,10 +506,12 @@ export function createProfileCard(accent = '#ff4d00') {
   const comparisonValue = (value, unit, digits = 1) => Number.isFinite(value) ? `${value.toFixed(digits)} ${unit}` : '不可比较'
   const comparisonDelta = (value, unit, digits = 1) => {
     if (!Number.isFinite(value)) return '不可比较'
-    const rounded = Number(value.toFixed(digits))
-    if (rounded === 0) return '无变化'
-    const sign = rounded > 0 ? '+' : '−'
-    return `${rounded > 0 ? '增加' : '减少'} ${sign}${Math.abs(rounded).toFixed(digits)} ${unit}`
+    if (value === 0) return '无变化'
+    const direction = value > 0 ? '增加' : '减少'
+    const sign = value > 0 ? '+' : '−'
+    const threshold = 10 ** -digits
+    if (Math.abs(value) < threshold) return `${direction} <${threshold.toFixed(digits)} ${unit}`
+    return `${direction} ${sign}${Math.abs(value).toFixed(digits)} ${unit}`
   }
   const appendComparison = () => {
     if (segmentComparison?.status !== 'ready') {
@@ -530,7 +532,7 @@ export function createProfileCard(accent = '#ff4d00') {
       ['高程变化', comparisonValue(segmentComparison.before.elevationDeltaM, 'm', 0), comparisonValue(segmentComparison.current.elevationDeltaM, 'm', 0), comparisonDelta(segmentComparison.change.elevationDeltaM, 'm', 0)],
       ['净坡度', comparisonValue(segmentComparison.before.netGradePct, '%'), comparisonValue(segmentComparison.current.netGradePct, '%'), comparisonDelta(segmentComparison.change.netGradePct, '%')],
     ]
-    if (Number.isFinite(segmentComparison.before.durationS) || Number.isFinite(segmentComparison.current.durationS)) {
+    if (Number.isFinite(segmentComparison.before.durationS) && Number.isFinite(segmentComparison.current.durationS)) {
       const minutes = (durationS) => Number.isFinite(durationS) ? durationS / 60 : null
       rows.push(['时长', comparisonValue(minutes(segmentComparison.before.durationS), '分钟', 0), comparisonValue(minutes(segmentComparison.current.durationS), '分钟', 0), comparisonDelta(minutes(segmentComparison.change.durationS), '分钟', 0)])
     }
