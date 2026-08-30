@@ -28,6 +28,7 @@ import { setDrawerOpen } from './ui/drawer.js'
 import { createAdminLayer } from './ui/adminLayer.js'
 import { provinceAdcode, extractRings, clipRingToBbox, pointInRing } from './lib/adminBoundaries.js'
 import { createAdminBoundaryCache } from './lib/adminBoundaryCache.js'
+import { adminLoadTerminal } from './lib/adminLayerState.js'
 import { filterAdminRings, adminBreadcrumb, adminEmptyMessage, adminNeedsReload, findDeepestAdminRegion, createAdminInteractionState } from './lib/adminInteraction.js'
 import { computeRegionRouteStats, formatRouteStats } from './lib/adminRouteStats.js'
 import { createAdminBoundaryUI } from './ui/adminPanel.js'
@@ -662,7 +663,7 @@ async function buildMapOverlay(demSnap, gen) {
 // reverse at the DEM center. Reloads on demKey change like snap/weather.
 const DATAV = 'https://geo.datav.aliyun.com/areas_v3/bound'
 const adminBoundaryCache = createAdminBoundaryCache()
-const adminState = { on: false, status: 'idle', error: '', demKey: null, loading: false, panelOpen: false, rings: [], regions: [], breadcrumb: [], cacheStatus: '缓存状态未知' }
+const adminState = { on: false, status: 'idle', error: '', requestId: 0, demKey: null, loading: false, panelOpen: false, rings: [], regions: [], breadcrumb: [], cacheStatus: '缓存状态未知' }
 let adminLayer = null
 let adminUI = null
 const adminInteraction = createAdminInteractionState({ onChange: () => refreshAdminUI() })
@@ -728,19 +729,41 @@ function syncAdminLayerAvailability() {
   })
 }
 
+function failAdminLoad(message, requestId) {
+  if (requestId !== adminState.requestId) return false
+  adminState.on = false
+  adminState.status = 'error'
+  adminState.error = message
+  adminState.loading = false
+  adminInteraction.setEnabled(false)
+  adminLayer?.setVisible(false)
+  layerBtns?.get('admin')?.set(false)
+  syncAdminLayerAvailability()
+  refreshAdminUI()
+  return true
+}
+
+function startAdminLoad() {
+  const requestId = ++adminState.requestId
+  adminState.on = false
+  adminState.status = 'loading'
+  adminState.error = ''
+  adminState.loading = true
+  adminInteraction.setEnabled(false)
+  layerBtns?.get('admin')?.set(false)
+  syncAdminLayerAvailability()
+  void loadAdminBoundaries(requestId)
+}
+
 function setAdminEnabled(enabled) {
   if (enabled) {
-    adminState.on = false
-    adminState.status = 'loading'
-    adminState.error = ''
-    adminInteraction.setEnabled(false)
-    layerBtns?.get('admin')?.set(false)
-    syncAdminLayerAvailability()
-    void loadAdminBoundaries()
+    startAdminLoad()
   } else {
+    adminState.requestId++
     adminState.on = false
     adminState.status = 'idle'
     adminState.error = ''
+    adminState.loading = false
     adminInteraction.setEnabled(false)
     layerBtns?.get('admin')?.set(false)
     syncAdminLayerAvailability()
@@ -779,12 +802,19 @@ adminUI = createAdminBoundaryUI({
   onFocus: focusSelectedAdminRegion,
 })
 
-async function loadAdminBoundaries() {
-  if (!dem || !geo) return
+async function loadAdminBoundaries(requestId = adminState.requestId) {
+  const initial = adminLoadTerminal({
+    hasTerrain: !!(dem && geo),
+    requestCurrent: requestId === adminState.requestId,
+  })
+  if (initial.state === 'error') { failAdminLoad(initial.message, requestId); return }
+  if (initial.state === 'ignored') return
   const key = currentDemKey()
   if (adminState.demKey === key && adminLayer) {
+    if (requestId !== adminState.requestId) return
     adminState.on = true
     adminState.status = 'ready'
+    adminState.loading = false
     adminInteraction.setEnabled(true)
     layerBtns?.get('admin')?.set(true)
     adminLayer.setVisible(true)
@@ -797,7 +827,6 @@ async function loadAdminBoundaries() {
     adminState.regions = []
     adminInteraction.exitInspect()
   }
-  adminState.loading = true
   toast.show('区划边界加载中…')
   try {
     // province adcode from the DEM center (one reverse call, explicit toggle)
@@ -808,7 +837,13 @@ async function loadAdminBoundaries() {
       adminBoundaryCache.fetchJson(`${DATAV}/${adcode}.json`),
       adminBoundaryCache.fetchJson(`${DATAV}/${adcode}_full.json`),
     ])
-    if (key !== currentDemKey()) return // terrain switched mid-load
+    const afterPrimary = adminLoadTerminal({
+      hasTerrain: !!(dem && geo),
+      requestCurrent: requestId === adminState.requestId,
+      keyCurrent: !!(dem && geo) && key === currentDemKey(),
+    })
+    if (afterPrimary.state === 'error') { failAdminLoad(afterPrimary.message, requestId); return }
+    if (afterPrimary.state === 'ignored') return
     // viewport bbox from world corners
     const c1 = worldToLonLat(geo, -TERRAIN_SIZE / 2, -TERRAIN_SIZE / 2)
     const c2 = worldToLonLat(geo, TERRAIN_SIZE / 2, TERRAIN_SIZE / 2)
@@ -823,7 +858,13 @@ async function loadAdminBoundaries() {
     if (containing) {
       try {
         const cityFull = await adminBoundaryCache.fetchJson(`${DATAV}/${containing.adcode}_full.json`)
-        if (key !== currentDemKey()) return
+        const afterDistrict = adminLoadTerminal({
+          hasTerrain: !!(dem && geo),
+          requestCurrent: requestId === adminState.requestId,
+          keyCurrent: !!(dem && geo) && key === currentDemKey(),
+        })
+        if (afterDistrict.state === 'error') { failAdminLoad(afterDistrict.message, requestId); return }
+        if (afterDistrict.state === 'ignored') return
         districtRings = extractRings(cityFull).map((r) => ({ ...r, level: 'district' }))
       } catch { /* district layer optional — province/city still render */ }
     }
@@ -854,6 +895,7 @@ async function loadAdminBoundaries() {
       district: deepest?.level === 'district' ? deepest.name : rev?.address?.county,
     })
     adminState.cacheStatus = '● 已缓存'
+    if (requestId !== adminState.requestId) return
     adminState.on = true
     adminState.status = 'ready'
     adminInteraction.setEnabled(true)
@@ -863,18 +905,15 @@ async function loadAdminBoundaries() {
     refreshAdminUI()
     toast.show(`区划边界已加载(${rings.length} 段)`)
   } catch (err) {
+    if (requestId !== adminState.requestId) return
     console.warn('admin boundaries failed', err)
-    adminState.on = false
-    adminState.status = 'error'
-    adminState.error = err?.message || '行政区划加载失败，请重试'
-    adminInteraction.setEnabled(false)
-    adminLayer?.setVisible(false)
-    layerBtns?.get('admin')?.set(false)
-    syncAdminLayerAvailability()
+    failAdminLoad(err?.message || '行政区划加载失败，请重试', requestId)
     toast.show('区划边界加载失败，请重试')
   } finally {
-    adminState.loading = false
-    refreshAdminUI()
+    if (requestId === adminState.requestId) {
+      adminState.loading = false
+      refreshAdminUI()
+    }
   }
 }
 
@@ -2083,7 +2122,7 @@ legacyTerrainTools = createLegacyTerrainToolsAdapter({
     rebuild: () => { terrain.rebuild(params); terrain.ensureRoughness(params); regenerateLabels() },
     refreshRoute: () => refreshRoute({ recordHistory: false }),
     reloadAdminIfNeeded: () => {
-      if (adminNeedsReload({ enabled: adminState.on, loadedKey: adminState.demKey, currentKey: currentDemKey() })) loadAdminBoundaries()
+      if (adminNeedsReload({ enabled: adminState.on, loadedKey: adminState.demKey, currentKey: currentDemKey() })) startAdminLoad()
     },
     refreshStaticShadow: () => { if (params.shadowMode === 'static') renderer.shadowMap.needsUpdate = true },
     hideLoading: () => loadingEl.classList.add('hidden'),

@@ -15,6 +15,7 @@ colors:
   weather: "#2f80a8"
   success: "#23845f"
   danger: "#b53a38"
+  focus: "#147eb3"
   warning: "#b66b12"
 typography:
   body:

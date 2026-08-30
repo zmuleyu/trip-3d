@@ -565,6 +565,7 @@ describe('planning route ledger', () => {
     expect(rows[0].getAttribute('aria-expanded')).toBe('false')
     expect(rows[1].textContent).toContain('P2')
     expect(rows[1].getAttribute('aria-expanded')).toBe('true')
+    expect(rows[1].querySelector('.pp-ledger-chevron svg')).not.toBeNull()
     expect(panel.el.querySelectorAll('.pp-ledger-actions')).toHaveLength(1)
     rows[0].click()
     expect(onWaypointSelect).toHaveBeenCalledWith('start-id')
