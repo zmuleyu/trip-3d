@@ -4,7 +4,7 @@ export function routeGeometryFingerprint(route) {
 }
 
 export function canMarkAnalysisFresh({ stage, analysis, plannerView } = {}) {
-  return stage === 'analyze' && analysis?.status === 'ready' && plannerView === '3d'
+  return stage === 'analyze' && analysis?.status === 'ready' && ['2d', '3d'].includes(plannerView)
 }
 
 // This transient record tracks geometry only: naming and presentation edits do

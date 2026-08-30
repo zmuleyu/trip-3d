@@ -2396,6 +2396,7 @@ const overviewMap = createOverviewMap({
     if (workspaceLifecycle?.stage !== WORKFLOW_STAGES.ANALYZE) return
     profileCard?.setTerrainState('fallback')
     workspaceLifecycle.continueIn2d({ weather: false })
+    markAnalysisFreshIfUsable()
   },
   onJump: (lon, lat) => { if (geo && dem) flyToLonLat(lon, lat, 10) },
   onWaypointSelect: setSelectedWaypoint,

@@ -12,10 +12,10 @@ describe('analysis freshness', () => {
     expect(freshness.isStale({ id: 'trip-b', geometryRevision: 9 })).toBe(false)
   })
 
-  it('marks fresh only for a ready current analysis in the usable Analyze view', () => {
+  it('marks fresh only for a ready current analysis in either usable Analyze view', () => {
     expect(canMarkAnalysisFresh({ stage: 'analyze', analysis: { status: 'ready' }, plannerView: '3d' })).toBe(true)
     expect(canMarkAnalysisFresh({ stage: 'analyze', analysis: { status: 'loading' }, plannerView: '3d' })).toBe(false)
-    expect(canMarkAnalysisFresh({ stage: 'analyze', analysis: { status: 'ready' }, plannerView: '2d' })).toBe(false)
+    expect(canMarkAnalysisFresh({ stage: 'analyze', analysis: { status: 'ready' }, plannerView: '2d' })).toBe(true)
     expect(canMarkAnalysisFresh({ stage: 'plan', analysis: { status: 'ready' }, plannerView: '3d' })).toBe(false)
   })
 })
