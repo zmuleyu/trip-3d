@@ -2030,6 +2030,19 @@ body.planner-operate.analyze-operate .profile-recovery { border-color: var(--ins
 .ui-trip-spine-close svg { width: 16px; height: 16px; }
 .ui-trip-spine.hidden { display: none !important; }
 
+.ui-corridor-adjustment { position: absolute; z-index: 8; left: 50%; bottom: 28px; transform: translateX(-50%); width: min(510px, calc(100% - 48px)); display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 12px 14px 12px 16px; color: var(--instrument-text); background: #171c1f; border: 1px solid var(--instrument-line); border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,.18); }
+.ui-corridor-adjustment.hidden { display: none; }
+.ui-corridor-adjustment h2, .ui-corridor-adjustment p { margin: 0; }
+.ui-corridor-adjustment h2 { font-size: 13px; font-weight: 700; }
+.ui-corridor-adjustment p { margin-top: 2px; color: var(--instrument-muted); font-size: 11px; }
+.ui-corridor-adjustment [data-corridor-stale] { color: #f0b45a; }
+.ui-corridor-actions { display: flex; gap: 6px; flex: 0 0 auto; }
+.ui-corridor-actions button { min-height: 36px; padding: 0 10px; border-radius: 8px; color: var(--instrument-text); background: transparent; border: 1px solid var(--instrument-line); }
+.ui-corridor-actions [data-corridor-reanalyze] { color: #fff; background: var(--trip-route); border-color: var(--trip-route); }
+.ui-corridor-actions button:focus-visible, .profile-adjust-segment:focus-visible { outline: 2px solid var(--trip-route); outline-offset: 2px; }
+.profile-adjust-segment { min-height: 36px; margin-top: 10px; padding: 0 10px; color: #fff; background: var(--trip-route); border: 0; border-radius: 8px; }
+@media (max-width: 520px) { .ui-corridor-adjustment { bottom: 18px; align-items: stretch; flex-direction: column; } .ui-corridor-actions { width: 100%; } .ui-corridor-actions button { flex: 1; } }
+
 body.planner-operate .ui-panel-body,
 body.weather-operate .ui-panel-body {
   padding: var(--ui-density-panel-pad) !important;

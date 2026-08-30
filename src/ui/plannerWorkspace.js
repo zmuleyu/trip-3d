@@ -50,6 +50,7 @@ export function createPlannerWorkspace({
   versionLabel.hidden = !version
   let stage = 'plan'
   let analyzeAvailable = false
+  let analysisStale = false
   const buttons = [...el.querySelectorAll('[data-stage]')]
   const search = el.querySelector('.ui-command-search')
   const searchInput = search.querySelector('input')
@@ -198,6 +199,14 @@ export function createPlannerWorkspace({
       analyze.title = analyzeAvailable ? '分析当前路线地形' : message
       analyze.setAttribute('aria-label', analyzeAvailable ? '分析当前路线地形' : `分析地形（${message}）`)
       syncPrimary()
+    },
+    setAnalysisFreshness({ stale = false } = {}) {
+      analysisStale = !!stale
+      const analyze = el.querySelector('[data-stage="analyze"]')
+      analyze.textContent = analysisStale ? '重新分析' : '分析'
+      analyze.title = analysisStale ? '路线已变更，重新分析地形' : '至少添加起点和终点'
+      analyze.setAttribute('aria-label', analysisStale ? '重新分析地形（路线已变更）' : '分析地形（至少添加起点和终点）')
+      el.classList.toggle('analysis-stale', analysisStale)
     },
     setSearchSession(session) {
       searchPopover.update(session)

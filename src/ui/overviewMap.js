@@ -865,6 +865,29 @@ export function createOverviewMap({
     updateChrome()
   }
 
+  function focusRouteSelection(selection) {
+    const waypoints = lastRoute?.waypoints ?? []
+    const index = selection?.kind === 'segment'
+      ? waypoints.findIndex((waypoint, candidateIndex) => waypoint.id === selection.fromId && waypoints[candidateIndex + 1]?.id === selection.toId)
+      : -1
+    if (index < 0) return false
+    const from = waypoints[index]
+    const to = waypoints[index + 1]
+    const bounds = boundsForCoordinates([[from.lon, from.lat], [to.lon, to.lat]])
+    if (!bounds) return false
+    map.fitBounds(bounds, {
+      padding: fitPadding(),
+      maxZoom: 13,
+      duration: globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 0 : 180,
+      freezeElevation: nativeTerrainActive,
+      pitch: 0,
+      bearing: map.getBearing(),
+    })
+    hasCamera = true
+    updateChrome()
+    return true
+  }
+
   function resize({ fit = true } = {}) {
     syncAttributionHost()
     const rect = el.getBoundingClientRect()
@@ -1202,6 +1225,7 @@ export function createOverviewMap({
       return true
     },
     get plannerView() { return plannerView },
+    focusRouteSelection,
     get terrainState() {
       return {
         active: nativeTerrainActive,

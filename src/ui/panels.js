@@ -431,7 +431,7 @@ export function createProfileCard(accent = '#ff4d00') {
   let folded = false
   let lastPts = null
   let lastGrade = null
-  let cbs = { onCursorDistance: null, onSegmentDistance: null, onSegmentStep: null, onSegmentClear: null, onExpand: null, onRetry: null, onRetryTerrain: null, onReturnPlan: null }
+  let cbs = { onCursorDistance: null, onSegmentDistance: null, onSegmentStep: null, onSegmentClear: null, onAdjustSegment: null, onExpand: null, onRetry: null, onRetryTerrain: null, onReturnPlan: null }
   let lastCursorDistanceM = null
   let selectedSegment = null
   let profileReady = false
@@ -526,6 +526,14 @@ export function createProfileCard(accent = '#ff4d00') {
       row.textContent = value == null ? label : `${label} · ${value}`
       segmentDetails.appendChild(row)
     })
+    if (stage === 'analyze') {
+      const adjust = document.createElement('button')
+      adjust.type = 'button'
+      adjust.className = 'profile-adjust-segment'
+      adjust.textContent = '调整这一段'
+      adjust.addEventListener('click', () => cbs.onAdjustSegment?.(selectedSegment))
+      segmentDetails.appendChild(adjust)
+    }
   }
   canvas.addEventListener('pointermove', (e) => {
     requestCursor(distanceAt(e))
@@ -635,6 +643,7 @@ export function createProfileCard(accent = '#ff4d00') {
     setStage(next) {
       stage = next === 'analyze' ? 'analyze' : 'plan'
       syncSliderAvailability()
+      renderSegmentDetails()
       if (profileReady) draw()
       syncVisibility()
     },

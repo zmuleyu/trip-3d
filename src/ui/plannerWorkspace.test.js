@@ -198,4 +198,13 @@ describe('planner workspace chrome', () => {
     workspace.el.querySelector('[data-more-action="reset-layout"]').click()
     expect(onMoreAction).toHaveBeenCalledWith('reset-layout')
   })
+
+  it('names the Plan continuation as re-analysis when geometry made analysis stale', () => {
+    const workspace = createPlannerWorkspace()
+    workspace.setAnalyzeAvailable(true)
+    workspace.setAnalysisFreshness({ stale: true })
+    const analyze = workspace.el.querySelector('[data-stage="analyze"]')
+    expect(analyze.textContent).toBe('重新分析')
+    expect(analyze.getAttribute('aria-label')).toContain('路线已变更')
+  })
 })
