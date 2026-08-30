@@ -37,6 +37,7 @@ import { sampleRouteAnalysisPath, syncRouteAnalysisConsumer } from './lib/routeA
 import { createRouteDemAnalysisController, createRouteDemCoverage, createRouteDemRunIdentity } from './lib/routeDemCoverage.js'
 import { createRouteCandidateId, isCurrentRouteCandidate, routeCandidatePathKey, weatherResultMatchesPath } from './lib/routeCandidates.js'
 import { initialAnalysisCursorDistance } from './lib/analysisCursor.js'
+import { canMarkAnalysisFresh, createAnalysisFreshness } from './lib/analysisFreshness.js'
 import { sunPosition, shadeFraction } from './lib/sun.js'
 import { resamplePath, flyoverDuration, cameraFrame } from './lib/flyover.js'
 import { TripRouteController } from './lib/tripRouteController.js'
@@ -1083,6 +1084,9 @@ function refreshRoute({ recordHistory = true, fitOverview = true } = {}) {
   if (!route.waypointPreviewing) ensureTerrainForRoute()
   const analysisKey = currentRouteCorridorRun().key
   invalidateRouteCorridorAnalysis(analysisKey)
+  syncAnalysisFreshness()
+  if (!currentCorridorAdjustment()) overviewMap?.setAnalysisSegment(null)
+  renderCorridorAdjustment()
   if (!geo || !dem) {
     lastRouteCoverage = { covered: false, outsideCount: route.waypoints.length, total: route.waypoints.length, bounds: null }
     const status = route.waypoints.length < 2
@@ -1166,6 +1170,7 @@ function applyReadyRouteAnalysis({ recordHistory = false, fitOverview = false } 
   analysisCursorPathKey = nextAnalysisCursorPathKey
   lastRoutePts = pts
   profileCard?.update(lastRouteAnalysis)
+  markAnalysisFreshIfUsable()
   if (!initializeAnalysisCursor(pts)) overviewMap?.setAnalysisCursor({ points: pts, distanceM: analysisCursorDistanceM })
   route.normalizeDayBoundaries() // id-based markers: drop refs to deleted waypoints
   if (recordHistory) route.recordHistory() // safe: dedup no-ops on non-route refreshes
@@ -1178,6 +1183,7 @@ function applyReadyRouteAnalysis({ recordHistory = false, fitOverview = false } 
 }
 
 let lastRoutePts = []
+const analysisFreshness = createAnalysisFreshness()
 
 // snap binds to route IDENTITY + geometryRevision — a rename (revision-only)
 // keeps snapped display stable; loading a different route with a colliding
@@ -1460,6 +1466,7 @@ function updateRouteUI(route, stats, pts, { fitOverview = true } = {}) {
     ? formatSummary(summaryPreferences, summaryData, globalThis.matchMedia?.('(max-width: 1023px)').matches ? 2 : 4)
     : '点击地图添加途经点')
   plannerWorkspace?.setAnalyzeAvailable(routeCanBeAnalyzed(route))
+  syncAnalysisFreshness()
   workspaceLifecycle?.reconcile()
   plannerWorkspace?.updateTrip({
     name: route.name,
@@ -1483,6 +1490,11 @@ function updateRouteUI(route, stats, pts, { fitOverview = true } = {}) {
   overviewMap.setSelectedWaypoint(route.selectedWaypointId)
   analysisSegmentLegs = legs ?? []
   syncAnalysisSegment()
+  const corridorSelection = currentCorridorAdjustment()
+  if (corridorSelection) {
+    overviewMap.setAnalysisSegment(analysisSegmentForSelection(corridorSelection, route, lastRouteAnalysis?.points, analysisSegmentLegs))
+  }
+  renderCorridorAdjustment()
 }
 
 // ------------------------------------------------------------------ sunlight analysis
@@ -2152,6 +2164,67 @@ let analysisCursorPathKey = ''
 let analysisSegmentSelection = null
 let analysisSegmentLegs = []
 let analysisSegmentRouteKey = ''
+let corridorAdjustmentSelection = null
+let corridorAdjustmentLayer = null
+
+function syncAnalysisFreshness() {
+  plannerWorkspace?.setAnalysisFreshness({ stale: analysisFreshness.isStale(route) })
+}
+
+function markAnalysisFreshIfUsable() {
+  if (!canMarkAnalysisFresh({
+    stage: workspaceLifecycle?.stage,
+    analysis: lastRouteAnalysis,
+    plannerView: overviewMap?.plannerView,
+  })) return false
+  analysisFreshness.markAnalyzed(route)
+  syncAnalysisFreshness()
+  return true
+}
+
+function currentCorridorAdjustment() {
+  corridorAdjustmentSelection = reconcileRouteSelection(corridorAdjustmentSelection, route)
+  return corridorAdjustmentSelection
+}
+
+function renderCorridorAdjustment() {
+  const selection = currentCorridorAdjustment()
+  const visible = isPlanStage() && !!selection && !!corridorAdjustmentLayer
+  corridorAdjustmentLayer?.classList.toggle('hidden', !visible)
+  if (!visible) return
+  const index = route.waypoints.findIndex((waypoint) => waypoint.id === selection.fromId)
+  const from = route.waypoints[index]
+  const to = route.waypoints[index + 1]
+  corridorAdjustmentLayer.querySelector('[data-corridor-title]').textContent = `调整第 ${index + 1} 段`
+  corridorAdjustmentLayer.querySelector('[data-corridor-route]').textContent = `${from.name} → ${to.name}`
+  corridorAdjustmentLayer.querySelector('[data-corridor-stale]').hidden = !analysisFreshness.isStale(route)
+  corridorAdjustmentLayer.querySelector('[data-corridor-reanalyze]').textContent = analysisFreshness.isStale(route) ? '重新分析' : '返回分析'
+}
+
+function endCorridorAdjustment({ fit = true } = {}) {
+  corridorAdjustmentSelection = null
+  overviewMap?.setAnalysisSegment(null)
+  renderCorridorAdjustment()
+  if (fit) requestAnimationFrame(() => overviewMap?.fit())
+}
+
+function beginCorridorAdjustment(segment) {
+  const selection = reconcileRouteSelection(segment?.selection, route)
+  if (selection?.kind !== 'segment') return false
+  corridorAdjustmentSelection = selection
+  if (workspaceLifecycle?.stage !== WORKFLOW_STAGES.PLAN) workspaceLifecycle?.setStage(WORKFLOW_STAGES.PLAN)
+  const actualSegment = analysisSegmentForSelection(selection, route, lastRouteAnalysis?.points, analysisSegmentLegs)
+  overviewMap?.setAnalysisSegment(actualSegment)
+  renderCorridorAdjustment()
+  requestAnimationFrame(() => {
+    if (!currentCorridorAdjustment() || !overviewMap?.focusRouteSelection({ selection, segment: actualSegment })) {
+      endCorridorAdjustment({ fit: false })
+      return
+    }
+    corridorAdjustmentLayer?.querySelector('[data-corridor-title]')?.focus()
+  })
+  return true
+}
 function setAnalysisCursor(distanceM) {
   analysisCursorDistanceM = Number.isFinite(distanceM) ? distanceM : null
   profileCard?.setCursorDistance(analysisCursorDistanceM)
@@ -2300,6 +2373,7 @@ function restoreAnalyzeTerrainView() {
     return false
   }
   profileCard?.setTerrainState('ready')
+  markAnalysisFreshIfUsable()
   workspaceLifecycle.fit()
   void requestRouteCorridorAnalysis()
   return true
@@ -2310,6 +2384,7 @@ profileCard.setCallbacks({
   onSegmentDistance: setAnalysisSegmentAtDistance,
   onSegmentStep: stepAnalysisSegment,
   onSegmentClear: clearAnalysisSegment,
+  onAdjustSegment: beginCorridorAdjustment,
   onRetry: retryRouteEnrichment,
   onRetryTerrain: restoreAnalyzeTerrainView,
   onReturnPlan: () => workspaceLifecycle?.setStage(WORKFLOW_STAGES.PLAN),
@@ -2321,6 +2396,7 @@ const overviewMap = createOverviewMap({
     if (workspaceLifecycle?.stage !== WORKFLOW_STAGES.ANALYZE) return
     profileCard?.setTerrainState('fallback')
     workspaceLifecycle.continueIn2d({ weather: false })
+    markAnalysisFreshIfUsable()
   },
   onJump: (lon, lat) => { if (geo && dem) flyToLonLat(lon, lat, 10) },
   onWaypointSelect: setSelectedWaypoint,
@@ -2359,6 +2435,24 @@ const overviewMap = createOverviewMap({
   },
 })
 document.body.appendChild(overviewMap.el)
+corridorAdjustmentLayer = document.createElement('section')
+corridorAdjustmentLayer.className = 'ui-corridor-adjustment hidden'
+corridorAdjustmentLayer.setAttribute('aria-label', '路段调整')
+corridorAdjustmentLayer.innerHTML = `
+  <div><h2 data-corridor-title tabindex="-1">调整路线段</h2><p data-corridor-route></p><p>拖动途经点 · 地图添加 · 切换路线方式</p><p data-corridor-stale hidden>分析已过期 · 路线已变更</p></div>
+  <div class="ui-corridor-actions"><button type="button" data-corridor-reanalyze>重新分析</button><button type="button" data-corridor-end>结束聚焦</button></div>
+`
+corridorAdjustmentLayer.querySelector('[data-corridor-reanalyze]').addEventListener('click', () => {
+  endCorridorAdjustment({ fit: false })
+  workspaceLifecycle?.setStage(WORKFLOW_STAGES.ANALYZE)
+})
+corridorAdjustmentLayer.querySelector('[data-corridor-end]').addEventListener('click', () => endCorridorAdjustment())
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape' || !currentCorridorAdjustment()) return
+  event.preventDefault()
+  endCorridorAdjustment()
+})
+overviewMap.el.appendChild(corridorAdjustmentLayer)
 fluidLayout.register(overviewMap.weatherCard, {
   id: 'weather',
   minWidth: 228,
@@ -2513,6 +2607,7 @@ workspaceLifecycle = createWorkspaceLifecycleCoordinator({
       clearAnalysisCursor()
       clearAnalysisSegment()
     } else initializeAnalysisCursor()
+    syncAnalysisFreshness()
     document.body.classList.toggle('analyze-operate', analyze)
     plannerWorkspace?.setStage(stage)
     if (analyze) {
@@ -2523,6 +2618,7 @@ workspaceLifecycle = createWorkspaceLifecycleCoordinator({
     }
     workspaceLifecycle.setMapWorkspace({ weather: false })
     workspaceLifecycle.fit()
+    renderCorridorAdjustment()
   },
   onWorkspaceChange: ({ weather, editing }) => {
     document.body.classList.add('planner-operate')

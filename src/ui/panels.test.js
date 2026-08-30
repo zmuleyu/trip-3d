@@ -124,7 +124,7 @@ describe('route library recovery', () => {
 
 describe('Analyze elevation profile', () => {
   const canvasContext = () => ({
-    arc: vi.fn(), beginPath: vi.fn(), clearRect: vi.fn(), fill: vi.fn(), fillText: vi.fn(), lineTo: vi.fn(), moveTo: vi.fn(), stroke: vi.fn(),
+    arc: vi.fn(), beginPath: vi.fn(), clearRect: vi.fn(), fill: vi.fn(), fillRect: vi.fn(), fillText: vi.fn(), lineTo: vi.fn(), moveTo: vi.fn(), stroke: vi.fn(),
   })
 
   it('shows elevation range only in Analyze and supports keyboard-native folding', () => {
@@ -430,5 +430,25 @@ describe('Analyze elevation profile', () => {
     expect(card.el.textContent).toContain('最低 1,000 m')
     expect(card.el.textContent).toContain('坡度不可用：有效水平距离或高程覆盖不足')
     expect(card.el.textContent).not.toContain('平均绝对坡度')
+  })
+
+  it('offers Adjust this section only from an Analyze selected-segment detail layer', () => {
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(canvasContext())
+    const onAdjustSegment = vi.fn()
+    const card = createProfileCard()
+    card.setCallbacks({ onAdjustSegment })
+    card.setStage('analyze')
+    card.update({
+      status: 'ready',
+      points: [{ lon: 100, lat: 30, ele: 1000, cumDistM: 0 }, { lon: 101, lat: 30, ele: 1100, cumDistM: 1000 }],
+      profile: { distanceM: 1000, minElevationM: 1000, maxElevationM: 1100 },
+      grade: { status: 'insufficient-distance', samples: [] },
+    })
+    card.setSelectedSegment({ index: 0, from: { name: '甲' }, to: { name: '乙' }, startM: 0, endM: 1000 })
+    card.el.querySelector('.profile-details-toggle').click()
+    const adjust = card.el.querySelector('.profile-adjust-segment')
+    expect(adjust).not.toBeNull()
+    adjust.click()
+    expect(onAdjustSegment).toHaveBeenCalledWith(expect.objectContaining({ index: 0 }))
   })
 })
