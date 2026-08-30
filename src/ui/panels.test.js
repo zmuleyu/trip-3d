@@ -451,4 +451,43 @@ describe('Analyze elevation profile', () => {
     adjust.click()
     expect(onAdjustSegment).toHaveBeenCalledWith(expect.objectContaining({ index: 0 }))
   })
+
+  it('places a real before/current comparison after the selected segment metrics and announces completion', () => {
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(canvasContext())
+    const card = createProfileCard()
+    card.setStage('analyze')
+    card.update({
+      status: 'ready',
+      points: [{ lon: 100, lat: 30, ele: 1000, cumDistM: 0 }, { lon: 101, lat: 30, ele: 1100, cumDistM: 1000 }],
+      profile: { distanceM: 1000, minElevationM: 1000, maxElevationM: 1100 },
+    })
+    card.setSelectedSegment({ index: 0, selection: { kind: 'segment', fromId: 'a', toId: 'b' }, from: { name: '甲' }, to: { name: '乙' }, startM: 0, endM: 1000 })
+    card.setSegmentComparison({
+      status: 'ready',
+      before: { distanceM: 1000, elevationDeltaM: 100, netGradePct: 10, durationS: 600 },
+      current: { distanceM: 1200, elevationDeltaM: 120, netGradePct: 10, durationS: null },
+      change: { distanceM: 200, elevationDeltaM: 20, netGradePct: 0, durationS: null },
+    })
+    card.el.querySelector('.profile-details-toggle').click()
+
+    const comparison = card.el.querySelector('.profile-segment-comparison')
+    expect(comparison.textContent).toContain('调整前 / 当前 / 变化')
+    expect(comparison.textContent).toContain('区间 · 1.0 km · 1.2 km · 增加 +0.2 km')
+    expect(comparison.textContent).toContain('净坡度 · 10.0 % · 10.0 % · 无变化')
+    expect(comparison.textContent).not.toContain('时长')
+    expect(card.el.querySelector('.profile-comparison-live').textContent).toBe('调整前与当前已可比较。')
+    expect(comparison.compareDocumentPosition(card.el.querySelector('.profile-adjust-segment')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+
+    card.setSegmentComparison({
+      status: 'ready',
+      before: { distanceM: 1000, elevationDeltaM: 100, netGradePct: 10, durationS: 600 },
+      current: { distanceM: 1004, elevationDeltaM: 100.4, netGradePct: 10.04, durationS: 604 },
+      change: { distanceM: 4, elevationDeltaM: 0.4, netGradePct: 0.04, durationS: 4 },
+    })
+    const thresholdComparison = card.el.querySelector('.profile-segment-comparison').textContent
+    expect(thresholdComparison).toContain('区间 · 1.0 km · 1.0 km · 增加 <0.1 km')
+    expect(thresholdComparison).toContain('高程变化 · 100 m · 100 m · 增加 <1 m')
+    expect(thresholdComparison).toContain('净坡度 · 10.0 % · 10.0 % · 增加 <0.1 %')
+    expect(thresholdComparison).toContain('时长 · 10 分钟 · 10 分钟 · 增加 <1 分钟')
+  })
 })
