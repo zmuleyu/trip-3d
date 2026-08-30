@@ -413,6 +413,44 @@ describe('Analyze elevation profile', () => {
     expect(onReturnPlan).toHaveBeenCalledOnce()
   })
 
+  it('keeps resilience loading, stale, failed, and fallback recovery inside Profile', () => {
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(canvasContext())
+    const onRetry = vi.fn()
+    const onReturnPlan = vi.fn()
+    const card = createProfileCard()
+    const ready = {
+      status: 'ready',
+      points: [{ lon: 100, lat: 30, ele: 1000, cumDistM: 0 }, { lon: 101, lat: 30, ele: 1100, cumDistM: 1000 }],
+      profile: { distanceM: 1000, minElevationM: 1000, maxElevationM: 1100 },
+    }
+    card.setStage('analyze')
+    card.setCallbacks({ onRetry, onReturnPlan })
+
+    card.setResilience({ status: 'preparing' })
+    card.update({ status: 'route-terrain-loading' })
+    expect(card.el.textContent).toContain('正在准备路线分析')
+    expect(card.el.querySelector('.profile-recovery:not(.profile-return-plan)').hidden).toBe(true)
+    expect(card.el.querySelector('.profile-return-plan').hidden).toBe(false)
+
+    card.setResilience({ status: 'stale' })
+    card.update({ status: 'route-terrain-loading' })
+    expect(card.el.textContent).toContain('路线已变化，需要重新分析')
+    card.el.querySelector('.profile-recovery:not(.profile-return-plan)').click()
+    expect(onRetry).toHaveBeenCalledOnce()
+
+    card.setResilience({ status: 'failed' })
+    card.update({ status: 'route-terrain-unavailable' })
+    expect(card.el.textContent).toContain('请检查网络后重新分析')
+    expect(card.el.textContent).not.toContain('DEM')
+
+    card.setResilience({ status: 'fallback-ready' })
+    card.update(ready)
+    expect(card.el.querySelector('canvas').classList.contains('hidden')).toBe(false)
+    expect(card.el.textContent).toContain('3D 地形暂不可用，正以 2D 保持路线')
+    card.el.querySelector('.profile-return-plan').click()
+    expect(onReturnPlan).toHaveBeenCalledOnce()
+  })
+
   it('keeps an available elevation profile truthful when its grade is unavailable', () => {
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(canvasContext())
     const card = createProfileCard()

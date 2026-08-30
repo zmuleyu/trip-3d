@@ -249,6 +249,7 @@ body.planner-operate .ui-settings { top: 58px; width: min(360px, calc(100vw - 24
 .profile-recovery { min-height: 32px; margin-top: 7px; padding: 0 10px; border: 1px solid var(--trip-line-strong); border-radius: 10px; background: transparent; color: var(--trip-ink); font: 600 11px/1 var(--trip-font); cursor: pointer; }
 .profile-recovery-actions .profile-recovery { margin-top: 0; }
 .profile-recovery:hover { border-color: var(--trip-route); color: var(--trip-route); }
+.profile-recovery:focus-visible { outline: 2px solid var(--trip-route); outline-offset: 2px; }
 .profile-recovery[hidden] { display: none; }
 .profile-source { display: block; margin-top: 3px; color: var(--trip-ink-soft); font-size: 11px; }
 .ui-profile canvas { display: block; width: 100%; height: 86px; margin-top: 5px; }
@@ -1398,6 +1399,7 @@ body.planner-operate.analyze-operate .ui-profile {
 
 @media (prefers-reduced-transparency: reduce) {
   .ui-profile { background: var(--trip-paper); backdrop-filter: none; }
+  body.planner-operate.analyze-operate .ui-profile { background: #171c1f; backdrop-filter: none; }
 }
 
 /* Plan / Analyze instrument parity ---------------------------------------- */

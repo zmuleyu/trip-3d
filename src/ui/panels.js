@@ -441,6 +441,7 @@ export function createProfileCard(accent = '#ff4d00') {
   let profileReady = false
   let detailsOpen = false
   let terrainState = 'ready'
+  let resilienceStatus = null
   const setDetailsOpen = (open) => {
     detailsOpen = !!open
     details.hidden = !detailsOpen
@@ -698,6 +699,12 @@ export function createProfileCard(accent = '#ff4d00') {
       syncTerrainNotice()
       syncVisibility()
     },
+    setResilience(next) {
+      resilienceStatus = next?.status ?? null
+      if (resilienceStatus === 'fallback-ready') terrainState = 'fallback'
+      else if (terrainState === 'fallback') terrainState = 'ready'
+      syncTerrainNotice()
+    },
     setCallbacks(next) { cbs = { ...cbs, ...next } },
     setCursorDistance(distanceM) {
       lastCursorDistanceM = Number.isFinite(distanceM) ? distanceM : null
@@ -715,9 +722,13 @@ export function createProfileCard(accent = '#ff4d00') {
         : (segmentComparison?.notice ?? '')
       renderSegmentDetails()
     },
-    update(analysis = {}) {
-      const ready = analysis.status === 'ready' && analysisPointsReady(analysis.points) && analysis.profile
-      el.dataset.status = analysis.status ?? 'dem-unavailable'
+    update(analysis = {}, presentation = null) {
+      resilienceStatus = presentation?.status ?? resilienceStatus
+      const status = resilienceStatus ?? analysis.status ?? 'failed'
+      const ready = status === 'ready' || status === 'fallback-ready'
+        ? analysis.status === 'ready' && analysisPointsReady(analysis.points) && analysis.profile
+        : false
+      el.dataset.status = status
       metrics.replaceChildren()
       if (!ready) {
         profileReady = false
@@ -730,20 +741,25 @@ export function createProfileCard(accent = '#ff4d00') {
         metrics.replaceChildren()
         source.textContent = ''
         setDetailsAvailable(false)
-        const recoverable = ['dem-unavailable', 'outside-coverage', 'route-terrain-unavailable', 'route-terrain-budget', 'route-terrain-cancelled'].includes(analysis.status)
-        recoveryActions.hidden = !recoverable
-        recovery.hidden = !recoverable
-        returnPlan.hidden = !recoverable
-        recovery.textContent = analysis.status === 'outside-coverage' ? '补齐路线地形' : '重试'
+        const legacyRecoverable = ['dem-unavailable', 'outside-coverage', 'route-terrain-unavailable', 'route-terrain-budget', 'route-terrain-cancelled'].includes(status)
+        const retryable = resilienceStatus ? ['stale', 'failed'].includes(status) : legacyRecoverable
+        const canReturnPlan = resilienceStatus ? ['preparing', 'stale', 'failed'].includes(status) : legacyRecoverable
+        recoveryActions.hidden = !canReturnPlan
+        recovery.hidden = !retryable
+        returnPlan.hidden = !canReturnPlan
+        recovery.textContent = resilienceStatus ? '重新分析' : (status === 'outside-coverage' ? '补齐路线地形' : '重试')
         statusMessage.textContent = {
           incomplete: '至少添加起点和终点',
+          preparing: '正在准备路线分析；可随时返回规划。',
+          stale: '路线已变化，需要重新分析。',
+          failed: '路线分析暂不可用，请检查网络后重新分析。',
           'outside-coverage': '路线地形尚未补齐',
           'dem-unavailable': '高程数据暂不可用',
           'route-terrain-loading': '正在准备路线分析',
           'route-terrain-unavailable': '路线地形暂不可用',
           'route-terrain-budget': '路线较长，暂时无法补齐完整地形',
           'route-terrain-cancelled': '路线已变化，地形补齐已取消',
-        }[analysis.status] ?? '高程数据暂不可用'
+        }[status] ?? '路线分析暂不可用，请重新分析。'
         syncSliderAvailability()
         cursorReadout.textContent = ''
         syncVisibility()
