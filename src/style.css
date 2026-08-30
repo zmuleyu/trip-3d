@@ -1378,8 +1378,31 @@ body.planner-operate .ui-panel-body { height: calc(100% - 58px); padding: 18px 1
 }
 
 body.planner-operate.analyze-operate .ui-profile {
-  left: 50%; right: auto; bottom: 104px; width: min(720px, calc(100vw - 200px)); max-width: none;
+  left: calc(var(--trip-safe-left) + (100vw - var(--trip-safe-left) - var(--trip-safe-right)) / 2); right: auto; bottom: 104px;
+  width: min(720px, calc(100vw - var(--trip-safe-left) - var(--trip-safe-right))); max-width: none;
   transform: translateX(-50%);
+}
+
+body.analyze-operate .ui-panel:not(.collapsed):has(.route-overview) {
+  width: 320px; min-width: 300px; max-width: calc(100vw - 96px);
+}
+.route-overview { display: grid; color: var(--trip-ink); font-size: 14px; }
+.route-overview-selection { display: grid; gap: 3px; min-height: 48px; padding: 12px 4px; color: var(--trip-ink-soft); line-height: 1.35; }
+.route-overview-selection.is-selected { margin: 0 -14px; padding: 12px 14px; border-top: 1px solid var(--trip-route); border-bottom: 1px solid var(--trip-route); color: var(--trip-ink); }
+.route-overview-selection strong { font-size: 14px; font-weight: 650; }
+.route-overview-selection span, .route-overview-value { color: var(--trip-ink-soft); font-variant-numeric: tabular-nums; }
+.route-overview-facts { border-top: 1px solid var(--trip-line); }
+.route-overview-row { display: grid; grid-template-columns: 86px minmax(0, 1fr); gap: 10px; width: 100%; min-height: 54px; padding: 10px 4px; border: 0; border-bottom: 1px solid var(--trip-line); background: transparent; color: var(--trip-ink); font: inherit; text-align: left; }
+button.route-overview-row { cursor: pointer; }
+button.route-overview-row:hover { background: rgba(31,36,40,.045); }
+.route-overview-row.is-selected { box-shadow: inset 1px 0 var(--trip-route); }
+.route-overview-label { font-weight: 650; }
+.route-overview-value { overflow-wrap: anywhere; text-align: right; }
+.route-overview-status { margin: 0; padding: 12px 4px; border-top: 1px solid var(--trip-line); color: var(--trip-ink-soft); font-size: 11px; line-height: 1.5; }
+
+@media (max-width: 1023px) {
+  body.analyze-operate .ui-panel:has(.route-overview) { display: none !important; }
+  body.planner-operate.analyze-operate .ui-profile { left: 10px; width: auto; }
 }
 
 @media (max-width: 1023px) {

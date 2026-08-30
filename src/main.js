@@ -39,6 +39,7 @@ import { createRouteCandidateId, isCurrentRouteCandidate, routeCandidatePathKey,
 import { initialAnalysisCursorDistance } from './lib/analysisCursor.js'
 import { canMarkAnalysisFresh, createAnalysisFreshness, routeGeometryFingerprint } from './lib/analysisFreshness.js'
 import { deriveAnalyzeResilience, selectionForCurrentAnalysisRun } from './lib/analysisResilience.js'
+import { deriveRouteOverview } from './lib/routeOverview.js'
 import { createSegmentComparison, createSegmentMetrics } from './lib/segmentComparison.js'
 import { sunPosition, shadeFraction } from './lib/sun.js'
 import { resamplePath, flyoverDuration, cameraFrame } from './lib/flyover.js'
@@ -60,7 +61,8 @@ import { createSettingsPanel } from './ui/settingsPanel.js'
 import { formatSummary, loadSummaryPreferences, saveSummaryPreferences } from './ui/summaryPreferences.js'
 import { applyDensity, loadDensity, saveDensity } from './ui/densityPreferences.js'
 import { dismissRouteSelection as dismissRouteSelectionState, planEscapeAction, reconcileRouteSelection, sameRouteSelection, segmentRouteSelection, waypointRouteSelection } from './ui/routeSelection.js'
-import { adjacentAnalysisSegment, analysisSegmentAtDistance, analysisSegmentForSelection } from './ui/analysisSelection.js'
+import { adjacentAnalysisSegment, analysisSegmentAtDistance, analysisSegmentForSelection, analysisSegmentRanges } from './ui/analysisSelection.js'
+import { createRouteOverview } from './ui/routeOverview.js'
 import { selectSearchPlace } from './ui/searchPlaceSelection.js'
 import { createOpenMeteoProvider, createOpenMeteoArchiveProvider } from './providers/openmeteo.js'
 import { createGeocodeProvider, createGeocodeSearchLifecycle } from './providers/geocode.js'
@@ -505,6 +507,7 @@ let demBusy = false
 let demRequestId = 0
 let settingsPanel = null
 let profileCard = null
+let routeOverview = null
 let analyzeTerrainState = 'ready'
 let layerBtns = null
 let mobileLayerReturn = null
@@ -2172,6 +2175,7 @@ const routeActions = {
 }
 const planningPanel = createPlanningPanel(routeActions)
 profileCard = createProfileCard('#ff4d00')
+routeOverview = createRouteOverview({ onSelect: (selection) => setAnalysisSegment(selection) })
 fluidLayout.register(profileCard.el, {
   id: 'profile',
   minWidth: 520,
@@ -2204,7 +2208,7 @@ function currentProfileAnalysisKey(currentRun = currentRouteCorridorRun()) {
 }
 
 function refreshProfileResilience() {
-  if (!profileCard) return
+  if (!profileCard || !routeOverview) return
   const currentRun = currentRouteCorridorRun()
   const presentation = deriveAnalyzeResilience({
     waypointCount: route.waypoints.length,
@@ -2218,6 +2222,13 @@ function refreshProfileResilience() {
   })
   profileCard.setResilience(presentation)
   profileCard.update(lastRouteAnalysis, presentation)
+  routeOverview.update(deriveRouteOverview({
+    route,
+    segments: analysisSegmentRanges(route, lastRouteAnalysis?.points, analysisSegmentLegs),
+    analysis: lastRouteAnalysis,
+    resilience: presentation,
+    selectedSegment: currentAnalysisSegment(),
+  }))
 }
 
 function setAnalyzeTerrainState(next) {
@@ -2348,6 +2359,7 @@ function syncAnalysisSegment() {
   analysisSegmentSelection = reconcileRouteSelection(analysisSegmentSelection, route)
   const segment = currentAnalysisSegment()
   profileCard?.setSelectedSegment(segment)
+  refreshProfileResilience()
   syncSegmentComparison()
   overviewMap?.setAnalysisSegment(segment)
   return segment
@@ -2766,11 +2778,17 @@ workspaceLifecycle = createWorkspaceLifecycleCoordinator({
     document.body.classList.toggle('analyze-operate', analyze)
     plannerWorkspace?.setStage(stage)
     if (analyze) {
-      panelHost.hide()
+      panelHost.show('route-overview', '路线概览', 'ESC 关闭', routeOverview.el)
+      panelHost.setCollapsed(false)
       rail.clearActive()
+      requestAnimationFrame(() => {
+        fluidLayout.refresh('inspector')
+        overviewMap.fit()
+      })
       restoreAnalyzeTerrainView()
       return
     }
+    panelHost.hide()
     workspaceLifecycle.setMapWorkspace({ weather: false })
     workspaceLifecycle.fit()
     renderCorridorAdjustment()
