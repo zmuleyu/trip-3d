@@ -48,6 +48,7 @@ import { routeProviderStatus } from './lib/routeStatus.js'
 import { computeHorizontalLegs, computeLegs, computeLegsFromPts, normalizeOsrmLegs } from './lib/legs.js'
 import { RouteLayer } from './route/RouteLayer.js'
 import { openRouteStore } from './lib/store.js'
+import { createRouteSaveState } from './lib/routeSaveState.js'
 import { routeToGpx, gpxToRoute } from './lib/gpx.js'
 import { encodeShare, decodeShare } from './lib/share.js'
 import { createRail, createPanelHost, createLayerButtons, createToast } from './ui/chrome.js'
@@ -58,7 +59,7 @@ import { createWeatherPanel } from './ui/weatherPanel.js'
 import { createSettingsPanel } from './ui/settingsPanel.js'
 import { formatSummary, loadSummaryPreferences, saveSummaryPreferences } from './ui/summaryPreferences.js'
 import { applyDensity, loadDensity, saveDensity } from './ui/densityPreferences.js'
-import { reconcileRouteSelection, sameRouteSelection, segmentRouteSelection, waypointRouteSelection } from './ui/routeSelection.js'
+import { dismissRouteSelection as dismissRouteSelectionState, planEscapeAction, reconcileRouteSelection, sameRouteSelection, segmentRouteSelection, waypointRouteSelection } from './ui/routeSelection.js'
 import { adjacentAnalysisSegment, analysisSegmentAtDistance, analysisSegmentForSelection } from './ui/analysisSelection.js'
 import { selectSearchPlace } from './ui/searchPlaceSelection.js'
 import { createOpenMeteoProvider, createOpenMeteoArchiveProvider } from './providers/openmeteo.js'
@@ -1399,7 +1400,7 @@ const saveWeatherPreferences = (value) => {
   try { localStorage.setItem(WEATHER_UI_LS, JSON.stringify(weatherPreferences)) } catch { /* optional preference */ }
   return weatherPreferences
 }
-let lastSavedRouteVersion = null
+const routeSaveState = createRouteSaveState()
 let routeSelection = null
 
 let lastSyncedTripDays = 0 // itinerary→weather days sync guard
@@ -1471,7 +1472,7 @@ function updateRouteUI(route, stats, pts, { fitOverview = true } = {}) {
     precipitationMm: wxFlat.length ? wxFlat.reduce((sum, point) => sum + (Number(point.precipMm) || 0), 0) : null,
     maxWindKmh: wxFlat.length ? Math.max(...wxFlat.map((point) => point.windMax).filter(Number.isFinite)) : null,
     weatherRiskCount: wxDays?.filter((day) => day.isRain || day.windMax >= 30).length ?? null,
-    saved: route.waypoints.length >= 2 ? lastSavedRouteVersion === `${route.id}:${route.revision}` : null,
+    saved: routeSaveState.status(route) === 'saved',
   }
   panelHost.setSummary(route.waypoints.length
     ? formatSummary(summaryPreferences, summaryData, globalThis.matchMedia?.('(max-width: 1023px)').matches ? 2 : 4)
@@ -1483,7 +1484,9 @@ function updateRouteUI(route, stats, pts, { fitOverview = true } = {}) {
     name: route.name,
     dateText: wxDays?.length ? `${wxDays[0].date} — ${wxDays.at(-1).date}` : null,
     saved: summaryData.saved,
+    saveStatus: routeSaveState.status(route),
   })
+  plannerWorkspace?.setHistoryState({ canUndo: route.canUndo(), canRedo: route.canRedo() })
   routeSelection = reconcileRouteSelection(routeSelection, route)
   plannerWorkspace?.setJourneySpine({
     route,
@@ -2075,12 +2078,11 @@ const routeActions = {
   onNameChange: (v) => runPlanRouteMutation(() => {
     route.setName(v)
     params.routeName = v
-    lastSavedRouteVersion = null
     refreshRoute({ recordHistory: false, fitOverview: false })
   }),
   onDaySelect: ({ startIndex }) => runPlanRouteMutation(() => setSelectedWaypoint(route.waypoints[startIndex]?.id)),
-  onUndo: () => runPlanRouteMutation(() => { if (route.undo()) applyRouteModeState(route.mode) }),
-  onRedo: () => runPlanRouteMutation(() => { if (route.redo()) applyRouteModeState(route.mode) }),
+  onUndo: () => performHistoryAction('undo'),
+  onRedo: () => performHistoryAction('redo'),
   onClear: () => runPlanRouteMutation(() => { route.clear(); refreshRoute(); scheduleSnap() }),
   onReverse: () => runPlanRouteMutation(() => { if (route.reverse()) { refreshRoute(); scheduleSnap(); toast.show('已反向') } }),
   onCloseLoop: () => runPlanRouteMutation(() => { if (route.close()) { refreshRoute(); scheduleSnap(); toast.show('已闭环') } else toast.show('已是环线或点位不足') }),
@@ -2109,13 +2111,24 @@ const routeActions = {
   onSave: async () => {
     if (!requireWaypointElevations('保存或分享')) return
     const s = await routeStoreReady
-    if (!s) { toast.show('本地存储不可用,保存失败'); return }
-    await s.save(route)
-    lastSavedRouteVersion = `${route.id}:${route.revision}`
-    refreshRoute({ recordHistory: false, fitOverview: false })
-    await refreshLibrary()
-    toast.show(`已保存「${route.name}」`)
-    showTab('library')
+    if (!s) {
+      routeSaveState.markUnavailable()
+      refreshRoute({ recordHistory: false, fitOverview: false })
+      toast.show('本地存储不可用,保存失败')
+      return
+    }
+    try {
+      await s.save(route)
+      routeSaveState.markSaved(route)
+      refreshRoute({ recordHistory: false, fitOverview: false })
+      await refreshLibrary()
+      toast.show(`已保存「${route.name}」`)
+      showTab('library')
+    } catch (error) {
+      routeSaveState.markFailed(route)
+      refreshRoute({ recordHistory: false, fitOverview: false })
+      toast.show('保存失败，请检查本机存储后重试')
+    }
   },
   onShare: async () => {
     if (!requireWaypointElevations('保存或分享')) return
@@ -2596,6 +2609,26 @@ function runPlanRouteMutation(mutate) {
   })
 }
 
+function dismissRouteSelection() {
+  const next = dismissRouteSelectionState(routeSelection, route.selectedWaypointId)
+  if (!next.changed) return false
+  routeSelection = next.selection
+  route.setSelectedWaypoint(next.selectedWaypointId)
+  refreshRoute({ recordHistory: false, fitOverview: false })
+  requestAnimationFrame(() => overviewMap.focusPlanner?.())
+  return true
+}
+
+function performHistoryAction(action) {
+  return runPlanRouteMutation(() => {
+    const changed = action === 'redo' ? route.redo() : route.undo()
+    if (!changed) return false
+    applyRouteModeState(route.mode)
+    toast.show(action === 'redo' ? '重做' : '撤销')
+    return true
+  })
+}
+
 plannerWorkspace = createPlannerWorkspace({
   version: packageMetadata.version,
   onStage: (stage) => {
@@ -2625,12 +2658,12 @@ plannerWorkspace = createPlannerWorkspace({
     requestAnimationFrame(() => overviewMap.fit())
   },
   onSpineDismiss: () => {
-    routeSelection = null
-    refreshRoute({ recordHistory: false, fitOverview: false })
-    requestAnimationFrame(() => overviewMap.fit())
+    dismissRouteSelection()
   },
   onMoreAction: (action) => {
     if (action === 'save') routeActions.onSave()
+    if (action === 'undo') performHistoryAction('undo')
+    if (action === 'redo') performHistoryAction('redo')
     if (action === 'share') showTab('share')
     if (action === 'import') routeActions.onImportGpx()
     if (action === 'export') routeActions.onExportGpx()
@@ -2644,6 +2677,19 @@ plannerWorkspace = createPlannerWorkspace({
       fluidLayout.reset()
       toast.show('面板布局已重置')
       requestAnimationFrame(() => overviewMap.fit())
+    }
+  },
+  onWaypointAction: ({ action, waypointId, name } = {}) => {
+    const index = route.waypoints.findIndex((waypoint) => waypoint.id === waypointId)
+    if (index < 0) return
+    if (action === 'rename') {
+      routeActions.onWpRename(index, name)
+      requestAnimationFrame(() => plannerWorkspace.focusWaypointAction('rename'))
+    }
+    if (action === 'insert-after') routeActions.onInsertAt(index + 1)
+    if (action === 'remove') {
+      routeActions.onWpRemove(index)
+      requestAnimationFrame(() => plannerWorkspace.focusSearch())
     }
   },
   onMenuChange: (_menu, open) => {
@@ -2679,7 +2725,7 @@ const libraryPanel = createLibraryPanel({
     if (!r) return
     runPlanRouteMutation(() => {
       route.replaceRoute(r, { resetHistory: false })
-      lastSavedRouteVersion = `${r.id}:${r.revision}`
+      routeSaveState.markSaved(r)
       applyRouteModeState(route.mode, { refresh: false })
       params.routeName = r.name
       ensureRouteLayer()
@@ -2762,21 +2808,26 @@ window.addEventListener('keydown', (e) => {
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return // don't hijack form editing
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
     e.preventDefault()
-    runPlanRouteMutation(() => {
-      if (route.undo()) { applyRouteModeState(route.mode); toast.show('撤销') }
-    })
+    performHistoryAction('undo')
     return
   }
   if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey))) {
     e.preventDefault()
-    runPlanRouteMutation(() => {
-      if (route.redo()) { applyRouteModeState(route.mode); toast.show('重做') }
-    })
+    performHistoryAction('redo')
     return
   }
-  if (e.key === 'Escape' && insertIndex != null) {
-    insertIndex = null // cancel pending insert before exiting planning
+  const escapeAction = e.key === 'Escape' && isPlanStage()
+    ? planEscapeAction({ insertIndex, selection: routeSelection })
+    : 'none'
+  if (escapeAction === 'cancel-insert') {
+    e.preventDefault()
+    insertIndex = null
     toast.show('已取消插入')
+    return
+  }
+  if (escapeAction === 'dismiss-selection') {
+    e.preventDefault()
+    dismissRouteSelection()
     return
   }
   if (adminInteraction.handleKey(e.key)) {

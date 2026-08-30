@@ -111,6 +111,30 @@ describe('planner workspace chrome', () => {
     expect(onMoreAction).toHaveBeenCalledWith('admin')
   })
 
+  it('keeps More history controls on the same action seam and reflects availability', () => {
+    const onMoreAction = vi.fn()
+    const workspace = createPlannerWorkspace({ onMoreAction })
+    workspace.setHistoryState({ canUndo: true, canRedo: false })
+    const undo = workspace.el.querySelector('[data-more-action="undo"]')
+    const redo = workspace.el.querySelector('[data-more-action="redo"]')
+    expect(undo.disabled).toBe(false)
+    expect(redo.disabled).toBe(true)
+    expect(undo.textContent).toContain('Ctrl/⌘ Z')
+    expect(redo.textContent).toContain('Ctrl/⌘ ⇧ Z')
+    undo.click()
+    expect(onMoreAction).toHaveBeenCalledWith('undo')
+  })
+
+  it('keeps local save state visible from More when the route summary is absent', () => {
+    const workspace = createPlannerWorkspace()
+    workspace.updateTrip({ name: '川西线路', saveStatus: 'dirty' })
+    const saveStatus = workspace.el.querySelector('[data-more-save-status]')
+    expect(saveStatus.hidden).toBe(false)
+    expect(saveStatus.textContent).toBe('未保存更改')
+    workspace.updateTrip({ name: '川西线路', saveStatus: 'saved' })
+    expect(saveStatus.textContent).toBe('已保存到本机')
+  })
+
   it('keeps global actions and layers mutually exclusive', () => {
     const onMenuChange = vi.fn()
     const workspace = createPlannerWorkspace({ onMenuChange })
@@ -190,6 +214,40 @@ describe('planner workspace chrome', () => {
     expect(onSpineExpand).toHaveBeenCalledOnce()
     workspace.el.querySelector('.ui-trip-spine-close').click()
     expect(onSpineDismiss).toHaveBeenCalledOnce()
+  })
+
+  it('offers explicit waypoint operations with keyboard-safe inline rename', () => {
+    const onWaypointAction = vi.fn()
+    const workspace = createPlannerWorkspace({ onWaypointAction })
+    document.body.appendChild(workspace.el)
+    const route = { waypoints: [
+      { id: 'a', name: '起点', lon: 102.1, lat: 31.1 },
+      { id: 'b', name: '营地', lon: 102.2, lat: 31.2 },
+      { id: 'c', name: '终点', lon: 102.3, lat: 31.3 },
+    ] }
+    workspace.setJourneySpine({ route, selection: { kind: 'waypoint', waypointId: 'b' } })
+    const actions = workspace.el.querySelector('.ui-waypoint-actions')
+    expect(actions?.textContent).toContain('途经点操作')
+    expect(workspace.el.querySelector('.ui-trip-spine').classList.contains('waypoint-selected')).toBe(true)
+    expect(workspace.el.querySelector('.ui-trip-spine-title').getAttribute('aria-label')).toBe('查看地点详情')
+    expect(workspace.el.querySelector('.ui-trip-spine-day > b')).toBeNull()
+    expect(workspace.el.querySelector('.ui-trip-spine-day > small')).toBeNull()
+    const rename = [...actions.querySelectorAll('button')].find((button) => button.textContent === '重命名')
+    rename.click()
+    const input = actions.querySelector('input')
+    expect(document.activeElement).toBe(input)
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
+    expect(document.activeElement).toBe(rename)
+    rename.click()
+    input.value = '新营地'
+    actions.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+    expect(onWaypointAction).toHaveBeenCalledWith({ action: 'rename', waypointId: 'b', name: '新营地' })
+    expect(workspace.focusWaypointAction('rename')).toBe(true)
+    expect(document.activeElement).toBe(rename)
+    ;[...actions.querySelectorAll('button')].find((button) => button.textContent === '在后方插入').click()
+    ;[...actions.querySelectorAll('button')].find((button) => button.textContent === '删除').click()
+    expect(onWaypointAction).toHaveBeenCalledWith({ action: 'insert-after', waypointId: 'b' })
+    expect(onWaypointAction).toHaveBeenCalledWith({ action: 'remove', waypointId: 'b' })
   })
 
   it('routes layout reset through the shared utility menu', () => {
