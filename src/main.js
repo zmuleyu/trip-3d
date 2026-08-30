@@ -2241,20 +2241,33 @@ function retryRouteEnrichment() {
   void requestRouteCorridorAnalysis({ force: true })
 }
 
+function restoreAnalyzeTerrainView() {
+  if (workspaceLifecycle?.stage !== WORKFLOW_STAGES.ANALYZE) return false
+  profileCard?.setTerrainState('preparing')
+  const actual = workspaceLifecycle.setMapWorkspace({ weather: false })
+  if (actual !== '3d') {
+    profileCard?.setTerrainState('fallback')
+    return false
+  }
+  profileCard?.setTerrainState('ready')
+  workspaceLifecycle.fit()
+  void requestRouteCorridorAnalysis()
+  return true
+}
+
 profileCard.setCallbacks({
   onCursorDistance: setAnalysisCursor,
   onRetry: retryRouteEnrichment,
+  onRetryTerrain: restoreAnalyzeTerrainView,
   onReturnPlan: () => workspaceLifecycle?.setStage(WORKFLOW_STAGES.PLAN),
 })
 const overviewMap = createOverviewMap({
   terrainExaggeration: params.demExaggeration,
   onTerrainUnavailable: (error) => {
-    plannerWorkspace?.setStage(WORKFLOW_STAGES.PLAN)
     workspaceLifecycle?.setLegacyFrameModeActive(false)
-    workspaceLifecycle?.fallback('terrain-unavailable')
-    toast.show(error?.message === 'WebGL context lost'
-      ? '地形显示已中断；已返回路线规划'
-      : '地形分析暂时不可用；已返回路线规划')
+    if (workspaceLifecycle?.stage !== WORKFLOW_STAGES.ANALYZE) return
+    profileCard?.setTerrainState('fallback')
+    workspaceLifecycle.continueIn2d({ weather: false })
   },
   onJump: (lon, lat) => { if (geo && dem) flyToLonLat(lon, lat, 10) },
   onWaypointSelect: setSelectedWaypoint,
@@ -2440,6 +2453,7 @@ workspaceLifecycle = createWorkspaceLifecycleCoordinator({
     closeMobileLayers({ restoreInspector: false, restoreFocus: false })
     const analyze = stage === WORKFLOW_STAGES.ANALYZE
     profileCard?.setStage(stage)
+    profileCard?.setTerrainState(analyze ? 'preparing' : 'ready')
     if (!analyze) {
       clearAnalysisCursor()
     } else initializeAnalysisCursor()
@@ -2448,11 +2462,7 @@ workspaceLifecycle = createWorkspaceLifecycleCoordinator({
     if (analyze) {
       panelHost.hide()
       rail.clearActive()
-      if (workspaceLifecycle.setMapWorkspace({ weather: false }) !== '3d') workspaceLifecycle.fallback('terrain-unavailable')
-      else {
-        workspaceLifecycle.fit()
-        void requestRouteCorridorAnalysis()
-      }
+      restoreAnalyzeTerrainView()
       return
     }
     workspaceLifecycle.setMapWorkspace({ weather: false })
@@ -2467,7 +2477,7 @@ workspaceLifecycle = createWorkspaceLifecycleCoordinator({
   },
   onPlannerViewRequest: (view) => overviewMap.setPlannerView(view),
   onPlannerViewChange: ({ actual, stage, mapWorkspaceActive }) => {
-    document.body.classList.toggle('planner-2d', stage === WORKFLOW_STAGES.PLAN && actual === '2d')
+    document.body.classList.toggle('planner-2d', actual === '2d')
     document.body.classList.toggle('planner-3d', stage === WORKFLOW_STAGES.ANALYZE && actual === '3d')
     overviewMap.update(route, lastRoutePts, currentViewportRect(), { fit: false })
     if (mapWorkspaceActive) overviewMap.resize({ fit: false })
@@ -2476,7 +2486,10 @@ workspaceLifecycle = createWorkspaceLifecycleCoordinator({
     overviewMap.resize({ fit: false })
     overviewMap.update(route, lastRoutePts, currentViewportRect(), { fit: false })
   }),
-  onFit: () => requestAnimationFrame(() => overviewMap.resize({ fit: false })),
+  onFit: () => requestAnimationFrame(() => {
+    overviewMap.resize({ fit: false })
+    overviewMap.fit()
+  }),
 })
 plannerWorkspace.setAnalyzeAvailable(routeCanBeAnalyzed(route))
 window.addEventListener('keydown', (e) => {

@@ -241,6 +241,8 @@ body.planner-operate .ui-settings { top: 58px; width: min(360px, calc(100vw - 24
 .profile-metrics { display: flex; flex-wrap: wrap; gap: 3px 18px; color: var(--trip-ink); font-size: 11px; font-variant-numeric: tabular-nums; }
 .profile-status { margin: 3px 0 0; color: var(--trip-ink-soft); font-size: 11px; line-height: 1.35; }
 .profile-status-pill { width: fit-content; max-width: 100%; padding: 4px 8px; border-radius: 999px; background: rgba(31,36,40,.06); overflow-wrap: anywhere; }
+.profile-terrain-notice { margin: 1px 0 7px; color: var(--trip-ink-soft); font-size: 11px; line-height: 1.4; }
+.profile-terrain-notice[hidden] { display: none; }
 .profile-cursor-readout { margin-left: 8px; color: var(--trip-ink); font-variant-numeric: tabular-nums; }
 .profile-recovery-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 7px; }
 .profile-recovery-actions[hidden] { display: none; }
@@ -267,6 +269,7 @@ body.planner-operate .ui-settings { top: 58px; width: min(360px, calc(100vw - 24
 .ui-profile[data-status="route-terrain-unavailable"] .profile-status,
 .ui-profile[data-status="route-terrain-budget"] .profile-status,
 .ui-profile[data-status="route-terrain-cancelled"] .profile-status { color: var(--trip-warning); }
+.ui-profile[data-terrain-state="fallback"] .profile-terrain-notice { color: var(--trip-warning); }
 
 
 /* ------------------------------------------------------------------ weather panel */
@@ -1705,6 +1708,8 @@ body.planner-operate.analyze-operate .ui-profile .head .fold,
 body.planner-operate.analyze-operate .profile-status,
 body.planner-operate.analyze-operate .profile-source,
 body.planner-operate.analyze-operate .profile-details-toggle { color: var(--instrument-muted); }
+body.planner-operate.analyze-operate .profile-terrain-notice { color: var(--instrument-text); }
+body.planner-operate.analyze-operate .ui-profile[data-terrain-state="fallback"] .profile-terrain-notice { color: #ffd0be; }
 body.planner-operate.analyze-operate .profile-status-pill { background: rgba(255, 255, 255, .06); }
 body.planner-operate.analyze-operate .profile-cursor-readout,
 body.planner-operate.analyze-operate .profile-metrics,

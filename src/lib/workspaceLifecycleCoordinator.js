@@ -52,10 +52,10 @@ export function createWorkspaceLifecycleCoordinator({
     return actual
   }
 
-  const workspaceState = (weather = false) => ({
+  const workspaceState = (weather = false, view = null) => ({
     weather: !!weather,
     editing: workflowStage.stage === WORKFLOW_STAGES.PLAN,
-    view: workflowStage.stage === WORKFLOW_STAGES.ANALYZE ? '3d' : '2d',
+    view: view ?? (workflowStage.stage === WORKFLOW_STAGES.ANALYZE ? '3d' : '2d'),
   })
 
   return {
@@ -79,6 +79,16 @@ export function createWorkspaceLifecycleCoordinator({
       const state = workspaceState(weather)
       onWorkspaceChange?.({ ...state, mapWorkspaceActive })
       const actual = applyPlannerView(state.view)
+      onWorkspaceSettled?.({ ...state, actual, mapWorkspaceActive })
+      return actual
+    },
+    // A terrain or WebGL failure must not discard the Analyze stage. Keep its
+    // read-only route context active while the shared map continues in 2D.
+    continueIn2d({ weather = false } = {}) {
+      mapWorkspaceActive = true
+      const state = workspaceState(weather, '2d')
+      onWorkspaceChange?.({ ...state, mapWorkspaceActive })
+      const actual = applyPlannerView('2d')
       onWorkspaceSettled?.({ ...state, actual, mapWorkspaceActive })
       return actual
     },

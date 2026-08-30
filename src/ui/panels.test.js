@@ -161,7 +161,7 @@ describe('Analyze elevation profile', () => {
   it.each([
     ['dem-unavailable', '高程数据暂不可用'],
     ['outside-coverage', '路线地形尚未补齐'],
-    ['route-terrain-loading', '路线地形 · 正在补齐'],
+    ['route-terrain-loading', '正在准备路线分析'],
     ['route-terrain-unavailable', '路线地形暂不可用'],
     ['route-terrain-budget', '路线较长，暂时无法补齐完整地形'],
     ['route-terrain-cancelled', '路线已变化，地形补齐已取消'],
@@ -368,6 +368,27 @@ describe('Analyze elevation profile', () => {
     expect(card.el.querySelector('.profile-details-toggle').disabled).toBe(false)
     expect(card.el.querySelector('.profile-details').hidden).toBe(true)
     expect(card.el.querySelector('.profile-details-toggle').getAttribute('aria-expanded')).toBe('false')
+  })
+
+  it('keeps the Analyze shell available while terrain falls back to 2D', () => {
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(canvasContext())
+    const onRetryTerrain = vi.fn(() => card.setTerrainState('ready'))
+    const onReturnPlan = vi.fn()
+    const card = createProfileCard()
+    card.setCallbacks({ onRetryTerrain, onReturnPlan })
+    card.setStage('analyze')
+    card.setTerrainState('fallback')
+
+    expect(card.el.dataset.terrainState).toBe('fallback')
+    expect(card.el.textContent).toContain('正以 2D 保持路线')
+    card.el.querySelector('.profile-terrain-actions button').click()
+    expect(onRetryTerrain).toHaveBeenCalledOnce()
+    expect(card.el.dataset.terrainState).toBe('ready')
+    expect(card.el.querySelector('.profile-terrain-notice').hidden).toBe(true)
+
+    card.setTerrainState('fallback')
+    card.el.querySelector('.profile-terrain-actions button + button').click()
+    expect(onReturnPlan).toHaveBeenCalledOnce()
   })
 
   it('keeps an available elevation profile truthful when its grade is unavailable', () => {
