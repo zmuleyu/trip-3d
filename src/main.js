@@ -2241,14 +2241,24 @@ function retryRouteEnrichment() {
   void requestRouteCorridorAnalysis({ force: true })
 }
 
+function restoreAnalyzeTerrainView() {
+  if (workspaceLifecycle?.stage !== WORKFLOW_STAGES.ANALYZE) return false
+  profileCard?.setTerrainState('preparing')
+  const actual = workspaceLifecycle.setMapWorkspace({ weather: false })
+  if (actual !== '3d') {
+    profileCard?.setTerrainState('fallback')
+    return false
+  }
+  profileCard?.setTerrainState('ready')
+  workspaceLifecycle.fit()
+  void requestRouteCorridorAnalysis()
+  return true
+}
+
 profileCard.setCallbacks({
   onCursorDistance: setAnalysisCursor,
   onRetry: retryRouteEnrichment,
-  onRetryTerrain: () => {
-    if (workspaceLifecycle?.stage !== WORKFLOW_STAGES.ANALYZE) return
-    profileCard?.setTerrainState('preparing')
-    workspaceLifecycle.setMapWorkspace({ weather: false })
-  },
+  onRetryTerrain: restoreAnalyzeTerrainView,
   onReturnPlan: () => workspaceLifecycle?.setStage(WORKFLOW_STAGES.PLAN),
 })
 const overviewMap = createOverviewMap({
@@ -2452,15 +2462,7 @@ workspaceLifecycle = createWorkspaceLifecycleCoordinator({
     if (analyze) {
       panelHost.hide()
       rail.clearActive()
-      if (workspaceLifecycle.setMapWorkspace({ weather: false }) !== '3d') {
-        profileCard?.setTerrainState('fallback')
-        workspaceLifecycle.continueIn2d({ weather: false })
-      }
-      else {
-        profileCard?.setTerrainState('ready')
-        workspaceLifecycle.fit()
-        void requestRouteCorridorAnalysis()
-      }
+      restoreAnalyzeTerrainView()
       return
     }
     workspaceLifecycle.setMapWorkspace({ weather: false })

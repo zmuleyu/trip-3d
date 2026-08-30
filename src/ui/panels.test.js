@@ -372,7 +372,7 @@ describe('Analyze elevation profile', () => {
 
   it('keeps the Analyze shell available while terrain falls back to 2D', () => {
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(canvasContext())
-    const onRetryTerrain = vi.fn()
+    const onRetryTerrain = vi.fn(() => card.setTerrainState('ready'))
     const onReturnPlan = vi.fn()
     const card = createProfileCard()
     card.setCallbacks({ onRetryTerrain, onReturnPlan })
@@ -382,8 +382,12 @@ describe('Analyze elevation profile', () => {
     expect(card.el.dataset.terrainState).toBe('fallback')
     expect(card.el.textContent).toContain('正以 2D 保持路线')
     card.el.querySelector('.profile-terrain-actions button').click()
-    card.el.querySelector('.profile-terrain-actions button + button').click()
     expect(onRetryTerrain).toHaveBeenCalledOnce()
+    expect(card.el.dataset.terrainState).toBe('ready')
+    expect(card.el.querySelector('.profile-terrain-notice').hidden).toBe(true)
+
+    card.setTerrainState('fallback')
+    card.el.querySelector('.profile-terrain-actions button + button').click()
     expect(onReturnPlan).toHaveBeenCalledOnce()
   })
 

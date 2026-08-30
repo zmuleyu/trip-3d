@@ -1708,6 +1708,8 @@ body.planner-operate.analyze-operate .ui-profile .head .fold,
 body.planner-operate.analyze-operate .profile-status,
 body.planner-operate.analyze-operate .profile-source,
 body.planner-operate.analyze-operate .profile-details-toggle { color: var(--instrument-muted); }
+body.planner-operate.analyze-operate .profile-terrain-notice { color: var(--instrument-text); }
+body.planner-operate.analyze-operate .ui-profile[data-terrain-state="fallback"] .profile-terrain-notice { color: #ffd0be; }
 body.planner-operate.analyze-operate .profile-status-pill { background: rgba(255, 255, 255, .06); }
 body.planner-operate.analyze-operate .profile-cursor-readout,
 body.planner-operate.analyze-operate .profile-metrics,
