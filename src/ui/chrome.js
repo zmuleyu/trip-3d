@@ -243,7 +243,11 @@ export function createLayerButtons({ buttons, onStateChange } = {}) {
     const section = document.createElement('section')
     section.className = 'ui-layer-section'
     const heading = document.createElement('h3')
-    heading.textContent = id === 'base' ? '底图' : '叠加信息'
+    heading.textContent = ({
+      base: '底图',
+      annotation: '地图标注',
+      analysis: '分析叠加',
+    })[id] ?? '地图标注'
     const rows = document.createElement('div')
     rows.className = 'ui-layer-rows'
     section.append(heading, rows)
@@ -253,6 +257,8 @@ export function createLayerButtons({ buttons, onStateChange } = {}) {
   }
   const map = new Map()
   for (const b of buttons) {
+    const entry = document.createElement('div')
+    entry.className = 'ui-layer-entry'
     const btn = document.createElement('button')
     btn.className = 'ui-layer-btn'
     btn.innerHTML = `${iconSvg(b.icon)}<span class="ui-layer-label">${b.tip}</span><span class="ui-layer-state" aria-hidden="true"></span>`
@@ -263,6 +269,15 @@ export function createLayerButtons({ buttons, onStateChange } = {}) {
     btn.appendChild(tip)
     let on = !!b.initial
     btn.classList.toggle('on', on)
+    const feedback = document.createElement('div')
+    feedback.className = 'ui-layer-feedback hidden'
+    feedback.setAttribute('role', 'status')
+    const feedbackCopy = document.createElement('span')
+    const retry = document.createElement('button')
+    retry.type = 'button'
+    retry.className = 'ui-layer-retry hidden'
+    retry.textContent = '重试'
+    feedback.append(feedbackCopy, retry)
     let panelOpen = false
     btn.setAttribute('aria-label', b.tip)
     btn.setAttribute('aria-pressed', String(on))
@@ -294,9 +309,21 @@ export function createLayerButtons({ buttons, onStateChange } = {}) {
         if (notify && changed) b.onToggle(b.id, on)
         onStateChange?.(b.id, on)
       },
+      setAvailability({ state = 'ready', message = '', onRetry = null } = {}) {
+        const loading = state === 'loading'
+        const error = state === 'error'
+        btn.disabled = loading
+        btn.setAttribute('aria-busy', String(loading))
+        btn.dataset.availability = state
+        feedback.classList.toggle('hidden', !loading && !error)
+        feedbackCopy.textContent = message
+        retry.classList.toggle('hidden', !error || typeof onRetry !== 'function')
+        retry.onclick = typeof onRetry === 'function' ? onRetry : null
+      },
       setPanelOpen(v) { panelOpen = !!v; btn.classList.toggle('panel-open', panelOpen); if (b.repeatOpensPanel) btn.setAttribute('aria-expanded', String(panelOpen)) },
     })
-    ensureGroup(b.group === 'base' ? 'base' : 'overlay').appendChild(btn)
+    entry.append(btn, feedback)
+    ensureGroup(['base', 'annotation', 'analysis'].includes(b.group) ? b.group : 'annotation').appendChild(entry)
   }
   document.body.appendChild(el)
   return { el, get: (id) => map.get(id) }
