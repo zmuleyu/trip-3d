@@ -38,6 +38,7 @@ import { createRouteDemAnalysisController, createRouteDemCoverage, createRouteDe
 import { createRouteCandidateId, isCurrentRouteCandidate, routeCandidatePathKey, weatherResultMatchesPath } from './lib/routeCandidates.js'
 import { initialAnalysisCursorDistance } from './lib/analysisCursor.js'
 import { canMarkAnalysisFresh, createAnalysisFreshness, routeGeometryFingerprint } from './lib/analysisFreshness.js'
+import { deriveAnalyzeResilience, selectionForCurrentAnalysisRun } from './lib/analysisResilience.js'
 import { createSegmentComparison, createSegmentMetrics } from './lib/segmentComparison.js'
 import { sunPosition, shadeFraction } from './lib/sun.js'
 import { resamplePath, flyoverDuration, cameraFrame } from './lib/flyover.js'
@@ -503,6 +504,7 @@ let demBusy = false
 let demRequestId = 0
 let settingsPanel = null
 let profileCard = null
+let analyzeTerrainState = 'ready'
 let layerBtns = null
 let mobileLayerReturn = null
 let mobileOutsideLayerPointer = null
@@ -605,7 +607,7 @@ async function loadRealTerrain() {
     if (!dem) {
       lastRouteAnalysis = route.analyzeElevation({ geo, sampleElevation: null })
       lastRoutePts = []
-      profileCard?.update(lastRouteAnalysis)
+      refreshProfileResilience()
     }
     loadingEl.textContent = 'elevation fetch failed — check connection'
     setTimeout(() => {
@@ -1059,13 +1061,20 @@ function cancelWaypointMove(id) {
 }
 
 function refreshUnavailableRouteAnalysis(coordinates, { recordHistory, fitOverview }) {
+  if (analysisSegmentSelection && !analysisFreshness.isStale(route)) {
+    analysisSegmentRestore = {
+      fingerprint: routeGeometryFingerprint(route),
+      runKey: currentRouteCorridorRun().key,
+      selection: analysisSegmentSelection,
+    }
+  }
   analysisCursorPathKey = ''
   clearAnalysisCursor()
   analysisSegmentSelection = null
   analysisSegmentLegs = []
   routeLayer?.clear()
   lastRoutePts = []
-  profileCard?.update(lastRouteAnalysis)
+  refreshProfileResilience()
   route.normalizeDayBoundaries()
   if (recordHistory) route.recordHistory()
   updateRouteUI(route, {
@@ -1170,8 +1179,9 @@ function applyReadyRouteAnalysis({ recordHistory = false, fitOverview = false } 
   if (analysisCursorPathKey && analysisCursorPathKey !== nextAnalysisCursorPathKey) clearAnalysisCursor()
   analysisCursorPathKey = nextAnalysisCursorPathKey
   lastRoutePts = pts
-  profileCard?.update(lastRouteAnalysis)
+  refreshProfileResilience()
   markAnalysisFreshIfUsable()
+  restoreAnalysisSegmentSelection()
   if (!initializeAnalysisCursor(pts)) overviewMap?.setAnalysisCursor({ points: pts, distanceM: analysisCursorDistanceM })
   route.normalizeDayBoundaries() // id-based markers: drop refs to deleted waypoints
   if (recordHistory) route.recordHistory() // safe: dedup no-ops on non-route refreshes
@@ -2163,6 +2173,7 @@ let plannerWorkspace
 let analysisCursorDistanceM = null
 let analysisCursorPathKey = ''
 let analysisSegmentSelection = null
+let analysisSegmentRestore = null
 let analysisSegmentLegs = []
 let analysisSegmentRouteId = ''
 let corridorAdjustmentSelection = null
@@ -2171,6 +2182,35 @@ const segmentComparison = createSegmentComparison()
 
 function syncAnalysisFreshness() {
   plannerWorkspace?.setAnalysisFreshness({ stale: analysisFreshness.isStale(route) })
+  refreshProfileResilience()
+}
+
+function currentProfileAnalysisKey(currentRun = currentRouteCorridorRun()) {
+  if (routeCorridorState.status === 'ready') return routeCorridorState.key
+  return lastRouteCoverage.covered ? currentRun.key : routeCorridorState.key
+}
+
+function refreshProfileResilience() {
+  if (!profileCard) return
+  const currentRun = currentRouteCorridorRun()
+  const presentation = deriveAnalyzeResilience({
+    waypointCount: route.waypoints.length,
+    analysis: lastRouteAnalysis,
+    analysisKey: currentProfileAnalysisKey(currentRun),
+    currentRunKey: currentRun.key,
+    corridorStatus: routeCorridorState.status,
+    corridorError: routeCorridorState.error,
+    freshnessStale: analysisFreshness.isStale(route),
+    terrainState: analyzeTerrainState,
+  })
+  profileCard.setResilience(presentation)
+  profileCard.update(lastRouteAnalysis, presentation)
+}
+
+function setAnalyzeTerrainState(next) {
+  analyzeTerrainState = ['preparing', 'fallback'].includes(next) ? next : 'ready'
+  profileCard?.setTerrainState(analyzeTerrainState)
+  refreshProfileResilience()
 }
 
 function markAnalysisFreshIfUsable() {
@@ -2328,6 +2368,17 @@ function clearAnalysisSegment() {
   syncAnalysisSegment()
   return true
 }
+function restoreAnalysisSegmentSelection() {
+  const selection = selectionForCurrentAnalysisRun({
+    checkpoint: analysisSegmentRestore,
+    fingerprint: routeGeometryFingerprint(route),
+    runKey: currentRouteCorridorRun().key,
+  })
+  analysisSegmentRestore = null
+  if (!selection) return false
+  analysisSegmentSelection = selection
+  return !!syncAnalysisSegment()
+}
 function initializeAnalysisCursor(points = lastRouteAnalysis?.points) {
   const distanceM = initialAnalysisCursorDistance(points, analysisCursorDistanceM)
   if (!Number.isFinite(distanceM)) return false
@@ -2419,13 +2470,13 @@ function retryRouteEnrichment() {
 
 function restoreAnalyzeTerrainView() {
   if (workspaceLifecycle?.stage !== WORKFLOW_STAGES.ANALYZE) return false
-  profileCard?.setTerrainState('preparing')
+  setAnalyzeTerrainState('preparing')
   const actual = workspaceLifecycle.setMapWorkspace({ weather: false })
   if (actual !== '3d') {
-    profileCard?.setTerrainState('fallback')
+    setAnalyzeTerrainState('fallback')
     return false
   }
-  profileCard?.setTerrainState('ready')
+  setAnalyzeTerrainState('ready')
   markAnalysisFreshIfUsable()
   workspaceLifecycle.fit()
   void requestRouteCorridorAnalysis()
@@ -2447,7 +2498,7 @@ const overviewMap = createOverviewMap({
   onTerrainUnavailable: (error) => {
     workspaceLifecycle?.setLegacyFrameModeActive(false)
     if (workspaceLifecycle?.stage !== WORKFLOW_STAGES.ANALYZE) return
-    profileCard?.setTerrainState('fallback')
+    setAnalyzeTerrainState('fallback')
     workspaceLifecycle.continueIn2d({ weather: false })
     markAnalysisFreshIfUsable()
   },
@@ -2657,7 +2708,7 @@ workspaceLifecycle = createWorkspaceLifecycleCoordinator({
     closeMobileLayers({ restoreInspector: false, restoreFocus: false })
     const analyze = stage === WORKFLOW_STAGES.ANALYZE
     profileCard?.setStage(stage)
-    profileCard?.setTerrainState(analyze ? 'preparing' : 'ready')
+    setAnalyzeTerrainState(analyze ? 'preparing' : 'ready')
     if (!analyze) {
       clearAnalysisCursor()
       clearAnalysisSegment()
