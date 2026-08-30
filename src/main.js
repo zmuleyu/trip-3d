@@ -37,7 +37,8 @@ import { sampleRouteAnalysisPath, syncRouteAnalysisConsumer } from './lib/routeA
 import { createRouteDemAnalysisController, createRouteDemCoverage, createRouteDemRunIdentity } from './lib/routeDemCoverage.js'
 import { createRouteCandidateId, isCurrentRouteCandidate, routeCandidatePathKey, weatherResultMatchesPath } from './lib/routeCandidates.js'
 import { initialAnalysisCursorDistance } from './lib/analysisCursor.js'
-import { canMarkAnalysisFresh, createAnalysisFreshness } from './lib/analysisFreshness.js'
+import { canMarkAnalysisFresh, createAnalysisFreshness, routeGeometryFingerprint } from './lib/analysisFreshness.js'
+import { createSegmentComparison, createSegmentMetrics } from './lib/segmentComparison.js'
 import { sunPosition, shadeFraction } from './lib/sun.js'
 import { resamplePath, flyoverDuration, cameraFrame } from './lib/flyover.js'
 import { TripRouteController } from './lib/tripRouteController.js'
@@ -2163,9 +2164,10 @@ let analysisCursorDistanceM = null
 let analysisCursorPathKey = ''
 let analysisSegmentSelection = null
 let analysisSegmentLegs = []
-let analysisSegmentRouteKey = ''
+let analysisSegmentRouteId = ''
 let corridorAdjustmentSelection = null
 let corridorAdjustmentLayer = null
+const segmentComparison = createSegmentComparison()
 
 function syncAnalysisFreshness() {
   plannerWorkspace?.setAnalysisFreshness({ stale: analysisFreshness.isStale(route) })
@@ -2179,7 +2181,29 @@ function markAnalysisFreshIfUsable() {
   })) return false
   analysisFreshness.markAnalyzed(route)
   syncAnalysisFreshness()
+  syncSegmentComparison()
   return true
+}
+
+function comparisonSegment(selection = segmentComparison.selection) {
+  return analysisSegmentForSelection(selection, route, lastRouteAnalysis?.points, analysisSegmentLegs)
+}
+
+function syncSegmentComparison() {
+  const selection = reconcileRouteSelection(segmentComparison.selection, route)
+  const segment = comparisonSegment(selection)
+  const state = segmentComparison.observe({
+    fingerprint: routeGeometryFingerprint(route),
+    selection,
+    analysisReady: canMarkAnalysisFresh({
+      stage: workspaceLifecycle?.stage,
+      analysis: lastRouteAnalysis,
+      plannerView: overviewMap?.plannerView,
+    }),
+    metrics: createSegmentMetrics(segment, lastRouteAnalysis?.points),
+  })
+  profileCard?.setSegmentComparison(state)
+  return state
 }
 
 function currentCorridorAdjustment() {
@@ -2211,9 +2235,16 @@ function endCorridorAdjustment({ fit = true } = {}) {
 function beginCorridorAdjustment(segment) {
   const selection = reconcileRouteSelection(segment?.selection, route)
   if (selection?.kind !== 'segment') return false
+  const actualSegment = analysisSegmentForSelection(selection, route, lastRouteAnalysis?.points, analysisSegmentLegs)
+  const metrics = createSegmentMetrics(actualSegment, lastRouteAnalysis?.points)
+  if (lastRouteAnalysis?.status === 'ready' && !analysisFreshness.isStale(route) && metrics) {
+    segmentComparison.begin({ selection, fingerprint: routeGeometryFingerprint(route), metrics })
+  } else {
+    segmentComparison.clear()
+  }
+  profileCard?.setSegmentComparison(segmentComparison.value)
   corridorAdjustmentSelection = selection
   if (workspaceLifecycle?.stage !== WORKFLOW_STAGES.PLAN) workspaceLifecycle?.setStage(WORKFLOW_STAGES.PLAN)
-  const actualSegment = analysisSegmentForSelection(selection, route, lastRouteAnalysis?.points, analysisSegmentLegs)
   overviewMap?.setAnalysisSegment(actualSegment)
   renderCorridorAdjustment()
   requestAnimationFrame(() => {
@@ -2237,12 +2268,12 @@ function currentAnalysisSegment() {
   return analysisSegmentForSelection(analysisSegmentSelection, route, lastRouteAnalysis?.points, analysisSegmentLegs)
 }
 function syncAnalysisSegment() {
-  const routeKey = `${route.id}:${route.geometryRevision}`
-  if (analysisSegmentRouteKey && analysisSegmentRouteKey !== routeKey) analysisSegmentSelection = null
-  analysisSegmentRouteKey = routeKey
+  if (analysisSegmentRouteId && analysisSegmentRouteId !== route.id) analysisSegmentSelection = null
+  analysisSegmentRouteId = route.id
   analysisSegmentSelection = reconcileRouteSelection(analysisSegmentSelection, route)
   const segment = currentAnalysisSegment()
   profileCard?.setSelectedSegment(segment)
+  syncSegmentComparison()
   overviewMap?.setAnalysisSegment(segment)
   return segment
 }
@@ -2443,6 +2474,17 @@ corridorAdjustmentLayer.innerHTML = `
   <div class="ui-corridor-actions"><button type="button" data-corridor-reanalyze>重新分析</button><button type="button" data-corridor-end>结束聚焦</button></div>
 `
 corridorAdjustmentLayer.querySelector('[data-corridor-reanalyze]').addEventListener('click', () => {
+  const selection = currentCorridorAdjustment()
+  const segment = comparisonSegment(selection)
+  segmentComparison.observe({
+    fingerprint: routeGeometryFingerprint(route),
+    selection,
+    analysisReady: false,
+    metrics: createSegmentMetrics(segment, lastRouteAnalysis?.points),
+  })
+  segmentComparison.requestReanalysis({ fingerprint: routeGeometryFingerprint(route), selection })
+  profileCard?.setSegmentComparison(segmentComparison.value)
+  if (selection) analysisSegmentSelection = selection
   endCorridorAdjustment({ fit: false })
   workspaceLifecycle?.setStage(WORKFLOW_STAGES.ANALYZE)
 })
@@ -2606,7 +2648,10 @@ workspaceLifecycle = createWorkspaceLifecycleCoordinator({
     if (!analyze) {
       clearAnalysisCursor()
       clearAnalysisSegment()
-    } else initializeAnalysisCursor()
+    } else {
+      initializeAnalysisCursor()
+      syncAnalysisSegment()
+    }
     syncAnalysisFreshness()
     document.body.classList.toggle('analyze-operate', analyze)
     plannerWorkspace?.setStage(stage)

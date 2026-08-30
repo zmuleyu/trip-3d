@@ -266,6 +266,10 @@ body.planner-operate .ui-settings { top: 58px; width: min(360px, calc(100vw - 24
 .profile-segment-details { margin: 2px 0 8px; padding: 7px 0; border-bottom: 1px solid var(--trip-line); color: var(--trip-ink); font-size: 11px; font-variant-numeric: tabular-nums; }
 .profile-segment-details strong, .profile-segment-details p { display: block; margin: 0 0 3px; }
 .profile-segment-details p { color: var(--trip-ink-soft); }
+.profile-segment-comparison { margin-top: 7px; padding-top: 7px; border-top: 1px solid var(--trip-line); }
+.profile-segment-comparison strong { margin-bottom: 4px; }
+.profile-comparison-notice { margin-top: 3px !important; color: var(--trip-warning) !important; }
+.profile-comparison-live { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
 .ui-map-fit.hidden { display: none !important; }
 .ui-profile[data-status="outside-coverage"] .profile-status,
 .ui-profile[data-status="dem-unavailable"] .profile-status,
@@ -1720,6 +1724,8 @@ body.planner-operate.analyze-operate .profile-details-toggle::after { color: var
 body.planner-operate.analyze-operate .profile-details-toggle { border-top-color: var(--instrument-line); }
 body.planner-operate.analyze-operate .profile-segment-details { border-bottom-color: var(--instrument-line); color: var(--instrument-text); }
 body.planner-operate.analyze-operate .profile-segment-details p { color: var(--instrument-muted); }
+body.planner-operate.analyze-operate .profile-segment-comparison { border-top-color: var(--instrument-line); }
+body.planner-operate.analyze-operate .profile-comparison-notice { color: var(--trip-warning) !important; }
 body.planner-operate.analyze-operate .profile-recovery { border-color: var(--instrument-line); color: var(--instrument-text); }
 
 @media (max-width: 1023px) {

@@ -375,6 +375,9 @@ export function createProfileCard(accent = '#ff4d00') {
   status.setAttribute('aria-live', 'polite')
   const statusMessage = document.createElement('span')
   const cursorReadout = document.createElement('span')
+  const comparisonLive = document.createElement('p')
+  comparisonLive.className = 'profile-comparison-live'
+  comparisonLive.setAttribute('aria-live', 'polite')
   const terrainNotice = document.createElement('p')
   terrainNotice.className = 'profile-terrain-notice'
   terrainNotice.setAttribute('aria-live', 'polite')
@@ -424,7 +427,7 @@ export function createProfileCard(accent = '#ff4d00') {
   segmentDetails.hidden = true
   details.append(segmentDetails, metrics, source)
   status.append(statusMessage, cursorReadout)
-  body.append(terrainNotice, status, recoveryActions, terrainActions, canvas, detailsToggle, details)
+  body.append(terrainNotice, status, comparisonLive, recoveryActions, terrainActions, canvas, detailsToggle, details)
   el.append(head, body)
   document.body.appendChild(el)
   let stage = 'plan'
@@ -434,6 +437,7 @@ export function createProfileCard(accent = '#ff4d00') {
   let cbs = { onCursorDistance: null, onSegmentDistance: null, onSegmentStep: null, onSegmentClear: null, onAdjustSegment: null, onExpand: null, onRetry: null, onRetryTerrain: null, onReturnPlan: null }
   let lastCursorDistanceM = null
   let selectedSegment = null
+  let segmentComparison = null
   let profileReady = false
   let detailsOpen = false
   let terrainState = 'ready'
@@ -499,10 +503,49 @@ export function createProfileCard(accent = '#ff4d00') {
   const requestCursor = (distanceM) => {
     if (Number.isFinite(distanceM)) cbs.onCursorDistance?.(distanceM)
   }
+  const comparisonValue = (value, unit, digits = 1) => Number.isFinite(value) ? `${value.toFixed(digits)} ${unit}` : '不可比较'
+  const comparisonDelta = (value, unit, digits = 1) => {
+    if (!Number.isFinite(value)) return '不可比较'
+    const rounded = Number(value.toFixed(digits))
+    if (rounded === 0) return '无变化'
+    const sign = rounded > 0 ? '+' : '−'
+    return `${rounded > 0 ? '增加' : '减少'} ${sign}${Math.abs(rounded).toFixed(digits)} ${unit}`
+  }
+  const appendComparison = () => {
+    if (segmentComparison?.status !== 'ready') {
+      if (!segmentComparison?.notice) return false
+      const notice = document.createElement('p')
+      notice.className = 'profile-comparison-notice'
+      notice.textContent = segmentComparison.notice
+      segmentDetails.appendChild(notice)
+      return true
+    }
+    const comparison = document.createElement('div')
+    comparison.className = 'profile-segment-comparison'
+    const heading = document.createElement('strong')
+    heading.textContent = '调整前 / 当前 / 变化'
+    comparison.appendChild(heading)
+    const rows = [
+      ['区间', comparisonValue(segmentComparison.before.distanceM / 1000, 'km'), comparisonValue(segmentComparison.current.distanceM / 1000, 'km'), comparisonDelta(segmentComparison.change.distanceM / 1000, 'km')],
+      ['高程变化', comparisonValue(segmentComparison.before.elevationDeltaM, 'm', 0), comparisonValue(segmentComparison.current.elevationDeltaM, 'm', 0), comparisonDelta(segmentComparison.change.elevationDeltaM, 'm', 0)],
+      ['净坡度', comparisonValue(segmentComparison.before.netGradePct, '%'), comparisonValue(segmentComparison.current.netGradePct, '%'), comparisonDelta(segmentComparison.change.netGradePct, '%')],
+    ]
+    if (Number.isFinite(segmentComparison.before.durationS) || Number.isFinite(segmentComparison.current.durationS)) {
+      const minutes = (durationS) => Number.isFinite(durationS) ? durationS / 60 : null
+      rows.push(['时长', comparisonValue(minutes(segmentComparison.before.durationS), '分钟', 0), comparisonValue(minutes(segmentComparison.current.durationS), '分钟', 0), comparisonDelta(minutes(segmentComparison.change.durationS), '分钟', 0)])
+    }
+    rows.forEach(([label, before, current, delta]) => {
+      const row = document.createElement('p')
+      row.textContent = `${label} · ${before} · ${current} · ${delta}`
+      comparison.appendChild(row)
+    })
+    segmentDetails.appendChild(comparison)
+    return true
+  }
   const renderSegmentDetails = () => {
     segmentDetails.replaceChildren()
     if (!selectedSegment) {
-      segmentDetails.hidden = true
+      segmentDetails.hidden = !appendComparison()
       return
     }
     segmentDetails.hidden = false
@@ -526,6 +569,7 @@ export function createProfileCard(accent = '#ff4d00') {
       row.textContent = value == null ? label : `${label} · ${value}`
       segmentDetails.appendChild(row)
     })
+    appendComparison()
     if (stage === 'analyze') {
       const adjust = document.createElement('button')
       adjust.type = 'button'
@@ -661,6 +705,13 @@ export function createProfileCard(accent = '#ff4d00') {
       selectedSegment = next ?? null
       renderSegmentDetails()
       draw()
+    },
+    setSegmentComparison(next) {
+      segmentComparison = next?.status || next?.notice ? next : null
+      comparisonLive.textContent = segmentComparison?.status === 'ready'
+        ? '调整前与当前已可比较。'
+        : (segmentComparison?.notice ?? '')
+      renderSegmentDetails()
     },
     update(analysis = {}) {
       const ready = analysis.status === 'ready' && analysisPointsReady(analysis.points) && analysis.profile
