@@ -1,7 +1,7 @@
 {
   "name": "trip-3d",
   "private": true,
-  "version": "0.12.1",
+  "version": "0.12.2",
   "type": "module",
   "scripts": {
     "setup:worktree": "node scripts/bootstrap.mjs",

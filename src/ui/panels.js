@@ -2,6 +2,7 @@
 import { normalizeRouteMode } from '../lib/routePlanning.js'
 import { analysisPointsReady, nearestAnalysisIndex, sampleAnalysisAtDistance } from '../lib/analysisCursor.js'
 import { sampleRouteGradeAtDistance } from '../lib/routeAnalysis.js'
+import { iconSvg } from './icons.js'
 
 // ---------------------------------------------------------------- planning panel
 // duration formatting: ≥24h shows days (long road trips)
@@ -210,7 +211,7 @@ export function createPlanningPanel(actions) {
         const chevron = document.createElement('span')
         chevron.className = 'pp-ledger-chevron'
         chevron.setAttribute('aria-hidden', 'true')
-        chevron.textContent = selected ? '⌃' : '⌄'
+        chevron.innerHTML = iconSvg('chevronDown')
         row.append(sequence, dot, roleLabel, nm, elevation, chevron)
         item.appendChild(row)
         if (selected) {

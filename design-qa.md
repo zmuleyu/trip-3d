@@ -55,6 +55,8 @@ No actionable P0, P1, or P2 issue remains.
 
 1. **P2 — map display popover initially covered the right Inspector.** Fixed by assigning it the role-based 278px width and placing it to the left of the 360px Inspector with a 16px gap. The confirmation capture shows non-overlapping popover (`x=626…904`) and Inspector (`x=920…1280`).
 2. **P2 — hidden rename and remote-layer feedback controls were initially still visible.** Fixed with explicit hidden-state rules. The confirmation interaction shows rename only after its explicit command, while normal layers no longer display retry controls.
+3. **P1 — a terrain change could leave administrative-boundary loading permanently busy.** Fixed with a request token and terminal settlement for missing terrain, stale DEM keys, and superseded requests. The switch returns to an off/error/retry state rather than claiming it is enabled.
+4. **P2 — ledger chevrons were text glyphs and local focus used Route Ember.** Fixed by reusing the native SVG icon seam and by using the documented blue focus role for ledger and map-display controls.
 
 ### Required fidelity surfaces
 
@@ -69,7 +71,7 @@ No actionable P0, P1, or P2 issue remains.
 - Two map additions selected the new endpoint; the Inspector rendered exactly one expanded ledger row.
 - The collapsed row had no visible rename field. `重命名` exposed it; `在后方插入` and the protected two-point delete state were visible and keyboard-operable.
 - The display popover exposed `底图` / `地图标注` / `分析叠加`; `Esc` closed it, returned focus to `打开图层工具`, and left the selected waypoint expanded.
-- `npm run acceptance` completed against the final v0.12.1 candidate, produced the final desktop and 390px screenshots, and reported an empty console-error list.
+- `npm run acceptance` completed against the final v0.12.2 candidate, produced the final desktop and 390px screenshots, and reported an empty console-error list.
 
 No actionable P0, P1, or P2 mismatch remains for the frozen route-ledger target.
 
