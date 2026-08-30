@@ -375,6 +375,22 @@ export function createProfileCard(accent = '#ff4d00') {
   status.setAttribute('aria-live', 'polite')
   const statusMessage = document.createElement('span')
   const cursorReadout = document.createElement('span')
+  const terrainNotice = document.createElement('p')
+  terrainNotice.className = 'profile-terrain-notice'
+  terrainNotice.setAttribute('aria-live', 'polite')
+  terrainNotice.hidden = true
+  const retryTerrain = document.createElement('button')
+  retryTerrain.type = 'button'
+  retryTerrain.className = 'profile-recovery'
+  retryTerrain.textContent = '重试 3D'
+  const terrainReturnPlan = document.createElement('button')
+  terrainReturnPlan.type = 'button'
+  terrainReturnPlan.className = 'profile-recovery profile-return-plan'
+  terrainReturnPlan.textContent = '返回规划'
+  const terrainActions = document.createElement('div')
+  terrainActions.className = 'profile-recovery-actions profile-terrain-actions'
+  terrainActions.hidden = true
+  terrainActions.append(retryTerrain, terrainReturnPlan)
   cursorReadout.className = 'profile-cursor-readout'
   const recovery = document.createElement('button')
   recovery.type = 'button'
@@ -405,17 +421,18 @@ export function createProfileCard(accent = '#ff4d00') {
   details.hidden = true
   details.append(metrics, source)
   status.append(statusMessage, cursorReadout)
-  body.append(status, recoveryActions, canvas, detailsToggle, details)
+  body.append(terrainNotice, status, recoveryActions, terrainActions, canvas, detailsToggle, details)
   el.append(head, body)
   document.body.appendChild(el)
   let stage = 'plan'
   let folded = false
   let lastPts = null
   let lastGrade = null
-  let cbs = { onCursorDistance: null, onExpand: null, onRetry: null, onReturnPlan: null }
+  let cbs = { onCursorDistance: null, onExpand: null, onRetry: null, onRetryTerrain: null, onReturnPlan: null }
   let lastCursorDistanceM = null
   let profileReady = false
   let detailsOpen = false
+  let terrainState = 'ready'
   const setDetailsOpen = (open) => {
     detailsOpen = !!open
     details.hidden = !detailsOpen
@@ -430,6 +447,18 @@ export function createProfileCard(accent = '#ff4d00') {
   detailsToggle.addEventListener('click', () => setDetailsOpen(!detailsOpen))
   recovery.addEventListener('click', () => (cbs.onRetry ?? cbs.onExpand)?.())
   returnPlan.addEventListener('click', () => cbs.onReturnPlan?.())
+  retryTerrain.addEventListener('click', () => cbs.onRetryTerrain?.())
+  terrainReturnPlan.addEventListener('click', () => cbs.onReturnPlan?.())
+  const syncTerrainNotice = () => {
+    const copy = {
+      preparing: '正在准备地形视图；路线会保持可见。',
+      fallback: '3D 地形暂不可用，正以 2D 保持路线。',
+    }[terrainState]
+    terrainNotice.hidden = !copy
+    terrainNotice.textContent = copy ?? ''
+    terrainActions.hidden = terrainState !== 'fallback'
+    el.dataset.terrainState = terrainState
+  }
   const formatGrade = (gradePct) => {
     const rounded = Math.round(gradePct * 10) / 10
     if (rounded > 0) return `上坡 +${rounded.toFixed(1)}%`
@@ -554,6 +583,11 @@ export function createProfileCard(accent = '#ff4d00') {
       if (profileReady) draw()
       syncVisibility()
     },
+    setTerrainState(next) {
+      terrainState = ['preparing', 'fallback'].includes(next) ? next : 'ready'
+      syncTerrainNotice()
+      syncVisibility()
+    },
     setCallbacks(next) { cbs = { ...cbs, ...next } },
     setCursorDistance(distanceM) {
       lastCursorDistanceM = Number.isFinite(distanceM) ? distanceM : null
@@ -581,7 +615,7 @@ export function createProfileCard(accent = '#ff4d00') {
           incomplete: '至少添加起点和终点',
           'outside-coverage': '路线地形尚未补齐',
           'dem-unavailable': '高程数据暂不可用',
-          'route-terrain-loading': '路线地形 · 正在补齐',
+          'route-terrain-loading': '正在准备路线分析',
           'route-terrain-unavailable': '路线地形暂不可用',
           'route-terrain-budget': '路线较长，暂时无法补齐完整地形',
           'route-terrain-cancelled': '路线已变化，地形补齐已取消',
@@ -601,7 +635,7 @@ export function createProfileCard(accent = '#ff4d00') {
       recovery.hidden = true
       returnPlan.hidden = true
       setDetailsAvailable(true)
-      statusMessage.textContent = `${(profile.distanceM / 1000).toFixed(1)} km · 高程可用`
+      statusMessage.textContent = `${(profile.distanceM / 1000).toFixed(1)} km · ${grade?.status === 'ready' ? '高程可用' : '高程部分可用'}`
       source.textContent = grade?.status === 'ready'
         ? '原始高程与局部坡度分析'
         : '坡度不可用：有效水平距离或高程覆盖不足'

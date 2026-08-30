@@ -67,6 +67,22 @@ describe('workspace lifecycle coordinator', () => {
     expect(coordinator.stage).toBe(WORKFLOW_STAGES.PLAN)
   })
 
+  it('keeps Analyze active while continuing in the shared 2D map after terrain fails', () => {
+    const route = { waypoints: [{ id: 'start' }, { id: 'finish' }] }
+    const changes = []
+    const coordinator = createWorkspaceLifecycleCoordinator({
+      getRoute: () => route,
+      onPlannerViewRequest: (view) => view !== '3d',
+      onPlannerViewChange: (state) => changes.push(state),
+    })
+
+    coordinator.setStage(WORKFLOW_STAGES.ANALYZE)
+    expect(coordinator.setMapWorkspace()).toBe('2d')
+    expect(coordinator.continueIn2d()).toBe('2d')
+    expect(coordinator.stage).toBe(WORKFLOW_STAGES.ANALYZE)
+    expect(changes.at(-1)).toMatchObject({ requested: '2d', actual: '2d', stage: WORKFLOW_STAGES.ANALYZE })
+  })
+
   it('derives view and editability only from Plan or Analyze while weather stays an overlay', () => {
     const route = { waypoints: [{ id: 'start' }, { id: 'finish' }] }
     const states = []
