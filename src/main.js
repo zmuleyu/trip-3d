@@ -39,7 +39,7 @@ import { createRouteCandidateId, isCurrentRouteCandidate, routeCandidatePathKey,
 import { initialAnalysisCursorDistance } from './lib/analysisCursor.js'
 import { canMarkAnalysisFresh, createAnalysisFreshness, routeGeometryFingerprint } from './lib/analysisFreshness.js'
 import { deriveAnalyzeResilience, selectionForCurrentAnalysisRun } from './lib/analysisResilience.js'
-import { deriveRouteOverview } from './lib/routeOverview.js'
+import { deriveRouteOverviewFromRoute } from './lib/routeOverview.js'
 import { createSegmentComparison, createSegmentMetrics } from './lib/segmentComparison.js'
 import { sunPosition, shadeFraction } from './lib/sun.js'
 import { resamplePath, flyoverDuration, cameraFrame } from './lib/flyover.js'
@@ -61,7 +61,7 @@ import { createSettingsPanel } from './ui/settingsPanel.js'
 import { formatSummary, loadSummaryPreferences, saveSummaryPreferences } from './ui/summaryPreferences.js'
 import { applyDensity, loadDensity, saveDensity } from './ui/densityPreferences.js'
 import { dismissRouteSelection as dismissRouteSelectionState, planEscapeAction, reconcileRouteSelection, sameRouteSelection, segmentRouteSelection, waypointRouteSelection } from './ui/routeSelection.js'
-import { adjacentAnalysisSegment, analysisSegmentAtDistance, analysisSegmentForSelection, analysisSegmentRanges } from './ui/analysisSelection.js'
+import { adjacentAnalysisSegment, analysisSegmentAtDistance, analysisSegmentForSelection } from './ui/analysisSelection.js'
 import { createRouteOverview } from './ui/routeOverview.js'
 import { selectSearchPlace } from './ui/searchPlaceSelection.js'
 import { createOpenMeteoProvider, createOpenMeteoArchiveProvider } from './providers/openmeteo.js'
@@ -1421,6 +1421,9 @@ function currentLegs(pts) {
 function updateRouteUI(route, stats, pts, { fitOverview = true } = {}) {
   // legs: real OSRM segments when snap result matches this revision; computed otherwise
   const legs = currentLegs(pts)
+  // A2 and Route Overview consume the same current leg set before any
+  // resilience presentation can derive ranges or availability.
+  analysisSegmentLegs = legs ?? []
   // sunlight analysis: per-leg shade fraction via DEM horizon march
   if (sunState.on && sunState.last && legs?.length && pts?.length >= 2) {
     const idx = route.waypoints.map((w) => {
@@ -1505,7 +1508,6 @@ function updateRouteUI(route, stats, pts, { fitOverview = true } = {}) {
     legs: legs ?? [],
   })
   overviewMap.setSelectedWaypoint(route.selectedWaypointId)
-  analysisSegmentLegs = legs ?? []
   syncAnalysisSegment()
   const corridorSelection = currentCorridorAdjustment()
   if (corridorSelection) {
@@ -2207,7 +2209,7 @@ function currentProfileAnalysisKey(currentRun = currentRouteCorridorRun()) {
   return lastRouteCoverage.covered ? currentRun.key : routeCorridorState.key
 }
 
-function refreshProfileResilience() {
+function refreshProfileResilience({ refreshOverview = true } = {}) {
   if (!profileCard || !routeOverview) return
   const currentRun = currentRouteCorridorRun()
   const presentation = deriveAnalyzeResilience({
@@ -2222,10 +2224,16 @@ function refreshProfileResilience() {
   })
   profileCard.setResilience(presentation)
   profileCard.update(lastRouteAnalysis, presentation)
-  routeOverview.update(deriveRouteOverview({
+  if (refreshOverview) refreshRouteOverview(presentation)
+  return presentation
+}
+
+function refreshRouteOverview(presentation) {
+  if (!routeOverview || !presentation) return
+  routeOverview.update(deriveRouteOverviewFromRoute({
     route,
-    segments: analysisSegmentRanges(route, lastRouteAnalysis?.points, analysisSegmentLegs),
     analysis: lastRouteAnalysis,
+    legs: analysisSegmentLegs,
     resilience: presentation,
     selectedSegment: currentAnalysisSegment(),
   }))
@@ -2359,9 +2367,9 @@ function syncAnalysisSegment() {
   analysisSegmentSelection = reconcileRouteSelection(analysisSegmentSelection, route)
   const segment = currentAnalysisSegment()
   profileCard?.setSelectedSegment(segment)
-  refreshProfileResilience()
   syncSegmentComparison()
   overviewMap?.setAnalysisSegment(segment)
+  refreshRouteOverview(refreshProfileResilience({ refreshOverview: false }))
   return segment
 }
 function setAnalysisSegment(next, { toggle = false } = {}) {

@@ -1,3 +1,5 @@
+import { analysisSegmentRanges } from '../ui/analysisSelection.js'
+
 const readyStatuses = new Set(['ready', 'fallback-ready'])
 
 const finite = (value) => Number.isFinite(value)
@@ -100,4 +102,16 @@ export function deriveRouteOverview({ route, segments, analysis, resilience, sel
     elevation,
     availability: availability(analysis, withDistance, resilience),
   }
+}
+
+// Route/leg seam for consumers that need the current A2 segment ranges without
+// retaining a second set of overview state.
+export function deriveRouteOverviewFromRoute({ route, analysis, legs, resilience, selectedSegment = null } = {}) {
+  return deriveRouteOverview({
+    route,
+    segments: analysisSegmentRanges(route, analysis?.points, legs),
+    analysis,
+    resilience,
+    selectedSegment,
+  })
 }

@@ -12,10 +12,12 @@ describe('Route Overview inspector', () => {
   it('keeps fact rows semantic and sends selection to the A2 owner', () => {
     const onSelect = vi.fn()
     const overview = createRouteOverview({ onSelect })
+    document.body.append(overview.el)
     overview.update({ ready: true, selected: null, longest: segment, elevation: segment, availability: '高程与坡度可用；路线时长不可用；3D 分析可用' })
     const rows = overview.el.querySelectorAll('button.route-overview-row')
     expect(rows).toHaveLength(2)
     expect(rows[0].textContent).toContain('第 2 段 · 山口 → 出口')
+    rows[0].focus()
     rows[0].click()
     expect(onSelect).toHaveBeenCalledWith(segment.selection)
     expect(overview.el.textContent).toContain('选择地图或剖面中的路段查看详情')
@@ -23,6 +25,11 @@ describe('Route Overview inspector', () => {
     overview.update({ ready: true, selected: segment, longest: segment, elevation: segment, availability: '高程与坡度可用；路线时长不可用；3D 分析可用' })
     expect(overview.el.querySelector('.route-overview-selection').textContent).toContain('第 2 段 · 山口 → 出口')
     expect(overview.el.querySelector('button.route-overview-row').classList.contains('is-selected')).toBe(true)
+    expect(document.activeElement).toBe(overview.el.querySelector('button.route-overview-row'))
+
+    overview.update({ ready: true, selected: null, longest: segment, elevation: segment, availability: '高程与坡度可用；路线时长不可用；3D 分析可用' })
+    expect(overview.el.querySelector('.route-overview-selection').textContent).toContain('选择地图或剖面中的路段查看详情')
+    overview.el.remove()
   })
 
   it('removes facts for resilience recovery states', () => {

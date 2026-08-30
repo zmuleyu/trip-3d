@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { deriveRouteOverview } from './routeOverview.js'
+import { deriveRouteOverview, deriveRouteOverviewFromRoute } from './routeOverview.js'
 
 const route = { waypoints: [
   { id: 'a', name: '营地' },
@@ -46,6 +46,24 @@ describe('Route Overview facts', () => {
     expect(unknown.longest).toBeNull()
     expect(unknown.elevation).toBeNull()
     expect(unknown.availability).toContain('3D 不可用，2D 分析可用')
+  })
+
+  it('uses the current legs for both A2 ranges and duration availability', () => {
+    const estimatedLegs = [
+      { distanceM: 1100, real: false },
+      { distanceM: 2100, real: false },
+    ]
+    const providerLegs = [
+      { distanceM: 2400, durationS: 900, real: true },
+      { distanceM: 800, durationS: 480, real: true },
+    ]
+    const estimated = deriveRouteOverviewFromRoute({ route, analysis, legs: estimatedLegs, resilience: { status: 'ready' } })
+    const provider = deriveRouteOverviewFromRoute({ route, analysis, legs: providerLegs, resilience: { status: 'ready' } })
+
+    expect(estimated.longest).toMatchObject({ index: 1, distanceM: 2100 })
+    expect(estimated.availability).toContain('路线时长不可用')
+    expect(provider.longest).toMatchObject({ index: 0, distanceM: 2400 })
+    expect(provider.availability).toContain('路线时长可用')
   })
 
   it.each(['preparing', 'stale', 'failed', 'incomplete'])('does not expose old facts while %s', (status) => {

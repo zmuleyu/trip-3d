@@ -55,6 +55,7 @@ export function createRouteOverview({ onSelect = null } = {}) {
     el,
     update(overview) {
       const state = overview ?? { ready: false, status: 'incomplete', message: '至少添加起点和终点。恢复操作在高程剖面中。' }
+      const preserveFactFocus = el.contains(document.activeElement) && document.activeElement?.matches('button.route-overview-row')
       updateSelection(state.ready ? state.selected : null)
       facts.replaceChildren()
       status.hidden = !!state.ready
@@ -71,6 +72,7 @@ export function createRouteOverview({ onSelect = null } = {}) {
         factRow('最大高程变化', elevationValue, state.elevation, selectedIndex === state.elevation?.index),
         factRow('数据可用性', state.availability),
       )
+      if (preserveFactFocus) facts.querySelector('button.route-overview-row.is-selected')?.focus()
     },
   }
 }
