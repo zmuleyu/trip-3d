@@ -37,6 +37,12 @@ describe('deriveAnalyzeResilience', () => {
     expect(deriveAnalyzeResilience({ waypointCount: 2, corridorStatus: 'error', corridorError: { code: 'budget-exceeded' } })).toMatchObject({ status: 'failed', reason: 'budget-exceeded' })
   })
 
+  it('shows current-run progress or failure before stale history, but keeps stale before a retry starts', () => {
+    expect(deriveAnalyzeResilience({ waypointCount: 2, corridorStatus: 'loading', freshnessStale: true })).toMatchObject({ status: 'preparing' })
+    expect(deriveAnalyzeResilience({ waypointCount: 2, corridorStatus: 'error', corridorError: { code: 'budget-exceeded' }, freshnessStale: true })).toMatchObject({ status: 'failed', reason: 'budget-exceeded' })
+    expect(deriveAnalyzeResilience({ waypointCount: 2, corridorStatus: 'cancelled', freshnessStale: true })).toMatchObject({ status: 'stale' })
+  })
+
   it('restores a selected segment only for the same route fingerprint and run', () => {
     const checkpoint = { fingerprint: 'route:4', runKey: 'route:4:raw', selection: { kind: 'segment', fromId: 'a', toId: 'b' } }
     expect(selectionForCurrentAnalysisRun({ checkpoint, fingerprint: 'route:4', runKey: 'route:4:raw' })).toEqual(checkpoint.selection)

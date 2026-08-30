@@ -19,13 +19,16 @@ export function deriveAnalyzeResilience({
     && analysisKey === currentRunKey
   const ready = runMatches && analysisIsReady(analysis)
 
-  if (freshnessStale) return { status: 'stale' }
-  if (terrainState === 'fallback' && ready) return { status: 'fallback-ready' }
   if (corridorStatus === 'loading' || analysis?.status === 'route-terrain-loading') return { status: 'preparing' }
-  if (corridorStatus === 'error' || ['dem-unavailable', 'outside-coverage', 'route-terrain-unavailable', 'route-terrain-budget', 'route-terrain-cancelled'].includes(analysis?.status)) {
+  if (corridorStatus === 'error') {
     return { status: 'failed', reason: analysis?.status ?? corridorError?.code ?? 'route-terrain-unavailable' }
   }
+  if (freshnessStale) return { status: 'stale' }
+  if (terrainState === 'fallback' && ready) return { status: 'fallback-ready' }
   if (ready) return { status: 'ready' }
+  if (['dem-unavailable', 'outside-coverage', 'route-terrain-unavailable', 'route-terrain-budget', 'route-terrain-cancelled'].includes(analysis?.status)) {
+    return { status: 'failed', reason: analysis.status }
+  }
   return { status: 'preparing' }
 }
 
