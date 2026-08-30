@@ -1001,7 +1001,6 @@ export function createOverviewMap({
     const feature = waypointFeature(event)
     const waypointId = feature?.properties?.waypointId
     if (!waypointId) return
-    onWaypointSelect?.(waypointId)
     waypointDrag = {
       waypointId,
       startPoint: event.point,
@@ -1025,6 +1024,7 @@ export function createOverviewMap({
     if (!waypointDrag.moved && movedPx < WAYPOINT_DRAG_HYSTERESIS_PX) return
     if (!waypointDrag.started) {
       waypointDrag.started = true
+      onWaypointSelect?.(waypointDrag.waypointId)
       onWaypointMoveStart?.(waypointDrag.waypointId)
       map.dragPan.disable()
       map.getCanvas().style.cursor = 'grabbing'

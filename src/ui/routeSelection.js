@@ -27,6 +27,14 @@ export function reconcileRouteSelection(selection, route) {
   return null
 }
 
+export function dismissRouteSelection(selection, selectedWaypointId = null) {
+  return {
+    selection: null,
+    selectedWaypointId: null,
+    changed: !!selection || !!selectedWaypointId,
+  }
+}
+
 export function routeSelectionIndex(selection, route) {
   const waypoints = route?.waypoints ?? []
   if (selection?.kind === 'waypoint') return waypoints.findIndex((waypoint) => waypoint.id === selection.waypointId)

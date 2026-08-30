@@ -125,6 +125,16 @@ describe('planner workspace chrome', () => {
     expect(onMoreAction).toHaveBeenCalledWith('undo')
   })
 
+  it('keeps local save state visible from More when the route summary is absent', () => {
+    const workspace = createPlannerWorkspace()
+    workspace.updateTrip({ name: '川西线路', saveStatus: 'dirty' })
+    const saveStatus = workspace.el.querySelector('[data-more-save-status]')
+    expect(saveStatus.hidden).toBe(false)
+    expect(saveStatus.textContent).toBe('未保存更改')
+    workspace.updateTrip({ name: '川西线路', saveStatus: 'saved' })
+    expect(saveStatus.textContent).toBe('已保存到本机')
+  })
+
   it('keeps global actions and layers mutually exclusive', () => {
     const onMenuChange = vi.fn()
     const workspace = createPlannerWorkspace({ onMenuChange })
@@ -218,6 +228,10 @@ describe('planner workspace chrome', () => {
     workspace.setJourneySpine({ route, selection: { kind: 'waypoint', waypointId: 'b' } })
     const actions = workspace.el.querySelector('.ui-waypoint-actions')
     expect(actions?.textContent).toContain('途经点操作')
+    expect(workspace.el.querySelector('.ui-trip-spine').classList.contains('waypoint-selected')).toBe(true)
+    expect(workspace.el.querySelector('.ui-trip-spine-title').getAttribute('aria-label')).toBe('查看地点详情')
+    expect(workspace.el.querySelector('.ui-trip-spine-day > b')).toBeNull()
+    expect(workspace.el.querySelector('.ui-trip-spine-day > small')).toBeNull()
     const rename = [...actions.querySelectorAll('button')].find((button) => button.textContent === '重命名')
     rename.click()
     const input = actions.querySelector('input')
@@ -228,6 +242,8 @@ describe('planner workspace chrome', () => {
     input.value = '新营地'
     actions.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
     expect(onWaypointAction).toHaveBeenCalledWith({ action: 'rename', waypointId: 'b', name: '新营地' })
+    expect(workspace.focusWaypointAction('rename')).toBe(true)
+    expect(document.activeElement).toBe(rename)
     ;[...actions.querySelectorAll('button')].find((button) => button.textContent === '在后方插入').click()
     ;[...actions.querySelectorAll('button')].find((button) => button.textContent === '删除').click()
     expect(onWaypointAction).toHaveBeenCalledWith({ action: 'insert-after', waypointId: 'b' })

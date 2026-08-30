@@ -59,7 +59,7 @@ import { createWeatherPanel } from './ui/weatherPanel.js'
 import { createSettingsPanel } from './ui/settingsPanel.js'
 import { formatSummary, loadSummaryPreferences, saveSummaryPreferences } from './ui/summaryPreferences.js'
 import { applyDensity, loadDensity, saveDensity } from './ui/densityPreferences.js'
-import { reconcileRouteSelection, sameRouteSelection, segmentRouteSelection, waypointRouteSelection } from './ui/routeSelection.js'
+import { dismissRouteSelection as dismissRouteSelectionState, reconcileRouteSelection, sameRouteSelection, segmentRouteSelection, waypointRouteSelection } from './ui/routeSelection.js'
 import { adjacentAnalysisSegment, analysisSegmentAtDistance, analysisSegmentForSelection } from './ui/analysisSelection.js'
 import { selectSearchPlace } from './ui/searchPlaceSelection.js'
 import { createOpenMeteoProvider, createOpenMeteoArchiveProvider } from './providers/openmeteo.js'
@@ -2609,6 +2609,16 @@ function runPlanRouteMutation(mutate) {
   })
 }
 
+function dismissRouteSelection() {
+  const next = dismissRouteSelectionState(routeSelection, route.selectedWaypointId)
+  if (!next.changed) return false
+  routeSelection = next.selection
+  route.setSelectedWaypoint(next.selectedWaypointId)
+  refreshRoute({ recordHistory: false, fitOverview: false })
+  requestAnimationFrame(() => overviewMap.focusPlanner?.())
+  return true
+}
+
 function performHistoryAction(action) {
   return runPlanRouteMutation(() => {
     const changed = action === 'redo' ? route.redo() : route.undo()
@@ -2648,9 +2658,7 @@ plannerWorkspace = createPlannerWorkspace({
     requestAnimationFrame(() => overviewMap.fit())
   },
   onSpineDismiss: () => {
-    routeSelection = null
-    refreshRoute({ recordHistory: false, fitOverview: false })
-    requestAnimationFrame(() => overviewMap.fit())
+    dismissRouteSelection()
   },
   onMoreAction: (action) => {
     if (action === 'save') routeActions.onSave()
@@ -2674,7 +2682,10 @@ plannerWorkspace = createPlannerWorkspace({
   onWaypointAction: ({ action, waypointId, name } = {}) => {
     const index = route.waypoints.findIndex((waypoint) => waypoint.id === waypointId)
     if (index < 0) return
-    if (action === 'rename') routeActions.onWpRename(index, name)
+    if (action === 'rename') {
+      routeActions.onWpRename(index, name)
+      requestAnimationFrame(() => plannerWorkspace.focusWaypointAction('rename'))
+    }
     if (action === 'insert-after') routeActions.onInsertAt(index + 1)
     if (action === 'remove') {
       routeActions.onWpRemove(index)
@@ -2803,6 +2814,11 @@ window.addEventListener('keydown', (e) => {
   if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey))) {
     e.preventDefault()
     performHistoryAction('redo')
+    return
+  }
+  if (e.key === 'Escape' && isPlanStage() && routeSelection?.kind === 'waypoint') {
+    e.preventDefault()
+    dismissRouteSelection()
     return
   }
   if (e.key === 'Escape' && insertIndex != null) {

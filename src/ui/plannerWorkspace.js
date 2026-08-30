@@ -26,7 +26,7 @@ export function createPlannerWorkspace({
     </header>
     <div class="ui-planner-more-menu hidden" role="menu" aria-label="更多操作">
       <span class="ui-planner-more-label" role="presentation">全局操作</span>
-      <button type="button" role="menuitem" data-more-action="save">保存线路</button>
+      <button type="button" role="menuitem" data-more-action="save"><span>保存线路</span><small data-more-save-status hidden></small></button>
       <button type="button" role="menuitem" data-more-action="share">分享线路</button>
       <span class="ui-planner-more-label" role="presentation">编辑历史</span>
       <button type="button" role="menuitem" data-more-action="undo"><span>撤销</span><kbd>Ctrl/⌘ Z</kbd></button>
@@ -165,6 +165,12 @@ export function createPlannerWorkspace({
     moreMenu.querySelector('[data-more-action="undo"]').disabled = !canUndo
     moreMenu.querySelector('[data-more-action="redo"]').disabled = !canRedo
   }
+  const syncSaveStatus = (status) => {
+    const saveStatus = moreMenu.querySelector('[data-more-save-status]')
+    const copy = { saved: '已保存到本机', dirty: '未保存更改', failed: '保存失败', unavailable: '本机存储不可用' }[status] ?? ''
+    saveStatus.hidden = !copy
+    saveStatus.textContent = copy
+  }
   const syncAnalyzeCopy = () => {
     const analyze = el.querySelector('[data-stage="analyze"]')
     const stale = analysisStale
@@ -249,26 +255,22 @@ export function createPlannerWorkspace({
       const selectionIndex = routeSelectionIndex(selection, route)
       const visible = points.length >= 2 && selectionIndex >= 0
       spine.classList.toggle('hidden', !visible)
+      spine.classList.toggle('waypoint-selected', visible && selection?.kind === 'waypoint')
       if (!visible) return
-      const selectionTitle = spine.querySelector('.ui-trip-spine-title span')
+      const spineTitle = spine.querySelector('.ui-trip-spine-title')
+      const selectionTitle = spineTitle.querySelector('span')
       const identity = spine.querySelector('.ui-trip-identity')
       const identityName = identity.querySelector('b')
       const identityMeta = identity.querySelector('span')
       const detail = document.createElement('article')
       detail.className = 'ui-trip-spine-day'
-      const label = document.createElement('b')
-      const routeText = document.createElement('span')
-      const meta = document.createElement('small')
       if (selection.kind === 'waypoint') {
         const waypoint = points[selectionIndex]
         const role = selectionIndex === 0 ? '起点' : selectionIndex === points.length - 1 ? '终点' : '途经点'
         selectionTitle.textContent = '地点摘要'
+        spineTitle.setAttribute('aria-label', '查看地点详情')
         identityName.textContent = waypoint.name
         identityMeta.textContent = role
-        label.textContent = `${role} · ${selectionIndex + 1}/${points.length}`
-        routeText.textContent = `${Number(waypoint.lon).toFixed(4)}, ${Number(waypoint.lat).toFixed(4)}`
-        const weather = weatherDays[Math.min(weatherDays.length - 1, Math.max(0, route?.dayNumberAt?.(selectionIndex) - 1))]
-        meta.textContent = weather ? `${weather.isRain ? '有雨' : '天气稳定'}${Number.isFinite(weather.tempMax) ? ` · ${Math.round(weather.tempMax)}°` : ''}` : '天气未加载'
         const actionRegion = document.createElement('section')
         actionRegion.className = 'ui-waypoint-actions'
         actionRegion.setAttribute('aria-label', '途经点操作')
@@ -278,6 +280,7 @@ export function createPlannerWorkspace({
         actionList.className = 'ui-waypoint-action-list'
         const rename = document.createElement('button')
         rename.type = 'button'
+        rename.dataset.waypointAction = 'rename'
         rename.textContent = '重命名'
         rename.setAttribute('aria-expanded', 'false')
         const renameForm = document.createElement('form')
@@ -312,10 +315,12 @@ export function createPlannerWorkspace({
         })
         const insert = document.createElement('button')
         insert.type = 'button'
+        insert.dataset.waypointAction = 'insert-after'
         insert.textContent = '在后方插入'
         insert.addEventListener('click', () => onWaypointAction?.({ action: 'insert-after', waypointId: waypoint.id }))
         const remove = document.createElement('button')
         remove.type = 'button'
+        remove.dataset.waypointAction = 'remove'
         remove.className = 'danger'
         remove.textContent = '删除'
         remove.addEventListener('click', () => onWaypointAction?.({ action: 'remove', waypointId: waypoint.id }))
@@ -325,10 +330,14 @@ export function createPlannerWorkspace({
         actionRegion.append(actionTitle, actionList, renameForm, recovery)
         detail.appendChild(actionRegion)
       } else {
+        const label = document.createElement('b')
+        const routeText = document.createElement('span')
+        const meta = document.createElement('small')
         const from = points[selectionIndex]
         const to = points[selectionIndex + 1]
         const leg = legs[selectionIndex]
         selectionTitle.textContent = '路线摘要'
+        spineTitle.removeAttribute('aria-label')
         identityName.textContent = `${from.name} → ${to.name}`
         identityMeta.textContent = `第 ${selectionIndex + 1} 段`
         label.textContent = `路线段 ${selectionIndex + 1}`
@@ -338,9 +347,14 @@ export function createPlannerWorkspace({
         const weather = weatherDays[Math.min(weatherDays.length - 1, Math.max(0, route?.dayNumberAt?.(selectionIndex) - 1))]
         const weatherText = weather ? ` · ${weather.isRain ? '有雨' : '天气稳定'}${Number.isFinite(weather.tempMax) ? ` ${Math.round(weather.tempMax)}°` : ''}` : ''
         meta.textContent = `${distance}${duration}${weatherText}`
+        detail.append(label, routeText, meta)
       }
-      detail.append(label, routeText, meta)
       spineDays.appendChild(detail)
+    },
+    focusWaypointAction(action) {
+      const control = spine.querySelector(`[data-waypoint-action="${action}"]`)
+      control?.focus()
+      return !!control
     },
     updateTrip({ name, dateText, saved, saveStatus } = {}) {
       const identity = el.querySelector('.ui-trip-identity')
@@ -349,6 +363,7 @@ export function createPlannerWorkspace({
       identity.querySelector('b').textContent = name || '未命名线路'
       const saveCopy = { saved: '已保存到本机', dirty: '未保存更改', failed: '保存失败', unavailable: '本机存储不可用', idle: '' }[status] ?? ''
       identity.querySelector('span').textContent = `${dateText || '尚未设置日期'}${saveCopy ? ` · ${saveCopy}` : ''}`
+      syncSaveStatus(status)
     },
     setCoverage() {},
   }

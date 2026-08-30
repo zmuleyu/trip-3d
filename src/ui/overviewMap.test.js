@@ -662,6 +662,21 @@ describe('overview MapLibre planner map', () => {
     expect(onPlanAdd).toHaveBeenCalledWith(113.3, 41.5)
   })
 
+  it('selects a pressed waypoint once when its click does not become a drag', () => {
+    const onWaypointSelect = vi.fn()
+    const { overview, instance } = setup({ onWaypointSelect })
+    overview.setPlannerMode(true)
+    overview.update({ waypoints: [{ id: 'a', lon: 113, lat: 41.2 }, { id: 'b', lon: 113.2, lat: 41.4 }] }, null, VIEWPORT)
+    const marker = { layer: { id: 'trip-waypoint-circles', source: 'trip-route-waypoints' }, properties: { waypointId: 'a' } }
+
+    instance.emit('mousedown', { features: [marker], point: { x: 10, y: 10 }, lngLat: { lng: 113, lat: 41.2 } })
+    instance.emit('mouseup')
+    instance.emit('click', { features: [marker], point: { x: 10, y: 10 }, lngLat: { lng: 113, lat: 41.2 } })
+
+    expect(onWaypointSelect).toHaveBeenCalledTimes(1)
+    expect(onWaypointSelect).toHaveBeenCalledWith('a')
+  })
+
   it('waits for hysteresis, cancels for a second touch, and restores map gestures', () => {
     const onWaypointMoveStart = vi.fn()
     const onWaypointMove = vi.fn(() => true)
