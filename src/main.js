@@ -2186,9 +2186,9 @@ function setAnalysisSegment(next, { toggle = false } = {}) {
   const segment = syncAnalysisSegment()
   return !!segment
 }
-function setAnalysisSegmentAtDistance(distanceM) {
+function setAnalysisSegmentAtDistance(distanceM, { toggle = false } = {}) {
   const segment = analysisSegmentAtDistance(route, lastRouteAnalysis?.points, analysisSegmentLegs, distanceM)
-  return segment ? setAnalysisSegment(segment.selection) : false
+  return segment ? setAnalysisSegment(segment.selection, { toggle }) : false
 }
 function stepAnalysisSegment(direction) {
   const segment = adjacentAnalysisSegment(analysisSegmentSelection, route, lastRouteAnalysis?.points, analysisSegmentLegs, direction)
@@ -2330,9 +2330,9 @@ const overviewMap = createOverviewMap({
   onWaypointMoveCancel: cancelWaypointMove,
   onWeatherDetails: showHourlyWeatherDetails,
   onAnalysisCursor: setAnalysisCursor,
-  onRouteSelect: ({ segmentIndex }) => (isPlanStage()
+  onRouteSelect: ({ segmentIndex, distanceM }) => (isPlanStage()
     ? setSelectedRouteSegment(segmentIndex)
-    : setAnalysisSegment(segmentRouteSelection(route, segmentIndex), { toggle: true })),
+    : setAnalysisSegmentAtDistance(distanceM, { toggle: true })),
   getFitPadding: () => fluidLayout.getSafeArea(),
   onDockAction: (action, open) => {
     if (action !== 'layers') return

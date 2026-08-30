@@ -274,8 +274,9 @@ describe('overview MapLibre planner map', () => {
 
   it('keeps one transient Analyze cursor source and routes map hover/tap back without editing or jumping', () => {
     const onAnalysisCursor = vi.fn()
+    const onRouteSelect = vi.fn()
     const onJump = vi.fn()
-    const { overview, instance } = setup({ onAnalysisCursor, onJump })
+    const { overview, instance } = setup({ onAnalysisCursor, onRouteSelect, onJump })
     const route = { waypoints: [{ id: 'a', lon: 100, lat: 30 }, { id: 'b', lon: 101, lat: 30 }] }
     const points = [
       { lon: 100, lat: 30, ele: 1000, cumDistM: 0 },
@@ -301,6 +302,7 @@ describe('overview MapLibre planner map', () => {
     expect(instance.dragPan.disable).not.toHaveBeenCalled()
     instance.emit('click', { features: [routeFeature], lngLat: { lng: 100.75, lat: 30 } })
     expect(onAnalysisCursor).toHaveBeenLastCalledWith(expect.closeTo(750, 4))
+    expect(onRouteSelect).toHaveBeenLastCalledWith({ kind: 'analysis-segment', distanceM: expect.closeTo(750, 4) })
     expect(onJump).not.toHaveBeenCalled()
 
     instance.canvas.dispatchEvent(new Event('pointerleave'))

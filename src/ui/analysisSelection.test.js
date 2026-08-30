@@ -28,4 +28,9 @@ describe('Analyze segment selection', () => {
     expect(adjacentAnalysisSegment(first, route, points, legs, 1)?.selection).toEqual({ kind: 'segment', fromId: 'b', toId: 'c' })
     expect(analysisSegmentForSelection({ kind: 'segment', fromId: 'a', toId: 'c' }, route, points, legs)).toBeNull()
   })
+
+  it('fails closed instead of inventing equal segment boundaries without leg or waypoint evidence', () => {
+    const unverifiedPoints = [{ cumDistM: 0 }, { cumDistM: 3000 }]
+    expect(analysisSegmentRanges(route, unverifiedPoints, [])).toEqual([])
+  })
 })

@@ -41,12 +41,11 @@ export function analysisSegmentRanges(route, points, legs = []) {
       startM = Math.max(previousEndM, waypointDistances[index])
       endM = Math.max(startM, waypointDistances[index + 1])
     } else {
-      startM = bounds.startM + totalM * (index / (waypoints.length - 1))
-      endM = bounds.startM + totalM * ((index + 1) / (waypoints.length - 1))
+      return null
     }
     previousEndM = endM
     return { selection, index, from: waypoints[index], to, startM, endM, leg: legs[index] ?? null }
-  }).filter((segment) => segment.selection)
+  }).filter((segment) => segment?.selection)
 }
 
 export function analysisSegmentForSelection(selection, route, points, legs) {

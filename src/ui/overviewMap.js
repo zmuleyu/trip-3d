@@ -952,10 +952,15 @@ export function createOverviewMap({
   function requestAnalysisCursor(event) {
     if (!plannerMode || plannerView !== '3d' || editingMode || !analysisPointsReady(analysisCursor.points)) return false
     if (!routeFeatureAt(event) || !event.lngLat) return false
-    const distanceM = nearestAnalysisDistance(analysisCursor.points, event.lngLat.lng, event.lngLat.lat)
+    const distanceM = analysisDistanceAt(event)
     if (!Number.isFinite(distanceM)) return false
     onAnalysisCursor?.(distanceM)
     return true
+  }
+
+  function analysisDistanceAt(event) {
+    if (!analysisPointsReady(analysisCursor.points) || !event?.lngLat) return null
+    return nearestAnalysisDistance(analysisCursor.points, event.lngLat.lng, event.lngLat.lat)
   }
 
   function startWaypointDrag(event) {
@@ -1114,7 +1119,14 @@ export function createOverviewMap({
       if (releaseClick) return
     }
     if (plannerMode && routeFeatureAt(event)) {
-      if (plannerView === '3d') requestAnalysisCursor(event)
+      if (plannerView === '3d') {
+        const distanceM = analysisDistanceAt(event)
+        if (Number.isFinite(distanceM)) {
+          onAnalysisCursor?.(distanceM)
+          onRouteSelect?.({ kind: 'analysis-segment', distanceM })
+        }
+        return
+      }
       const segmentIndex = nearestRouteSegmentIndex({ route: lastRoute, points: lastPoints, legs: lastLegs }, event.lngLat)
       if (segmentIndex >= 0) onRouteSelect?.({ kind: 'segment', segmentIndex })
       return
