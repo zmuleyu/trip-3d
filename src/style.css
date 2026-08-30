@@ -1513,6 +1513,24 @@ body.planner-operate {
 }
 .ui-trip-spine .ui-trip-identity b { font-size: 13px; }
 .ui-trip-spine .ui-trip-identity span { color: var(--instrument-muted); font-size: 10px; }
+.ui-waypoint-actions { display: grid; gap: 6px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--instrument-line); }
+.ui-waypoint-actions > span { color: var(--instrument-muted); font-size: 11px; font-weight: 650; }
+.ui-waypoint-action-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.ui-waypoint-action-list button,
+.ui-waypoint-rename button { min-height: 30px; border: 1px solid var(--instrument-line); border-radius: 8px; background: transparent; color: var(--instrument-text); padding: 0 9px; font: 600 11px/1 var(--trip-font); cursor: pointer; transition: background-color 140ms ease-out, border-color 140ms ease-out, color 140ms ease-out; }
+.ui-waypoint-action-list button:hover,
+.ui-waypoint-action-list button:focus-visible,
+.ui-waypoint-rename button:hover,
+.ui-waypoint-rename button:focus-visible { background: var(--instrument-surface-hover); }
+.ui-waypoint-action-list button:focus-visible,
+.ui-waypoint-rename button:focus-visible,
+.ui-waypoint-rename input:focus-visible { outline: 2px solid var(--trip-route); outline-offset: 2px; }
+.ui-waypoint-action-list .danger { color: var(--trip-route); }
+.ui-waypoint-actions small { color: var(--instrument-muted); font-size: 11px; }
+.ui-waypoint-rename { display: flex; gap: 6px; }
+.ui-waypoint-rename.hidden { display: none; }
+.ui-waypoint-rename input { min-width: 0; flex: 1; min-height: 30px; border: 1px solid var(--instrument-line); border-radius: 8px; background: var(--instrument-surface-hover); color: var(--instrument-text); padding: 0 8px; font: 11px var(--trip-font); }
+.ui-planner-more-menu kbd { margin-left: auto; color: var(--text-dark-muted); font: 11px/1 var(--trip-font); }
 
 body.planner-operate .ui-panel:not(.collapsed),
 body.weather-operate .ui-panel:not(.collapsed) {
