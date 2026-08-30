@@ -263,6 +263,9 @@ body.planner-operate .ui-settings { top: 58px; width: min(360px, calc(100vw - 24
 .profile-details-toggle::after { content: '⌄'; margin-left: auto; color: var(--trip-ink); font-size: 15px; }
 .profile-details-toggle[aria-expanded="true"]::after { transform: rotate(180deg); }
 .profile-details { padding: 2px 0 1px; }
+.profile-segment-details { margin: 2px 0 8px; padding: 7px 0; border-bottom: 1px solid var(--trip-line); color: var(--trip-ink); font-size: 11px; font-variant-numeric: tabular-nums; }
+.profile-segment-details strong, .profile-segment-details p { display: block; margin: 0 0 3px; }
+.profile-segment-details p { color: var(--trip-ink-soft); }
 .ui-map-fit.hidden { display: none !important; }
 .ui-profile[data-status="outside-coverage"] .profile-status,
 .ui-profile[data-status="dem-unavailable"] .profile-status,
@@ -1715,6 +1718,8 @@ body.planner-operate.analyze-operate .profile-cursor-readout,
 body.planner-operate.analyze-operate .profile-metrics,
 body.planner-operate.analyze-operate .profile-details-toggle::after { color: var(--instrument-text); }
 body.planner-operate.analyze-operate .profile-details-toggle { border-top-color: var(--instrument-line); }
+body.planner-operate.analyze-operate .profile-segment-details { border-bottom-color: var(--instrument-line); color: var(--instrument-text); }
+body.planner-operate.analyze-operate .profile-segment-details p { color: var(--instrument-muted); }
 body.planner-operate.analyze-operate .profile-recovery { border-color: var(--instrument-line); color: var(--instrument-text); }
 
 @media (max-width: 1023px) {

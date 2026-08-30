@@ -419,7 +419,10 @@ export function createProfileCard(accent = '#ff4d00') {
   const details = document.createElement('div')
   details.className = 'profile-details'
   details.hidden = true
-  details.append(metrics, source)
+  const segmentDetails = document.createElement('div')
+  segmentDetails.className = 'profile-segment-details'
+  segmentDetails.hidden = true
+  details.append(segmentDetails, metrics, source)
   status.append(statusMessage, cursorReadout)
   body.append(terrainNotice, status, recoveryActions, terrainActions, canvas, detailsToggle, details)
   el.append(head, body)
@@ -428,8 +431,9 @@ export function createProfileCard(accent = '#ff4d00') {
   let folded = false
   let lastPts = null
   let lastGrade = null
-  let cbs = { onCursorDistance: null, onExpand: null, onRetry: null, onRetryTerrain: null, onReturnPlan: null }
+  let cbs = { onCursorDistance: null, onSegmentDistance: null, onSegmentStep: null, onSegmentClear: null, onExpand: null, onRetry: null, onRetryTerrain: null, onReturnPlan: null }
   let lastCursorDistanceM = null
+  let selectedSegment = null
   let profileReady = false
   let detailsOpen = false
   let terrainState = 'ready'
@@ -495,24 +499,69 @@ export function createProfileCard(accent = '#ff4d00') {
   const requestCursor = (distanceM) => {
     if (Number.isFinite(distanceM)) cbs.onCursorDistance?.(distanceM)
   }
+  const renderSegmentDetails = () => {
+    segmentDetails.replaceChildren()
+    if (!selectedSegment) {
+      segmentDetails.hidden = true
+      return
+    }
+    segmentDetails.hidden = false
+    const fromName = selectedSegment.from?.name || '未命名点'
+    const toName = selectedSegment.to?.name || '未命名点'
+    const distanceM = selectedSegment.endM - selectedSegment.startM
+    const start = sampleAnalysisAtDistance(lastPts, selectedSegment.startM)
+    const end = sampleAnalysisAtDistance(lastPts, selectedSegment.endM)
+    const deltaM = start && end ? end.ele - start.ele : null
+    const netGrade = Number.isFinite(deltaM) && distanceM > 0 ? (deltaM / distanceM) * 100 : null
+    const durationS = selectedSegment.leg?.durationS
+    const rows = [
+      [`第 ${selectedSegment.index + 1} 段 · ${fromName} → ${toName}`, null],
+      ['区间', Number.isFinite(distanceM) ? `${(distanceM / 1000).toFixed(1)} km` : '区间暂不可用'],
+      ['高程变化', Number.isFinite(deltaM) ? `${deltaM >= 0 ? '+' : '−'}${Math.abs(Math.round(deltaM)).toLocaleString('zh-CN')} m` : '高程暂不可用'],
+      ['净坡度', Number.isFinite(netGrade) ? `${netGrade >= 0 ? '+' : '−'}${Math.abs(netGrade).toFixed(1)}%` : '坡度暂不可用'],
+      ['时长', Number.isFinite(durationS) ? `${Math.max(1, Math.round(durationS / 60))} 分钟` : '时长暂不可用'],
+    ]
+    rows.forEach(([label, value], index) => {
+      const row = document.createElement(index ? 'p' : 'strong')
+      row.textContent = value == null ? label : `${label} · ${value}`
+      segmentDetails.appendChild(row)
+    })
+  }
   canvas.addEventListener('pointermove', (e) => {
     requestCursor(distanceAt(e))
   })
   canvas.addEventListener('pointerdown', (e) => {
-    requestCursor(distanceAt(e))
+    const distanceM = distanceAt(e)
+    requestCursor(distanceM)
+    if (Number.isFinite(distanceM)) cbs.onSegmentDistance?.(distanceM)
+    canvas.focus()
   })
   canvas.addEventListener('pointerleave', (e) => {
     if (e.pointerType !== 'touch') cbs.onCursorDistance?.(null)
   })
   canvas.addEventListener('keydown', (e) => {
     if (!analysisPointsReady(lastPts)) return
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      cbs.onSegmentClear?.()
+      return
+    }
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault()
+      cbs.onSegmentDistance?.(lastCursorDistanceM ?? lastPts[0].cumDistM)
+      return
+    }
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      e.preventDefault()
+      cbs.onSegmentStep?.(e.key === 'ArrowLeft' ? -1 : 1)
+      const currentIndex = nearestAnalysisIndex(lastPts, lastCursorDistanceM ?? lastPts[0].cumDistM)
+      const nextIndex = Math.max(0, Math.min(lastPts.length - 1, currentIndex + (e.key === 'ArrowLeft' ? -1 : 1)))
+      requestCursor(lastPts[nextIndex].cumDistM)
+      return
+    }
     const currentIndex = nearestAnalysisIndex(lastPts, lastCursorDistanceM ?? lastPts[0].cumDistM)
-    let nextIndex = currentIndex
-    if (e.key === 'ArrowLeft') nextIndex = Math.max(0, currentIndex - 1)
-    else if (e.key === 'ArrowRight') nextIndex = Math.min(lastPts.length - 1, currentIndex + 1)
-    else if (e.key === 'Home') nextIndex = 0
-    else if (e.key === 'End') nextIndex = lastPts.length - 1
-    else return
+    const nextIndex = e.key === 'Home' ? 0 : e.key === 'End' ? lastPts.length - 1 : null
+    if (nextIndex == null) return
     e.preventDefault()
     requestCursor(lastPts[nextIndex].cumDistM)
   })
@@ -524,6 +573,8 @@ export function createProfileCard(accent = '#ff4d00') {
     const max = Math.max(...lastPts.map((point) => point.ele))
     const span = Math.max(max - min, 1)
     const { width: W, height: H } = canvas
+    const startDistanceM = lastPts[0].cumDistM
+    const totalDistanceM = lastPts.at(-1).cumDistM - startDistanceM
     const chartPoints = lastPts.map((point, index) => ({
       x: (index / (lastPts.length - 1)) * (W - 24) + 12,
       y: 8 + (1 - (point.ele - min) / span) * (H - 18),
@@ -545,6 +596,12 @@ export function createProfileCard(accent = '#ff4d00') {
       index ? ctx.lineTo(point.x, point.y) : ctx.moveTo(point.x, point.y)
     })
     ctx.stroke()
+    if (selectedSegment && Number.isFinite(selectedSegment.startM) && Number.isFinite(selectedSegment.endM)) {
+      const start = totalDistanceM > 0 ? (selectedSegment.startM - startDistanceM) / totalDistanceM : 0
+      const end = totalDistanceM > 0 ? (selectedSegment.endM - startDistanceM) / totalDistanceM : 1
+      ctx.fillStyle = 'rgba(255, 79, 23, .22)'
+      ctx.fillRect(12 + Math.max(0, start) * (W - 24), 5, Math.max(2, (end - start) * (W - 24)), H - 10)
+    }
     const sample = sampleAnalysisAtDistance(lastPts, lastCursorDistanceM)
     if (!sample) {
       cursorReadout.textContent = ''
@@ -554,8 +611,6 @@ export function createProfileCard(accent = '#ff4d00') {
       canvas.removeAttribute('aria-valuetext')
       return
     }
-    const startDistanceM = lastPts[0].cumDistM
-    const totalDistanceM = lastPts.at(-1).cumDistM - startDistanceM
     const fraction = totalDistanceM > 0 ? (sample.distanceM - startDistanceM) / totalDistanceM : 0
     const x = 12 + fraction * (W - 24)
     const y = 8 + (1 - (sample.ele - min) / span) * (H - 18)
@@ -593,6 +648,11 @@ export function createProfileCard(accent = '#ff4d00') {
       lastCursorDistanceM = Number.isFinite(distanceM) ? distanceM : null
       draw()
     },
+    setSelectedSegment(next) {
+      selectedSegment = next ?? null
+      renderSegmentDetails()
+      draw()
+    },
     update(analysis = {}) {
       const ready = analysis.status === 'ready' && analysisPointsReady(analysis.points) && analysis.profile
       el.dataset.status = analysis.status ?? 'dem-unavailable'
@@ -602,6 +662,8 @@ export function createProfileCard(accent = '#ff4d00') {
         lastPts = null
         lastGrade = null
         lastCursorDistanceM = null
+        selectedSegment = null
+        renderSegmentDetails()
         canvas.classList.add('hidden')
         metrics.replaceChildren()
         source.textContent = ''
@@ -630,6 +692,7 @@ export function createProfileCard(accent = '#ff4d00') {
       profileReady = true
       lastPts = points
       lastGrade = grade
+      renderSegmentDetails()
       canvas.classList.remove('hidden')
       recoveryActions.hidden = true
       recovery.hidden = true

@@ -31,6 +31,7 @@ const SOURCE_IDS = {
   weather: 'trip-route-weather',
   waypoints: 'trip-route-waypoints',
   cursor: 'trip-analysis-cursor',
+  selectedSegment: 'trip-selected-route-segment',
 }
 
 const EMPTY_FEATURE_COLLECTION = Object.freeze({ type: 'FeatureCollection', features: [] })
@@ -113,6 +114,16 @@ function routeFeature(route, points) {
     properties: {},
     geometry: { type: 'LineString', coordinates },
   }
+}
+
+function segmentFeature(points, segment) {
+  if (!analysisPointsReady(points) || !Number.isFinite(segment?.startM) || !Number.isFinite(segment?.endM)) return null
+  const start = sampleAnalysisAtDistance(points, segment.startM)
+  const end = sampleAnalysisAtDistance(points, segment.endM)
+  if (!start || !end) return null
+  const inside = points.filter((point) => point.cumDistM > start.distanceM && point.cumDistM < end.distanceM)
+  const coordinates = [[start.lon, start.lat], ...inside.map((point) => [point.lon, point.lat]), [end.lon, end.lat]]
+  return coordinates.length >= 2 ? { type: 'Feature', properties: { segmentId: `${segment.selection?.fromId}:${segment.selection?.toId}` }, geometry: { type: 'LineString', coordinates } } : null
 }
 
 function alternativeFeatures(alternatives = [], selectedIndex = 0) {
@@ -206,6 +217,7 @@ function addPlannerLayers(map) {
   map.addSource(SOURCE_IDS.weather, { type: 'geojson', data: EMPTY_FEATURE_COLLECTION })
   map.addSource(SOURCE_IDS.waypoints, { type: 'geojson', data: EMPTY_FEATURE_COLLECTION })
   map.addSource(SOURCE_IDS.cursor, { type: 'geojson', data: EMPTY_FEATURE_COLLECTION })
+  map.addSource(SOURCE_IDS.selectedSegment, { type: 'geojson', data: EMPTY_FEATURE_COLLECTION })
 
   const firstSymbolLayer = (map.getStyle()?.layers ?? []).find((layer) => layer.type === 'symbol')?.id
   map.addLayer({
@@ -270,6 +282,20 @@ function addPlannerLayers(map) {
     source: SOURCE_IDS.route,
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: { 'line-color': ACCENT, 'line-width': 3.5 },
+  })
+  map.addLayer({
+    id: 'trip-selected-segment-casing',
+    type: 'line',
+    source: SOURCE_IDS.selectedSegment,
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': '#ffffff', 'line-opacity': .96, 'line-width': 9 },
+  })
+  map.addLayer({
+    id: 'trip-selected-segment-line',
+    type: 'line',
+    source: SOURCE_IDS.selectedSegment,
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': ACCENT, 'line-width': 5 },
   })
   map.addLayer({
     id: 'trip-analysis-cursor',
@@ -466,6 +492,7 @@ export function createOverviewMap({
   let attributionMapParent = null
   let selectedWaypointId = null
   let analysisCursor = { points: null, distanceM: null }
+  let analysisSegment = null
   let adminOverlay = { enabled: false, rings: [], selected: null }
   let weatherOverlay = { routeRevision: -1, weatherRevision: -1, result: null }
   let weatherData = EMPTY_FEATURE_COLLECTION
@@ -680,6 +707,11 @@ export function createOverviewMap({
       ? featureCollection([{ type: 'Feature', properties: { distanceM: sample.distanceM, ele: sample.ele }, geometry: { type: 'Point', coordinates: [sample.lon, sample.lat] } }])
       : EMPTY_FEATURE_COLLECTION
     map.getSource(SOURCE_IDS.cursor)?.setData(cursorData)
+    const selected = segmentFeature(lastPoints, analysisSegment)
+    map.getSource(SOURCE_IDS.selectedSegment)?.setData(selected ? featureCollection([selected]) : EMPTY_FEATURE_COLLECTION)
+    const dimmed = !!selected
+    map.setPaintProperty('trip-route-casing', 'line-opacity', dimmed ? .38 : .94)
+    map.setPaintProperty('trip-route-line', 'line-opacity', dimmed ? .45 : 1)
   }
 
   const weatherCondition = (code) => {
@@ -920,10 +952,15 @@ export function createOverviewMap({
   function requestAnalysisCursor(event) {
     if (!plannerMode || plannerView !== '3d' || editingMode || !analysisPointsReady(analysisCursor.points)) return false
     if (!routeFeatureAt(event) || !event.lngLat) return false
-    const distanceM = nearestAnalysisDistance(analysisCursor.points, event.lngLat.lng, event.lngLat.lat)
+    const distanceM = analysisDistanceAt(event)
     if (!Number.isFinite(distanceM)) return false
     onAnalysisCursor?.(distanceM)
     return true
+  }
+
+  function analysisDistanceAt(event) {
+    if (!analysisPointsReady(analysisCursor.points) || !event?.lngLat) return null
+    return nearestAnalysisDistance(analysisCursor.points, event.lngLat.lng, event.lngLat.lat)
   }
 
   function startWaypointDrag(event) {
@@ -1081,12 +1118,20 @@ export function createOverviewMap({
       suppressMapClickTimer = null
       if (releaseClick) return
     }
-    if (requestAnalysisCursor(event)) return
-    if (plannerMode && plannerView === '2d' && routeFeatureAt(event)) {
+    if (plannerMode && routeFeatureAt(event)) {
+      if (!editingMode) {
+        const distanceM = analysisDistanceAt(event)
+        if (Number.isFinite(distanceM)) {
+          onAnalysisCursor?.(distanceM)
+          onRouteSelect?.({ kind: 'analysis-segment', distanceM })
+        }
+        return
+      }
       const segmentIndex = nearestRouteSegmentIndex({ route: lastRoute, points: lastPoints, legs: lastLegs }, event.lngLat)
       if (segmentIndex >= 0) onRouteSelect?.({ kind: 'segment', segmentIndex })
       return
     }
+    if (requestAnalysisCursor(event)) return
     if (plannerMode && plannerView === '3d' && !editingMode) return
     const { lng, lat } = event.lngLat
     if (editingMode && onPlanAdd) onPlanAdd(lng, lat)
@@ -1194,6 +1239,10 @@ export function createOverviewMap({
         points: analysisPointsReady(points) ? points : null,
         distanceM: Number.isFinite(distanceM) ? distanceM : null,
       }
+      syncPlannerData()
+    },
+    setAnalysisSegment(next) {
+      analysisSegment = next ?? null
       syncPlannerData()
     },
     setAdminOverlay(next) {

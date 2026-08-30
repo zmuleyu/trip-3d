@@ -56,6 +56,7 @@ import { createSettingsPanel } from './ui/settingsPanel.js'
 import { formatSummary, loadSummaryPreferences, saveSummaryPreferences } from './ui/summaryPreferences.js'
 import { applyDensity, loadDensity, saveDensity } from './ui/densityPreferences.js'
 import { reconcileRouteSelection, sameRouteSelection, segmentRouteSelection, waypointRouteSelection } from './ui/routeSelection.js'
+import { adjacentAnalysisSegment, analysisSegmentAtDistance, analysisSegmentForSelection } from './ui/analysisSelection.js'
 import { selectSearchPlace } from './ui/searchPlaceSelection.js'
 import { createOpenMeteoProvider, createOpenMeteoArchiveProvider } from './providers/openmeteo.js'
 import { createGeocodeProvider, createGeocodeSearchLifecycle } from './providers/geocode.js'
@@ -1058,6 +1059,8 @@ function cancelWaypointMove(id) {
 function refreshUnavailableRouteAnalysis(coordinates, { recordHistory, fitOverview }) {
   analysisCursorPathKey = ''
   clearAnalysisCursor()
+  analysisSegmentSelection = null
+  analysisSegmentLegs = []
   routeLayer?.clear()
   lastRoutePts = []
   profileCard?.update(lastRouteAnalysis)
@@ -1478,6 +1481,8 @@ function updateRouteUI(route, stats, pts, { fitOverview = true } = {}) {
     legs: legs ?? [],
   })
   overviewMap.setSelectedWaypoint(route.selectedWaypointId)
+  analysisSegmentLegs = legs ?? []
+  syncAnalysisSegment()
 }
 
 // ------------------------------------------------------------------ sunlight analysis
@@ -2144,6 +2149,9 @@ planningPanel.setRouteMode(route.mode, snapState.on ? '等待路网吸附' : '�
 let plannerWorkspace
 let analysisCursorDistanceM = null
 let analysisCursorPathKey = ''
+let analysisSegmentSelection = null
+let analysisSegmentLegs = []
+let analysisSegmentRouteKey = ''
 function setAnalysisCursor(distanceM) {
   analysisCursorDistanceM = Number.isFinite(distanceM) ? distanceM : null
   profileCard?.setCursorDistance(analysisCursorDistanceM)
@@ -2151,6 +2159,48 @@ function setAnalysisCursor(distanceM) {
 }
 function clearAnalysisCursor() {
   setAnalysisCursor(null)
+}
+function currentAnalysisSegment() {
+  return analysisSegmentForSelection(analysisSegmentSelection, route, lastRouteAnalysis?.points, analysisSegmentLegs)
+}
+function syncAnalysisSegment() {
+  const routeKey = `${route.id}:${route.geometryRevision}`
+  if (analysisSegmentRouteKey && analysisSegmentRouteKey !== routeKey) analysisSegmentSelection = null
+  analysisSegmentRouteKey = routeKey
+  analysisSegmentSelection = reconcileRouteSelection(analysisSegmentSelection, route)
+  const segment = currentAnalysisSegment()
+  profileCard?.setSelectedSegment(segment)
+  overviewMap?.setAnalysisSegment(segment)
+  return segment
+}
+function setAnalysisSegment(next, { toggle = false } = {}) {
+  const reconciled = reconcileRouteSelection(next, route)
+  if (!reconciled || reconciled.kind !== 'segment') return false
+  if (toggle && sameRouteSelection(analysisSegmentSelection, reconciled)) {
+    analysisSegmentSelection = null
+    syncAnalysisSegment()
+    return true
+  }
+  if (sameRouteSelection(analysisSegmentSelection, reconciled)) return false
+  analysisSegmentSelection = reconciled
+  const segment = syncAnalysisSegment()
+  return !!segment
+}
+function setAnalysisSegmentAtDistance(distanceM, { toggle = false } = {}) {
+  const segment = analysisSegmentAtDistance(route, lastRouteAnalysis?.points, analysisSegmentLegs, distanceM)
+  return segment ? setAnalysisSegment(segment.selection, { toggle }) : false
+}
+function stepAnalysisSegment(direction) {
+  const segment = adjacentAnalysisSegment(analysisSegmentSelection, route, lastRouteAnalysis?.points, analysisSegmentLegs, direction)
+  if (!segment || !setAnalysisSegment(segment.selection)) return false
+  setAnalysisCursor(segment.startM)
+  return true
+}
+function clearAnalysisSegment() {
+  if (!analysisSegmentSelection) return false
+  analysisSegmentSelection = null
+  syncAnalysisSegment()
+  return true
 }
 function initializeAnalysisCursor(points = lastRouteAnalysis?.points) {
   const distanceM = initialAnalysisCursorDistance(points, analysisCursorDistanceM)
@@ -2257,6 +2307,9 @@ function restoreAnalyzeTerrainView() {
 
 profileCard.setCallbacks({
   onCursorDistance: setAnalysisCursor,
+  onSegmentDistance: setAnalysisSegmentAtDistance,
+  onSegmentStep: stepAnalysisSegment,
+  onSegmentClear: clearAnalysisSegment,
   onRetry: retryRouteEnrichment,
   onRetryTerrain: restoreAnalyzeTerrainView,
   onReturnPlan: () => workspaceLifecycle?.setStage(WORKFLOW_STAGES.PLAN),
@@ -2277,7 +2330,9 @@ const overviewMap = createOverviewMap({
   onWaypointMoveCancel: cancelWaypointMove,
   onWeatherDetails: showHourlyWeatherDetails,
   onAnalysisCursor: setAnalysisCursor,
-  onRouteSelect: ({ segmentIndex }) => setSelectedRouteSegment(segmentIndex),
+  onRouteSelect: ({ segmentIndex, distanceM }) => (isPlanStage()
+    ? setSelectedRouteSegment(segmentIndex)
+    : setAnalysisSegmentAtDistance(distanceM, { toggle: true })),
   getFitPadding: () => fluidLayout.getSafeArea(),
   onDockAction: (action, open) => {
     if (action !== 'layers') return
@@ -2456,6 +2511,7 @@ workspaceLifecycle = createWorkspaceLifecycleCoordinator({
     profileCard?.setTerrainState(analyze ? 'preparing' : 'ready')
     if (!analyze) {
       clearAnalysisCursor()
+      clearAnalysisSegment()
     } else initializeAnalysisCursor()
     document.body.classList.toggle('analyze-operate', analyze)
     plannerWorkspace?.setStage(stage)

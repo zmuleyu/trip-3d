@@ -296,6 +296,28 @@ describe('Analyze elevation profile', () => {
     expect(onCursorDistance).toHaveBeenLastCalledWith(null)
   })
 
+  it('locks and clears Analyze segment callbacks from the Profile without changing cursor ownership', () => {
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(canvasContext())
+    const onSegmentDistance = vi.fn()
+    const onSegmentStep = vi.fn()
+    const onSegmentClear = vi.fn()
+    const card = createProfileCard()
+    card.setStage('analyze')
+    card.setCallbacks({ onSegmentDistance, onSegmentStep, onSegmentClear })
+    card.update({ status: 'ready', points: [{ lon: 100, lat: 30, ele: 1000, cumDistM: 0 }, { lon: 101, lat: 30, ele: 1100, cumDistM: 1000 }, { lon: 102, lat: 30, ele: 1200, cumDistM: 2000 }], profile: { distanceM: 2000, minElevationM: 1000, maxElevationM: 1200 } })
+    const canvas = card.el.querySelector('canvas')
+    canvas.getBoundingClientRect = () => ({ left: 0, width: 596 })
+    canvas.dispatchEvent(new MouseEvent('pointerdown', { clientX: 304 }))
+    expect(onSegmentDistance).toHaveBeenLastCalledWith(expect.closeTo(1021, 0))
+    card.setCursorDistance(1000)
+    canvas.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    expect(onSegmentDistance).toHaveBeenLastCalledWith(1000)
+    canvas.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
+    expect(onSegmentStep).toHaveBeenLastCalledWith(1)
+    canvas.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    expect(onSegmentClear).toHaveBeenCalledOnce()
+  })
+
   it('keeps aggregate grade metrics in a disclosed route-details layer', () => {
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(canvasContext())
     const card = createProfileCard()
