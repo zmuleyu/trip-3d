@@ -426,11 +426,15 @@ describe('Analyze elevation profile', () => {
     card.setStage('analyze')
     card.setCallbacks({ onRetry, onReturnPlan })
 
+    card.setTerrainState('fallback')
     card.setResilience({ status: 'preparing' })
     card.update({ status: 'route-terrain-loading' })
     expect(card.el.textContent).toContain('正在准备路线分析')
     expect(card.el.querySelector('.profile-recovery:not(.profile-return-plan)').hidden).toBe(true)
     expect(card.el.querySelector('.profile-return-plan').hidden).toBe(false)
+    expect(card.el.dataset.terrainState).toBe('fallback')
+    expect(card.el.querySelector('.profile-terrain-notice').hidden).toBe(false)
+    expect(card.el.querySelector('.profile-terrain-actions').hidden).toBe(false)
 
     card.setResilience({ status: 'stale' })
     card.update({ status: 'route-terrain-loading' })
@@ -438,10 +442,21 @@ describe('Analyze elevation profile', () => {
     card.el.querySelector('.profile-recovery:not(.profile-return-plan)').click()
     expect(onRetry).toHaveBeenCalledOnce()
 
-    card.setResilience({ status: 'failed' })
-    card.update({ status: 'route-terrain-unavailable' })
-    expect(card.el.textContent).toContain('请检查网络后重新分析')
+    card.setResilience({ status: 'failed', reason: 'outside-coverage' })
+    card.update({ status: 'outside-coverage' })
+    expect(card.el.textContent).toContain('路线地形尚未补齐')
+    expect(card.el.querySelector('.profile-recovery:not(.profile-return-plan)').textContent).toBe('补齐路线地形')
+    expect(card.el.textContent).not.toContain('检查网络')
     expect(card.el.textContent).not.toContain('DEM')
+
+    card.setResilience({ status: 'failed', reason: 'route-terrain-budget' })
+    card.update({ status: 'route-terrain-budget' })
+    expect(card.el.textContent).toContain('路线较长，暂时无法补齐完整地形')
+    expect(card.el.textContent).not.toContain('检查网络')
+
+    card.setResilience({ status: 'failed', reason: 'route-terrain-cancelled' })
+    card.update({ status: 'route-terrain-cancelled' })
+    expect(card.el.textContent).toContain('路线已变化，分析已取消')
 
     card.setResilience({ status: 'fallback-ready' })
     card.update(ready)

@@ -8,19 +8,22 @@ export function deriveAnalyzeResilience({
   analysisKey = null,
   currentRunKey = null,
   corridorStatus = 'idle',
+  corridorError = null,
   freshnessStale = false,
   terrainState = 'ready',
 } = {}) {
   if (waypointCount < 2) return { status: 'incomplete' }
 
-  const runMatches = !analysisKey || !currentRunKey || analysisKey === currentRunKey
+  const runMatches = typeof analysisKey === 'string' && analysisKey.length > 0
+    && typeof currentRunKey === 'string' && currentRunKey.length > 0
+    && analysisKey === currentRunKey
   const ready = runMatches && analysisIsReady(analysis)
 
   if (freshnessStale) return { status: 'stale' }
   if (terrainState === 'fallback' && ready) return { status: 'fallback-ready' }
   if (corridorStatus === 'loading' || analysis?.status === 'route-terrain-loading') return { status: 'preparing' }
   if (corridorStatus === 'error' || ['dem-unavailable', 'outside-coverage', 'route-terrain-unavailable', 'route-terrain-budget', 'route-terrain-cancelled'].includes(analysis?.status)) {
-    return { status: 'failed' }
+    return { status: 'failed', reason: analysis?.status ?? corridorError?.code ?? 'route-terrain-unavailable' }
   }
   if (ready) return { status: 'ready' }
   return { status: 'preparing' }

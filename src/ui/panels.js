@@ -442,6 +442,7 @@ export function createProfileCard(accent = '#ff4d00') {
   let detailsOpen = false
   let terrainState = 'ready'
   let resilienceStatus = null
+  let resilienceReason = null
   const setDetailsOpen = (open) => {
     detailsOpen = !!open
     details.hidden = !detailsOpen
@@ -701,9 +702,7 @@ export function createProfileCard(accent = '#ff4d00') {
     },
     setResilience(next) {
       resilienceStatus = next?.status ?? null
-      if (resilienceStatus === 'fallback-ready') terrainState = 'fallback'
-      else if (terrainState === 'fallback') terrainState = 'ready'
-      syncTerrainNotice()
+      resilienceReason = next?.reason ?? null
     },
     setCallbacks(next) { cbs = { ...cbs, ...next } },
     setCursorDistance(distanceM) {
@@ -724,6 +723,7 @@ export function createProfileCard(accent = '#ff4d00') {
     },
     update(analysis = {}, presentation = null) {
       resilienceStatus = presentation?.status ?? resilienceStatus
+      resilienceReason = presentation?.reason ?? resilienceReason
       const status = resilienceStatus ?? analysis.status ?? 'failed'
       const ready = status === 'ready' || status === 'fallback-ready'
         ? analysis.status === 'ready' && analysisPointsReady(analysis.points) && analysis.profile
@@ -744,15 +744,23 @@ export function createProfileCard(accent = '#ff4d00') {
         const legacyRecoverable = ['dem-unavailable', 'outside-coverage', 'route-terrain-unavailable', 'route-terrain-budget', 'route-terrain-cancelled'].includes(status)
         const retryable = resilienceStatus ? ['stale', 'failed'].includes(status) : legacyRecoverable
         const canReturnPlan = resilienceStatus ? ['preparing', 'stale', 'failed'].includes(status) : legacyRecoverable
+        const failure = {
+          'outside-coverage': { message: '路线地形尚未补齐。', action: '补齐路线地形' },
+          'route-terrain-budget': { message: '路线较长，暂时无法补齐完整地形。', action: '重新分析' },
+          'route-terrain-cancelled': { message: '路线已变化，分析已取消，请重新分析。', action: '重新分析' },
+          'budget-exceeded': { message: '路线较长，暂时无法补齐完整地形。', action: '重新分析' },
+          'dem-unavailable': { message: '路线分析暂不可用，请检查网络后重新分析。', action: '重新分析' },
+          'route-terrain-unavailable': { message: '路线分析暂不可用，请检查网络后重新分析。', action: '重新分析' },
+        }[resilienceReason] ?? { message: '路线分析暂不可用，请稍后重新分析。', action: '重新分析' }
         recoveryActions.hidden = !canReturnPlan
         recovery.hidden = !retryable
         returnPlan.hidden = !canReturnPlan
-        recovery.textContent = resilienceStatus ? '重新分析' : (status === 'outside-coverage' ? '补齐路线地形' : '重试')
+        recovery.textContent = resilienceStatus ? (status === 'failed' ? failure.action : '重新分析') : (status === 'outside-coverage' ? '补齐路线地形' : '重试')
         statusMessage.textContent = {
           incomplete: '至少添加起点和终点',
           preparing: '正在准备路线分析；可随时返回规划。',
           stale: '路线已变化，需要重新分析。',
-          failed: '路线分析暂不可用，请检查网络后重新分析。',
+          failed: failure.message,
           'outside-coverage': '路线地形尚未补齐',
           'dem-unavailable': '高程数据暂不可用',
           'route-terrain-loading': '正在准备路线分析',

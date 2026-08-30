@@ -2199,6 +2199,7 @@ function refreshProfileResilience() {
     analysisKey: currentProfileAnalysisKey(currentRun),
     currentRunKey: currentRun.key,
     corridorStatus: routeCorridorState.status,
+    corridorError: routeCorridorState.error,
     freshnessStale: analysisFreshness.isStale(route),
     terrainState: analyzeTerrainState,
   })

@@ -12,9 +12,9 @@ describe('deriveAnalyzeResilience', () => {
     expect(deriveAnalyzeResilience({ waypointCount: 1 })).toMatchObject({ status: 'incomplete' })
     expect(deriveAnalyzeResilience({ waypointCount: 2, corridorStatus: 'loading' })).toMatchObject({ status: 'preparing' })
     expect(deriveAnalyzeResilience({ waypointCount: 2, analysis: readyAnalysis, analysisKey: 'run:2', currentRunKey: 'run:2' })).toMatchObject({ status: 'ready' })
-    expect(deriveAnalyzeResilience({ waypointCount: 2, analysis: readyAnalysis, freshnessStale: true })).toMatchObject({ status: 'stale' })
-    expect(deriveAnalyzeResilience({ waypointCount: 2, analysis: { status: 'route-terrain-unavailable' }, corridorStatus: 'error' })).toMatchObject({ status: 'failed' })
-    expect(deriveAnalyzeResilience({ waypointCount: 2, analysis: readyAnalysis, terrainState: 'fallback' })).toMatchObject({ status: 'fallback-ready' })
+    expect(deriveAnalyzeResilience({ waypointCount: 2, analysis: readyAnalysis, analysisKey: 'run:2', currentRunKey: 'run:2', freshnessStale: true })).toMatchObject({ status: 'stale' })
+    expect(deriveAnalyzeResilience({ waypointCount: 2, analysis: { status: 'route-terrain-unavailable' }, corridorStatus: 'error' })).toMatchObject({ status: 'failed', reason: 'route-terrain-unavailable' })
+    expect(deriveAnalyzeResilience({ waypointCount: 2, analysis: readyAnalysis, analysisKey: 'run:2', currentRunKey: 'run:2', terrainState: 'fallback' })).toMatchObject({ status: 'fallback-ready' })
   })
 
   it('never presents an old asynchronous ready result as current', () => {
@@ -25,6 +25,16 @@ describe('deriveAnalyzeResilience', () => {
       currentRunKey: 'route:5:raw',
       corridorStatus: 'loading',
     })).toMatchObject({ status: 'preparing' })
+  })
+
+  it('requires both current run keys before presenting a ready profile', () => {
+    expect(deriveAnalyzeResilience({ waypointCount: 2, analysis: readyAnalysis, analysisKey: 'route:4' })).toMatchObject({ status: 'preparing' })
+    expect(deriveAnalyzeResilience({ waypointCount: 2, analysis: readyAnalysis, currentRunKey: 'route:4' })).toMatchObject({ status: 'preparing' })
+  })
+
+  it('keeps the known analysis status or corridor error kind as a failure reason', () => {
+    expect(deriveAnalyzeResilience({ waypointCount: 2, analysis: { status: 'outside-coverage' } })).toMatchObject({ status: 'failed', reason: 'outside-coverage' })
+    expect(deriveAnalyzeResilience({ waypointCount: 2, corridorStatus: 'error', corridorError: { code: 'budget-exceeded' } })).toMatchObject({ status: 'failed', reason: 'budget-exceeded' })
   })
 
   it('restores a selected segment only for the same route fingerprint and run', () => {
