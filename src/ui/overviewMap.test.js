@@ -234,6 +234,23 @@ describe('overview MapLibre planner map', () => {
     expect(onPlanAdd).toHaveBeenCalledWith(103, 32)
   })
 
+  it('uses distanceM for a 2D Analyze fallback while preserving Plan segmentIndex selection', () => {
+    const onRouteSelect = vi.fn()
+    const { overview, instance } = setup({ onRouteSelect })
+    const route = { waypoints: [{ id: 'a', lon: 100, lat: 30 }, { id: 'b', lon: 101, lat: 30 }, { id: 'c', lon: 102, lat: 30 }] }
+    const points = [{ lon: 100, lat: 30, ele: 1000, cumDistM: 0 }, { lon: 101, lat: 30, ele: 1100, cumDistM: 1000 }, { lon: 102, lat: 30, ele: 1200, cumDistM: 2000 }]
+    const routeFeature = { layer: { id: 'trip-route-line', source: 'trip-planned-route' } }
+    overview.setPlannerMode(true, { editing: false })
+    overview.update(route, points, VIEWPORT)
+    overview.setAnalysisCursor({ points, distanceM: 500 })
+    instance.emit('click', { features: [routeFeature], lngLat: { lng: 101.5, lat: 30 } })
+    expect(onRouteSelect).toHaveBeenLastCalledWith({ kind: 'analysis-segment', distanceM: expect.closeTo(1500, 4) })
+
+    overview.setPlannerMode(true, { editing: true })
+    instance.emit('click', { features: [routeFeature], lngLat: { lng: 101.5, lat: 30 } })
+    expect(onRouteSelect).toHaveBeenLastCalledWith({ kind: 'segment', segmentIndex: 1 })
+  })
+
   it('maps a curved rendered path to leg boundaries instead of the nearer waypoint chord', () => {
     const route = { waypoints: [
       { id: 'a', lon: 0, lat: 0 },

@@ -1119,7 +1119,7 @@ export function createOverviewMap({
       if (releaseClick) return
     }
     if (plannerMode && routeFeatureAt(event)) {
-      if (plannerView === '3d') {
+      if (!editingMode) {
         const distanceM = analysisDistanceAt(event)
         if (Number.isFinite(distanceM)) {
           onAnalysisCursor?.(distanceM)
